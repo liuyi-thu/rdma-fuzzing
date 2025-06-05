@@ -141,7 +141,7 @@ class SockConnect(UtilityCall):
     /* Establish TCP connection */
     sock = sock_connect({server_arg}, {self.port});
     if (sock < 0) {{
-        fprintf(stderr, "{fail_msg}\n");
+        fprintf(stderr, "{fail_msg}\\n");
         return -1;
     }}
 """

@@ -190,10 +190,10 @@ int sock_sync_data(int sock, int xfer_size, char *local_data, char *remote_data)
 
 int main() {
 
-    /* Connect to server */
-    sock = sock_connect("192.168.56.11", 19875);
+    /* Establish TCP connection */
+    sock = sock_connect(NULL, 19875);
     if (sock < 0) {
-        fprintf(stderr, "Failed to connect to 192.168.56.11:19875\n");
+        fprintf(stderr, "Failed to accept connection on port 19875\n");
         return -1;
     }
 
