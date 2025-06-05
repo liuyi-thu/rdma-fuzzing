@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "netdb.h": "c"
+    },
+    "python.analysis.extraPaths": [
+        "/home/liuyi/fuzzing-rdma/rdma-core/pyverbs"
+    ]
+}
