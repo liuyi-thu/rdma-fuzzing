@@ -173,6 +173,17 @@ class SockSyncData(UtilityCall):
     remote_con_data.lid = ntohs(tmp_con_data.lid);
     memcpy(remote_con_data.gid, tmp_con_data.gid, 16);
 """
+    
+class SockSyncDummy(UtilityCall):
+    def __init__(self, char = "Q"):
+        self.char = char  # This is a dummy synchronization character, not used in the actual data transfer.
+        pass
+    """Dummy synchronization, used when no actual data transfer is needed."""
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        return """
+    /* Dummy sync, no actual data transfer */
+    sock_sync_data(sock, 1, "{char}", &temp_char);
+"""
 # ---------- Specific verb implementations ------------------------------------
 
 
@@ -755,7 +766,7 @@ def generate_replay_code(trace_json: str, buf_size: int = 4096) -> str:
 def generate_replay_code_fixed(buf_size):
     ctx = CodeGenContext()
     calls = [
-        SockConnect(server_name="101.6.30.222", port=19875),  # Connect to server, hard-coded for example
+        SockConnect(server_name="192.168.56.11", port=19875),  # Connect to server, hard-coded for example
 
         # resources_create start
         GetDeviceList(ctx),
@@ -784,6 +795,7 @@ def generate_replay_code_fixed(buf_size):
 
         # modify QP to RTS state
         ModifyQPToRTS(qp_addr="qp_table[0]"),
+        SockSyncDummy(),  # Dummy sync, no actual data transfer
 
 
         # connect_qp end
@@ -793,6 +805,8 @@ def generate_replay_code_fixed(buf_size):
         PollCompletion(qp_addr="qp_table[0]"),  # Poll for completion
 
         # post_send end
+
+        SockSyncDummy(char="R"),  # Dummy sync, no actual data transfer
 
         DestroyQP(qp_addr="qp_table[0]"),  # Destroy the QP
 
@@ -870,6 +884,7 @@ struct cm_con_data_t remote_props;
 union ibv_gid my_gid;
 
 int sock;
+char temp_char;
 char buf[{buf_size}];\n
 
 struct cm_con_data_t
@@ -1000,7 +1015,7 @@ int sock_sync_data(int sock, int xfer_size, char *local_data, char *remote_data)
 int main() {{
 """
     body = "".join(call.generate_c(ctx) for call in calls)
-    footer = """\n    ibv_free_device_list(dev_list);\n    return 0;\n}\n"""
+    footer = """\n return 0;\n}\n"""
     code = header + body + footer
     return code
 

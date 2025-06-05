@@ -1,0 +1,219 @@
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x55ea2bb21670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x55ea2bb1d340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x5579f2a6f670"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x55ea2bb21670 pd=0x55ea2bb18f10"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x5579f2a6b340"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x55ea2bb21670 cq=0x55ea2bb21a50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x55ea2bb18f10 addr=0x55ea2bb20490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x55ea2bb18f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x5579f2a6f670 pd=0x5579f2a66f10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x5579f2a6f670 cq=0x5579f2a6fa50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x5579f2a66f10 addr=0x5579f2a6e490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x5579f2a66f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x5579f2a6fbf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55ea2bb21bf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x5579f2a6fbf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_destroy_qp", "info": "qp=0x5579f2a6fbf0"}
+{"test": 0, "verb": "ibv_post_recv", "info": "qp=0x55ea2bb21bf0 wr_id=0x%lx ret=%d"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55ea2bb21bf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_dereg_mr", "info": "mr=0x5579f2a6fbb0 addr=0x5579f2a6e490 lkey=0x2f3 rkey=0x2f3"}
+{"test": 0, "verb": "ibv_destroy_qp", "info": "qp=0x55ea2bb21bf0"}
+{"test": 0, "verb": "ibv_destroy_cq", "info": "cq=0x5579f2a6fa50"}
+{"test": 0, "verb": "ibv_dereg_mr", "info": "mr=0x55ea2bb21bb0 addr=0x55ea2bb20490 lkey=0x273 rkey=0x273"}
+{"test": 0, "verb": "ibv_dealloc_pd", "info": "pd=0x5579f2a66f10"}
+{"test": 0, "verb": "ibv_destroy_cq", "info": "cq=0x55ea2bb21a50"}
+{"test": 0, "verb": "ibv_dealloc_pd", "info": "pd=0x55ea2bb18f10"}
+{"test": 0, "verb": "ibv_close_device", "info": "ib_ctx=0x5579f2a6f670"}
+{"test": 0, "verb": "ibv_close_device", "info": "ib_ctx=0x55ea2bb21670"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x55aaf9aee670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x55aaf9aea340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x5645719c5670"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x55aaf9aee670 pd=0x55aaf9ae5f10"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x5645719c1340"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x55aaf9aee670 cq=0x55aaf9aeea50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x55aaf9ae5f10 addr=0x55aaf9aed490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x55aaf9ae5f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x55aaf9aee670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x5645719c5670 pd=0x5645719bcf10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x5645719c5670 cq=0x5645719c5a50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x5645719bcf10 addr=0x5645719c4490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x5645719bcf10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x5645719c5670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x5645719c5bf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55aaf9aeebf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_post_recv", "info": "qp=0x55aaf9aeebf0 wr_id=0x%lx ret=%d"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x5645719c5bf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55aaf9aeebf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x5645719c5bf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55aaf9aeebf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 1, "verb": "ibv_poll_cq", "info": "cq=0x55aaf9aeea50 num_entries=1 wc=0x7ffdce304b60"}
+{"test": 1, "verb": "ibv_post_send", "info": "qp=0x5645719c5bf0 wr_id=0x%lx opcode=%d ret=%d"}
+{"test": 1, "verb": "ibv_poll_cq", "info": "cq=0x5645719c5a50 num_entries=1 wc=0x7ffd97edcce0"}
+{"test": 1, "verb": "ibv_destroy_qp", "info": "qp=0x55aaf9aeebf0"}
+{"test": 1, "verb": "ibv_destroy_qp", "info": "qp=0x5645719c5bf0"}
+{"test": 1, "verb": "ibv_dereg_mr", "info": "mr=0x55aaf9aeebb0 addr=0x55aaf9aed490 lkey=0x2ae rkey=0x2ae"}
+{"test": 1, "verb": "ibv_dereg_mr", "info": "mr=0x5645719c5bb0 addr=0x5645719c4490 lkey=0x21b rkey=0x21b"}
+{"test": 1, "verb": "ibv_destroy_cq", "info": "cq=0x55aaf9aeea50"}
+{"test": 1, "verb": "ibv_dealloc_pd", "info": "pd=0x55aaf9ae5f10"}
+{"test": 1, "verb": "ibv_destroy_cq", "info": "cq=0x5645719c5a50"}
+{"test": 1, "verb": "ibv_close_device", "info": "ib_ctx=0x55aaf9aee670"}
+{"test": 1, "verb": "ibv_dealloc_pd", "info": "pd=0x5645719bcf10"}
+{"test": 1, "verb": "ibv_close_device", "info": "ib_ctx=0x5645719c5670"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x557469a01670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x5574699fd340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x557469a01670 pd=0x5574699f8f10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x557469a01670 cq=0x557469a01a50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x5574699f8f10 addr=0x557469a00490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x5574699f8f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x557469a01670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x557469a01bf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x557469a01bf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x557469a01bf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 0, "verb": "ibv_destroy_qp", "info": "qp=0x557469a01bf0"}
+{"test": 0, "verb": "ibv_dereg_mr", "info": "mr=0x557469a01bb0 addr=0x557469a00490 lkey=0x26b rkey=0x26b"}
+{"test": 0, "verb": "ibv_destroy_cq", "info": "cq=0x557469a01a50"}
+{"test": 0, "verb": "ibv_dealloc_pd", "info": "pd=0x5574699f8f10"}
+{"test": 0, "verb": "ibv_close_device", "info": "ib_ctx=0x557469a01670"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x55eded85c670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x55eded858340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x55eded85c670 pd=0x55eded853f10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x55eded85c670 cq=0x55eded85ca50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x55eded853f10 addr=0x55eded85b490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x55eded853f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x55eded85c670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55eded85cbf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55eded85cbf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55eded85cbf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 0, "verb": "ibv_destroy_qp", "info": "qp=0x55eded85cbf0"}
+{"test": 0, "verb": "ibv_dereg_mr", "info": "mr=0x55eded85cbb0 addr=0x55eded85b490 lkey=0x26e rkey=0x26e"}
+{"test": 0, "verb": "ibv_destroy_cq", "info": "cq=0x55eded85ca50"}
+{"test": 0, "verb": "ibv_dealloc_pd", "info": "pd=0x55eded853f10"}
+{"test": 0, "verb": "ibv_close_device", "info": "ib_ctx=0x55eded85c670"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x555989fe1670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x555989fdd340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x555989fe1670 pd=0x555989fd8f10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x555989fe1670 cq=0x555989fe1a50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x555989fd8f10 addr=0x555989fe0490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x555989fd8f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x555989fe1670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x555989fe1bf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x555989fe1bf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x555989fe1bf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 0, "verb": "ibv_destroy_qp", "info": "qp=0x555989fe1bf0"}
+{"test": 0, "verb": "ibv_dereg_mr", "info": "mr=0x555989fe1bb0 addr=0x555989fe0490 lkey=0x24d rkey=0x24d"}
+{"test": 0, "verb": "ibv_destroy_cq", "info": "cq=0x555989fe1a50"}
+{"test": 0, "verb": "ibv_dealloc_pd", "info": "pd=0x555989fd8f10"}
+{"test": 0, "verb": "ibv_close_device", "info": "ib_ctx=0x555989fe1670"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x5561c3541670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x5561c353d340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x5561c3541670 pd=0x5561c3538f10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x5561c3541670 cq=0x5561c3541a50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x5561c3538f10 addr=0x5561c3540490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x5561c3538f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x5561c3541670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x5561c3541bf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x5561c3541bf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x5561c3541bf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 1, "verb": "ibv_post_send", "info": "qp=0x5561c3541bf0 wr_id=0x%lx opcode=%d ret=%d"}
+{"test": 1, "verb": "ibv_poll_cq", "info": "cq=0x5561c3541a50 num_entries=1 wc=0x7fff78884a50"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x55e6a67a1670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x55e6a679d340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x55e6a67a1670 pd=0x55e6a6798f10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x55e6a67a1670 cq=0x55e6a67a1a50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x55e6a6798f10 addr=0x55e6a67a0490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x55e6a6798f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x55e6a67a1670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55e6a67a1bf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55e6a67a1bf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55e6a67a1bf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 1, "verb": "ibv_post_send", "info": "qp=0x55e6a67a1bf0 wr_id=0x%lx opcode=%d ret=%d"}
+{"test": 1, "verb": "ibv_poll_cq", "info": "cq=0x55e6a67a1a50 num_entries=1 wc=0x7fff5b618640"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x56483d27e670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x56483d27a340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x56483d27e670 pd=0x56483d275f10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x56483d27e670 cq=0x56483d27ea50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x56483d275f10 addr=0x56483d27d490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x56483d275f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x56483d27e670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x56483d27ebf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x56483d27ebf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x56483d27ebf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 1, "verb": "ibv_post_send", "info": "qp=0x56483d27ebf0 wr_id=0x%lx opcode=%d ret=%d"}
+{"test": 1, "verb": "ibv_poll_cq", "info": "cq=0x56483d27ea50 num_entries=1 wc=0x7ffc58b06c60"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x55b83fbf6670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x55b83fbf2340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x564cc46ab670"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x564cc46a7340"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x55b83fbf6670 pd=0x55b83fbedf10"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x55b83fbf6670 cq=0x55b83fbf6a50 size=1"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x55b83fbedf10 addr=0x55b83fbf5490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x55b83fbedf10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x564cc46ab670 pd=0x564cc46a2f10"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x55b83fbf6670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x564cc46ab670 cq=0x564cc46aba50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x564cc46a2f10 addr=0x564cc46aa490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x564cc46a2f10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x564cc46ab670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x564cc46abbf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55b83fbf6bf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_post_recv", "info": "qp=0x55b83fbf6bf0 wr_id=0x%lx ret=%d"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x564cc46abbf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x564cc46abbf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55b83fbf6bf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x55b83fbf6bf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 1, "verb": "ibv_poll_cq", "info": "cq=0x55b83fbf6a50 num_entries=1 wc=0x7ffd68349830"}
+{"test": 1, "verb": "ibv_post_send", "info": "qp=0x564cc46abbf0 wr_id=0x%lx opcode=%d ret=%d"}
+{"test": 1, "verb": "ibv_poll_cq", "info": "cq=0x564cc46aba50 num_entries=1 wc=0x7ffdbdf47220"}
+{"test": 1, "verb": "ibv_destroy_qp", "info": "qp=0x55b83fbf6bf0"}
+{"test": 1, "verb": "ibv_destroy_qp", "info": "qp=0x564cc46abbf0"}
+{"test": 1, "verb": "ibv_dereg_mr", "info": "mr=0x55b83fbf6bb0 addr=0x55b83fbf5490 lkey=0x232 rkey=0x232"}
+{"test": 1, "verb": "ibv_dereg_mr", "info": "mr=0x564cc46abbb0 addr=0x564cc46aa490 lkey=0x24d rkey=0x24d"}
+{"test": 1, "verb": "ibv_destroy_cq", "info": "cq=0x55b83fbf6a50"}
+{"test": 1, "verb": "ibv_destroy_cq", "info": "cq=0x564cc46aba50"}
+{"test": 1, "verb": "ibv_dealloc_pd", "info": "pd=0x55b83fbedf10"}
+{"test": 1, "verb": "ibv_close_device", "info": "ib_ctx=0x55b83fbf6670"}
+{"test": 1, "verb": "ibv_dealloc_pd", "info": "pd=0x564cc46a2f10"}
+{"test": 1, "verb": "ibv_close_device", "info": "ib_ctx=0x564cc46ab670"}
+{"test": 0, "verb": "ibv_open_device", "info": "dev=rxe_0 ib_ctx=0x563016ed5670"}
+{"test": 0, "verb": "ibv_free_device_list", "info": "dev_list=0x563016ed1340"}
+{"test": 0, "verb": "ibv_query_device", "info": "dev=rxe_0 max_qp=65536"}
+{"test": 0, "verb": "ibv_query_port", "info": "port=1 lid=0 state=4 max_mtu=5 active_mtu=3"}
+{"test": 0, "verb": "ibv_alloc_pd", "info": "ib_ctx=0x563016ed5670 pd=0x563016eccf10"}
+{"test": 0, "verb": "ibv_create_cq", "info": "ib_ctx=0x563016ed5670 cq=0x563016ed5a50 size=1"}
+{"test": 0, "verb": "ibv_reg_mr", "info": "pd=0x563016eccf10 addr=0x563016ed4490 len=64 lkey=0x%x rkey=0x%x"}
+{"test": 0, "verb": "ibv_create_qp", "info": "pd=0x563016eccf10 qp=(nil) type=2 max_send_wr=1 max_send_sge=1"}
+{"test": 0, "verb": "ibv_query_gid", "info": "ctx=0x563016ed5670 port=1 gid_idx=1 gid=(nil)"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x563016ed5bf0 state=1 port_num=1 pkey_index=0 access_flags=0x7"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x563016ed5bf0 state=2 path_mtu=1 dest_qpn=0x11 rq_psn=0 max_dest_rd_atomic=1 min_rnr_timer=18"}
+{"test": 0, "verb": "ibv_modify_qp", "info": "qp=0x563016ed5bf0 state=3 timeout=18 retry_cnt=6 rnr_retry=0 sq_psn=0 max_rd_atomic=1"}
+{"test": 1, "verb": "ibv_post_send", "info": "qp=0x563016ed5bf0 wr_id=0x%lx opcode=%d ret=%d"}
+{"test": 1, "verb": "ibv_poll_cq", "info": "cq=0x563016ed5a50 num_entries=1 wc=0x7ffcb807f810"}
+{"test": 1, "verb": "ibv_destroy_qp", "info": "qp=0x563016ed5bf0"}
+{"test": 1, "verb": "ibv_dereg_mr", "info": "mr=0x563016ed5bb0 addr=0x563016ed4490 lkey=0x21c rkey=0x21c"}
+{"test": 1, "verb": "ibv_destroy_cq", "info": "cq=0x563016ed5a50"}
+{"test": 1, "verb": "ibv_dealloc_pd", "info": "pd=0x563016eccf10"}
+{"test": 1, "verb": "ibv_close_device", "info": "ib_ctx=0x563016ed5670"}
