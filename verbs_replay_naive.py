@@ -119,16 +119,29 @@ class AllocBuf(UtilityCall):
 """
 
 class SockConnect(UtilityCall):
-    def __init__(self, server_name: str, port: int):
+    """Generate code to establish a TCP connection.
+
+    When `server_name` is `None` the generated code waits for an incoming
+    connection, acting as a server. Otherwise it connects to `server_name`
+    as a client."""
+
+    def __init__(self, server_name: str | None, port: int):
         self.server_name = server_name
         self.port = port
 
     def generate_c(self, ctx: CodeGenContext) -> str:
+        if self.server_name:
+            server_arg = f"\"{self.server_name}\""
+            fail_msg = f"Failed to connect to {self.server_name}:{self.port}"
+        else:
+            server_arg = "NULL"
+            fail_msg = f"Failed to accept connection on port {self.port}"
+
         return f"""
-    /* Connect to server */
-    sock = sock_connect("{self.server_name}", {self.port});
+    /* Establish TCP connection */
+    sock = sock_connect({server_arg}, {self.port});
     if (sock < 0) {{
-        fprintf(stderr, "Failed to connect to {self.server_name}:{self.port}\\n");
+        fprintf(stderr, "{fail_msg}\n");
         return -1;
     }}
 """
@@ -763,10 +776,10 @@ def generate_replay_code(trace_json: str, buf_size: int = 4096) -> str:
     return header + body + footer
 
 
-def generate_replay_code_fixed(buf_size):
+def generate_replay_code_fixed(buf_size, server_name="192.168.56.11"):
     ctx = CodeGenContext()
     calls = [
-        SockConnect(server_name="192.168.56.11", port=19875),  # Connect to server, hard-coded for example
+        SockConnect(server_name=server_name, port=19875),  # Connect or wait depending on server_name
 
         # resources_create start
         GetDeviceList(ctx),
@@ -1031,8 +1044,8 @@ int main() {{
 #     print(code)
 
 if __name__ == "__main__":
-    # Example usage
-    code = generate_replay_code_fixed(buf_size=4096)
+    # Example usage generating server side code by passing server_name=None
+    code = generate_replay_code_fixed(buf_size=4096, server_name=None)
     print(code)
     with open("verbs_replay_fixed.c", "w") as f:
         f.write(code)
