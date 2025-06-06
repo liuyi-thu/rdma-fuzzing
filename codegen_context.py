@@ -21,37 +21,71 @@ class CodeGenContext:
         self.gid_idx = 1
 
     # ---- alloc helpers ----
-    def alloc_qp(self, addr: str) -> str:
+    def alloc_qp(self, addr):
+        name = f"qp[{self.qp_cnt}]"
+        self.qp_map[addr] = name
+        self.qp_cnt += 1
+        return name
+
+    def get_qp(self, addr):
         if addr not in self.qp_map:
-            self.qp_map[addr] = f"qp_table[{self.qp_cnt}]"
-            self.qp_cnt += 1
+            raise ValueError(f"QP address {addr} used before allocation")
         return self.qp_map[addr]
 
-    def get_qp(self, addr: str) -> str:
-        return self.qp_map.get(addr, "qp_table[0]")
+    def use_qp(self, addr):
+        if addr not in self.qp_map:
+            print(f"[Warning] QP {addr} used before allocation. Auto-allocating.")
+            return self.alloc_qp(addr)
+        return self.qp_map[addr]
+    
+    def alloc_pd(self, addr):
+        name = f"pd[{self.pd_cnt}]"
+        self.pd_map[addr] = name
+        self.pd_cnt += 1
+        return name
 
-    def alloc_mr(self, addr: str) -> str:
+    def get_pd(self, addr):
+        if addr not in self.pd_map:
+            raise ValueError(f"PD address {addr} used before allocation")
+        return self.pd_map[addr]
+
+    def use_pd(self, addr):
+        if addr not in self.pd_map:
+            print(f"[Warning] PD {addr} used before allocation. Auto-allocating.")
+            return self.alloc_pd(addr)
+        return self.pd_map[addr]
+    
+   
+    def alloc_mr(self, addr):
+        name = f"mr[{self.mr_cnt}]"
+        self.mr_map[addr] = name
+        self.mr_cnt += 1
+        return name
+
+    def get_mr(self, addr):
         if addr not in self.mr_map:
-            self.mr_map[addr] = f"mr_table[{self.mr_cnt}]"
-            self.mr_cnt += 1
+            raise ValueError(f"MR address {addr} used before allocation")
         return self.mr_map[addr]
 
-    def get_mr(self, addr: str) -> str:
-        return self.mr_map.get(addr, "mr_table[0]")
+    def use_mr(self, addr):
+        if addr not in self.mr_map:
+            print(f"[Warning] MR {addr} used before allocation. Auto-allocating.")
+            return self.alloc_mr(addr)
+        return self.mr_map[addr]
     
-    def alloc_pd(self, pd_name: str) -> str:
-        if pd_name not in self.pd_map:
-            self.pd_map[pd_name] = f"pd_table[{self.pd_cnt}]"
-            self.pd_cnt += 1
-        return self.pd_map[pd_name]
-    
-    def get_pd(self, pd_name: str) -> str:
-        return self.pd_map.get(pd_name, "pd_table[0]")
-    
-    def alloc_cq(self, cq_name: str) -> str:
-        if cq_name not in self.cq_map:
-            self.cq_map[cq_name] = f"cq_table[{self.cq_cnt}]"
-            self.cq_cnt += 1
-        return self.cq_map[cq_name]
-    def get_cq(self, cq_name: str) -> str:
-        return self.cq_map.get(cq_name, "cq_table[0]")
+    def alloc_cq(self, addr):
+        name = f"cq[{self.cq_cnt}]"
+        self.cq_map[addr] = name
+        self.cq_cnt += 1
+        return name
+
+    def get_cq(self, addr):
+        if addr not in self.cq_map:
+            raise ValueError(f"CQ address {addr} used before allocation")
+        return self.cq_map[addr]
+
+    def use_cq(self, addr):
+        if addr not in self.cq_map:
+            print(f"[Warning] CQ {addr} used before allocation. Auto-allocating.")
+            return self.alloc_cq(addr)
+        return self.cq_map[addr]

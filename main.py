@@ -6,65 +6,44 @@ def generate_replay_code_fixed(buf_size, server_name="192.168.56.11"):
     ctx = CodeGenContext()
     calls = [
         SockConnect(server_name=server_name, port=19875),  # Connect or wait depending on server_name
-
         # resources_create start
-        GetDeviceList(ctx),
-        OpenDevice(ctx),
-        FreeDeviceList(ctx),
-        QueryDeviceAttr(ctx),
-        QueryPortAttr(ctx),
-        AllocPD(ctx),
-        CreateCQ(ctx),
-        RegMR(pd=ctx.get_pd("pd_table[0]"), buf="buf", length=buf_size, mr_addr="mr_table[0]", flags="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE"),
-        CreateQP(pd=ctx.get_pd("pd_table[0]"), qp_addr="qp_table[0]", qp_type="IBV_QPT_RC", cap_params={
+        GetDeviceList(),
+        OpenDevice(),
+        FreeDeviceList(),
+        QueryDeviceAttr(),
+        QueryPortAttr(),
+        AllocPD(pd_addr = "PD", ctx = ctx),
+        CreateCQ(cq_addr= "CQ", ctx = ctx),
+        RegMR(pd_addr="PD", buf="buf", length=buf_size, mr_addr="MR", flags="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE", ctx=ctx),
+        CreateQP(pd_addr="PD", qp_addr="QP", qp_type="IBV_QPT_RC", cap_params={
             "max_send_wr": 1,
             "max_recv_wr": 1,
             "max_send_sge": 1,
-            "max_recv_sge": 1}),
+            "max_recv_sge": 1}, ctx=ctx),
         # resources_create end
-
         # connect_qp start
-        QueryGID(ctx),  # Query GID for the local port
+        QueryGID(),  # Query GID for the local port
         SockSyncData(),  # Synchronize connection data over socket
-
-
         # modify QP to INIT state
-        ModifyQP(qp_addr="qp_table[0]", state="IBV_QPS_INIT"),
-
-        PostRecv(qp_addr="qp_table[0]", wr_id="0"),  # Post a receive request
-
+        ModifyQP(qp_addr="QP", state="IBV_QPS_INIT"),
+        PostRecv(qp_addr="QP", wr_id="0"),  # Post a receive request
         # modify QP to RTR state
-        ModifyQPToRTR(qp_addr="qp_table[0]", remote_qpn=1, dlid=0, dgid="0"), # 这是一个问题，remote_qpn和dlid应该从远端获取，暂时写死为1和0
-
+        ModifyQPToRTR(qp_addr="QP", remote_qpn=1, dlid=0, dgid="0"), # 这是一个问题，remote_qpn和dlid应该从远端获取，暂时写死为1和0
         # modify QP to RTS state
-        ModifyQPToRTS(qp_addr="qp_table[0]"),
+        ModifyQPToRTS(qp_addr="QP"),
         SockSyncDummy(),  # Dummy sync, no actual data transfer
-
-
         # connect_qp end
-
         # post_send start
-        PostSend(qp_addr="qp_table[0]", wr_id="1", opcode="IBV_WR_SEND"),
-        PollCompletion(qp_addr="qp_table[0]"),  # Poll for completion
-
+        PostSend(qp_addr="QP", wr_id="1", opcode="IBV_WR_SEND"),
+        PollCQ(cq_addr = "CQ"),
         # post_send end
-
         SockSyncDummy(char="R"),  # Dummy sync, no actual data transfer
-
-        DestroyQP(qp_addr="qp_table[0]"),  # Destroy the QP
-
-        DestroyMR(mr_addr="mr_table[0]"),  # Destroy the MR
-        DestroyCQ(cq_addr="cq_table[0]"),  # Destroy the CQ
-        DestroyPD(pd_addr="pd_table[0]"),  # Destroy the PD
-        CloseDevice(ctx),  # Close the device context
+        DestroyQP(qp_addr="QP"),  # Destroy the QP
+        DestroyMR(mr_addr="MR"),  # Destroy the MR
+        DestroyCQ(cq_addr="CQ"),  # Destroy the CQ
+        DestroyPD(pd_addr="PD"),  # Destroy the PD
+        CloseDevice(),  # Close the device context
         SocketClose(sock="sock")  # Close the socket connection 
-
-
-
-
-
-
-
     ]
 
     header = f"""#include <stdio.h>
@@ -113,10 +92,10 @@ static inline uint64_t ntohll(uint64_t x)
 #endif
 
 struct ibv_context *ctx;
-struct ibv_pd *pd_table[10];
-struct ibv_cq *cq_table[10];
-struct ibv_qp *qp_table[10];
-struct ibv_mr *mr_table[10];
+struct ibv_pd *pd[10];
+struct ibv_cq *cq[10];
+struct ibv_qp *qp[10];
+struct ibv_mr *mr[10];
 struct ibv_device **dev_list;
 struct ibv_device_attr {ctx.dev_attr};
 struct ibv_port_attr {ctx.port_attr};
@@ -275,7 +254,7 @@ int main() {{
 
 if __name__ == "__main__":
     # Example usage generating server side code by passing server_name=None
-    code = generate_replay_code_fixed(buf_size=4096, server_name=None)
+    code = generate_replay_code_fixed(buf_size=4096, server_name="192.168.56.11")
     print(code)
     with open("verbs_replay_fixed.c", "w") as f:
         f.write(code)
