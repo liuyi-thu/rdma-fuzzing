@@ -89,3 +89,35 @@ class CodeGenContext:
             print(f"[Warning] CQ {addr} used before allocation. Auto-allocating.")
             return self.alloc_cq(addr)
         return self.cq_map[addr]
+    
+    def destroy_qp(self, addr):
+        if addr in self.qp_map:
+            del self.qp_map[addr]
+        else:
+            print(f"[Warning] destroy_qp: QP {addr} was not allocated.")
+
+    def destroy_cq(self, addr):
+        if addr in self.cq_map:
+            del self.cq_map[addr]
+        else:
+            print(f"[Warning] destroy_cq: CQ {addr} was not allocated.")
+
+    def destroy_pd(self, addr):
+        if addr in self.pd_map:
+            del self.pd_map[addr]
+        else:
+            print(f"[Warning] destroy_pd: PD {addr} was not allocated.")
+
+    def destroy_mr(self, addr):
+        if addr in self.mr_map:
+            del self.mr_map[addr]
+        else:
+            print(f"[Warning] destroy_mr: MR {addr} was not allocated.")
+
+    def dump_summary(self):
+        return {
+            "QP": list(self.qp_map.values()),
+            "CQ": list(self.cq_map.values()),
+            "PD": list(self.pd_map.values()),
+            "MR": list(self.mr_map.values()),
+        }
