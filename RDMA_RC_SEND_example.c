@@ -399,7 +399,7 @@ static int post_send(struct resources *res, int opcode)
 
     /* there is a Receive Request in the responder side, so we won't get any into RNR flow */
     rc = ibv_post_send(res->qp, &sr, &bad_wr);
-    log_verb("ibv_post_send", "qp=%p wr_id=0x%%lx opcode=%%d ret=%%d", res->qp, sr.wr_id, sr.opcode, rc);
+    log_verb("ibv_post_send", "qp=%p wr_id=%d opcode=%d ret=%d mr=%d", res->qp, sr.wr_id, sr.opcode, rc, res->mr);
     if(rc)
     {
         fprintf(stderr, "failed to post SR\n");
@@ -460,7 +460,7 @@ static int post_receive(struct resources *res)
 
     /* post the Receive Request to the RQ */
     rc = ibv_post_recv(res->qp, &rr, &bad_wr);
-    log_verb("ibv_post_recv", "qp=%p wr_id=0x%%lx ret=%%d", res->qp, rr.wr_id, rc);
+    log_verb("ibv_post_recv", "qp=%p wr_id=%d ret=%d mr=%d", res->qp, rr.wr_id, rc,res->mr);
     if(rc)
     {
         fprintf(stderr, "failed to post RR\n");
@@ -666,7 +666,7 @@ static int resources_create(struct resources *res)
     /* register the memory buffer */
     mr_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE ;
     res->mr = ibv_reg_mr(res->pd, res->buf, size, mr_flags);
-    log_verb("ibv_reg_mr", "pd=%p addr=%p len=%zu lkey=0x%%x rkey=0x%%x", res->pd, res->buf, size, res->mr->lkey, res->mr->rkey);
+    log_verb("ibv_reg_mr", "mr=%p pd=%p addr=%p len=%zu lkey=%d rkey=%d", res->mr, res->pd, res->buf, size, res->mr->lkey, res->mr->rkey);
     if(!res->mr)
     {
         fprintf(stderr, "ibv_reg_mr failed with mr_flags=0x%x\n", mr_flags);
@@ -693,9 +693,10 @@ static int resources_create(struct resources *res)
     printf("send_cq=%p, recv_cq=%p\n", res->cq, res->cq);
     printf("qp_type=%d, sq_sig_all=%d\n", qp_init_attr.qp_type, qp_init_attr.sq_sig_all);
     // res->qp = ibv_create_qp(res->pd, &qp_init_attr);
-    log_verb("ibv_create_qp", "pd=%p qp=%p type=%d max_send_wr=%d max_send_sge=%d", res->pd, res->qp, qp_init_attr.qp_type, qp_init_attr.cap.max_send_wr, qp_init_attr.cap.max_send_sge);
+    
     // LOG_VERB_CALL(ibv_create_qp, res->pd, &qp_init_attr);
     res->qp = ibv_create_qp(res->pd, &qp_init_attr);
+    log_verb("ibv_create_qp", "pd=%p qp=%p type=%d max_send_wr=%d max_send_sge=%d", res->pd, res->qp, qp_init_attr.qp_type, qp_init_attr.cap.max_send_wr, qp_init_attr.cap.max_send_sge);
     if(!res->qp)
     {
         fprintf(stderr, "failed to create QP\n");
@@ -937,6 +938,8 @@ static int connect_qp(struct resources *res)
     local_con_data.lid = htons(res->port_attr.lid);
     memcpy(local_con_data.gid, &my_gid, 16);
     fprintf(stdout, "\nLocal LID = 0x%x\n", res->port_attr.lid);
+    log_verb("local_con_data", "addr=0x%x rkey=0x%x mr=0x%x qp=0x%x",
+            local_con_data.addr, local_con_data.rkey, res->mr, res->qp);
     if(sock_sync_data(res->sock, sizeof(struct cm_con_data_t), (char *) &local_con_data, (char *) &tmp_con_data) < 0)
     {
         fprintf(stderr, "failed to exchange connection data between sides\n");

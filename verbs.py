@@ -77,9 +77,18 @@ class SockConnect(UtilityCall):
 # """
 
 class SockSyncData(UtilityCall):
-    def __init__(self):
+    def __init__(self, qp_addr: str = "QP", mr_addr: str = "MR"):
+        self.qp_addr = qp_addr  # QP address, used to get the QP number
+        self.mr_addr = mr_addr
         pass
 
+    @classmethod
+    def from_trace(cls, info: str):
+        kv = _parse_kv(info)
+        qp = kv.get("qp", "QP")
+        mr = kv.get("mr", "MR")
+        return cls(qp_addr=qp, mr_addr=mr)
+    
     def generate_c(self, ctx: CodeGenContext) -> str:
         qp_addr = ctx.get_qp("QP")
         mr = ctx.get_mr("MR")
@@ -109,9 +118,9 @@ class SockSyncDummy(UtilityCall):
         pass
     """Dummy synchronization, used when no actual data transfer is needed."""
     def generate_c(self, ctx: CodeGenContext) -> str:
-        return """
+        return f"""
     /* Dummy sync, no actual data transfer */
-    sock_sync_data(sock, 1, "{char}", &temp_char);
+    sock_sync_data(sock, 1, "{self.char}", &temp_char);
 """
 # ---------- Specific verb implementations ------------------------------------
 
@@ -121,7 +130,7 @@ class GetDeviceList(VerbCall): # 暂时只需要一个，所以不考虑alloc
         pass
 
     @classmethod
-    def from_trace(cls, info: str):
+    def from_trace(cls, info: str, ctx : CodeGenContext = None):
         kv = _parse_kv(info)
         return cls()
     
@@ -141,9 +150,10 @@ class OpenDevice(VerbCall): # 暂时只需要一个，所以不考虑alloc
         pass
 
     @classmethod
-    def from_trace(cls, info: str):
+    def from_trace(cls, info: str, ctx : CodeGenContext = None):
         kv = _parse_kv(info)
         return cls()
+    
     """Open the first device in the device list."""
     def generate_c(self, ctx: CodeGenContext) -> str:
         dev_list = ctx.dev_list
@@ -162,7 +172,7 @@ class FreeDeviceList(VerbCall): # 暂时只需要一个，所以不考虑alloc
         pass
     
     @classmethod # dummy function
-    def from_trace(cls, info: str):
+    def from_trace(cls, info: str, ctx : CodeGenContext = None):
         kv = _parse_kv(info)
         return cls()
     
@@ -178,7 +188,7 @@ class QueryDeviceAttr(VerbCall): # 暂时只需要一个，所以不考虑alloc
         pass
     
     @classmethod # dummy function
-    def from_trace(cls, info: str):
+    def from_trace(cls, info: str, ctx : CodeGenContext = None):
         kv = _parse_kv(info)
         return cls()
     
@@ -198,7 +208,7 @@ class QueryPortAttr(VerbCall):
         pass
     
     @classmethod # dummy function
-    def from_trace(cls, info: str):
+    def from_trace(cls, info: str, ctx : CodeGenContext = None):
         kv = _parse_kv(info)
         return cls()
     
@@ -219,7 +229,7 @@ class QueryGID(VerbCall):
         pass
     
     @classmethod # dummy function
-    def from_trace(cls, info: str):
+    def from_trace(cls, info: str, ctx : CodeGenContext = None):
         kv = _parse_kv(info)
         return cls()
     
@@ -435,7 +445,7 @@ class RegMR(VerbCall):
         kv = _parse_kv(info)
         pd = kv.get("pd", "pd[0]")
         mr = kv.get("mr", "unknown")
-        return cls(pd_addr=pd, mr_addr=mr, access=kv.get("access", "IBV_ACCESS_LOCAL_WRITE"), ctx = ctx)
+        return cls(pd_addr=pd, mr_addr=mr, flags=kv.get("flags", "IBV_ACCESS_LOCAL_WRITE"), ctx = ctx)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         mr_name = ctx.get_mr(self.mr_addr)
@@ -447,9 +457,10 @@ class RegMR(VerbCall):
 
 
 class PostSend(VerbCall):
-    def __init__(self, qp_addr: str, wr_id: str = "0", opcode: str = "IBV_WR_SEND", 
+    def __init__(self, qp_addr: str, mr_addr: str,wr_id: str = "0", opcode: str = "IBV_WR_SEND", 
                  remote_addr: str = None, rkey: str = None, send_flags: str = "IBV_SEND_SIGNALED"):
         self.qp_addr = qp_addr
+        self.mr_addr = mr_addr  # Memory Region address, used for lkey
         self.wr_id = wr_id
         self.opcode = opcode
         self.remote_addr = remote_addr
@@ -460,9 +471,12 @@ class PostSend(VerbCall):
     def from_trace(cls, info: str, ctx: CodeGenContext):
         kv = _parse_kv(info)
         qp = kv.get("qp", "unknown")
+        mr = kv.get("mr", "MR")  # Default MR name
         ctx.use_qp(qp)
+        ctx.use_mr(mr)  # Ensure the MR is used before generating code
         return cls(
             qp_addr=qp,
+            mr_addr=mr,
             wr_id=kv.get("wr_id", "0"),
             opcode=kv.get("opcode", "IBV_WR_SEND"),
             remote_addr=kv.get("remote_addr"),
@@ -474,7 +488,7 @@ class PostSend(VerbCall):
         qp_name = ctx.get_qp(self.qp_addr)
         suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         sr = f"sr{suffix}"
-        mr = ctx.get_mr("MR")
+        mr = ctx.get_mr(self.mr_addr)
         buf = "buf"
         sge = f"sge_send{suffix}"
         bad_wr = f"bad_wr_send{suffix}"
@@ -509,8 +523,9 @@ class PostSend(VerbCall):
 
 
 class PostRecv(VerbCall):
-    def __init__(self, qp_addr: str, wr_id: str = "0", length: str = "MSG_SIZE"):
+    def __init__(self, qp_addr: str, mr_addr:str, wr_id: str = "0", length: str = "MSG_SIZE"):
         self.qp_addr = qp_addr
+        self.mr_addr = mr_addr  # Memory Region address, used for lkey
         self.wr_id = wr_id
         self.length = length  # default: MSG_SIZE
 
@@ -518,9 +533,12 @@ class PostRecv(VerbCall):
     def from_trace(cls, info: str, ctx: CodeGenContext):
         kv = _parse_kv(info)
         qp = kv.get("qp", "unknown")
+        mr = kv.get("mr", "MR")  # Default MR name
         ctx.use_qp(qp)
+        ctx.use_mr(mr)  # Ensure the MR is used before generating code
         return cls(
             qp_addr=qp,
+            mr_addr=mr,
             wr_id=kv.get("wr_id", "0"),
             length=kv.get("length", "MSG_SIZE")
         )
@@ -530,7 +548,7 @@ class PostRecv(VerbCall):
         qp_name = ctx.get_qp(self.qp_addr)
         suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         rr = f"rr{suffix}"
-        mr = ctx.get_mr("MR")
+        mr = ctx.get_mr(self.mr_addr)
         buf = "buf"
         sge = f"sge_recv{suffix}"
         bad_wr = f"bad_wr_recv{suffix}"
@@ -612,63 +630,63 @@ class PollCQ(VerbCall):
     }}
 """
 
-class PollCompletion(VerbCall): # deprecated, use PollCQ
-    """Poll completion queue for a specific QP."""
-    def __init__(self, qp_addr: str):
-        self.qp_addr = qp_addr
+# class PollCompletion(VerbCall): # deprecated, use PollCQ
+#     """Poll completion queue for a specific QP."""
+#     def __init__(self, qp_addr: str):
+#         self.qp_addr = qp_addr
 
-    @classmethod
-    def from_trace(cls, info: str):
-        kv = _parse_kv(info)
-        return cls(kv.get("qp", "unknown"))
+#     @classmethod
+#     def from_trace(cls, info: str):
+#         kv = _parse_kv(info)
+#         return cls(kv.get("qp", "unknown"))
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = ctx.get_qp(self.qp_addr)
-        cq_name = ctx.get_cq("CQ")  # Assume cq[0] is the CQ we created
-        return f"""
-    /* Poll completion queue */
-    struct ibv_wc wc;
-    unsigned long start_time_msec;
-    unsigned long cur_time_msec;
-    struct timeval cur_time;
-    int poll_result;
-    int rc = 0;
-    /* poll the completion for a while before giving up of doing it .. */
-    gettimeofday(&cur_time, NULL);
-    start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
-    do
-    {{
-        poll_result = ibv_poll_cq({cq_name}, 1, &wc);
-        gettimeofday(&cur_time, NULL);
-        cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
-    }}
-    while((poll_result == 0) && ((cur_time_msec - start_time_msec) < MAX_POLL_CQ_TIMEOUT));
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         qp_name = ctx.get_qp(self.qp_addr)
+#         cq_name = ctx.get_cq("CQ")  # Assume cq[0] is the CQ we created
+#         return f"""
+#     /* Poll completion queue */
+#     struct ibv_wc wc;
+#     unsigned long start_time_msec;
+#     unsigned long cur_time_msec;
+#     struct timeval cur_time;
+#     int poll_result;
+#     int rc = 0;
+#     /* poll the completion for a while before giving up of doing it .. */
+#     gettimeofday(&cur_time, NULL);
+#     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
+#     do
+#     {{
+#         poll_result = ibv_poll_cq({cq_name}, 1, &wc);
+#         gettimeofday(&cur_time, NULL);
+#         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
+#     }}
+#     while((poll_result == 0) && ((cur_time_msec - start_time_msec) < MAX_POLL_CQ_TIMEOUT));
 
-    if(poll_result < 0)
-    {{
-        /* poll CQ failed */
-        fprintf(stderr, "poll CQ failed\\n");
-        rc = 1;
-    }}
-    else if(poll_result == 0)
-    {{
-        /* the CQ is empty */
-        fprintf(stderr, "completion wasn't found in the CQ after timeout\\n");
-        rc = 1;
-    }}
-    else
-    {{
-        /* CQE found */
-        fprintf(stdout, "completion was found in CQ with status 0x%x\\n", wc.status);
-        /* check the completion status (here we don't care about the completion opcode */
-        if(wc.status != IBV_WC_SUCCESS)
-        {{
-            fprintf(stderr, "got bad completion with status: 0x%x, vendor syndrome: 0x%x\\n", 
-                    wc.status, wc.vendor_err);
-            rc = 1;
-        }}
-    }}
-"""
+#     if(poll_result < 0)
+#     {{
+#         /* poll CQ failed */
+#         fprintf(stderr, "poll CQ failed\\n");
+#         rc = 1;
+#     }}
+#     else if(poll_result == 0)
+#     {{
+#         /* the CQ is empty */
+#         fprintf(stderr, "completion wasn't found in the CQ after timeout\\n");
+#         rc = 1;
+#     }}
+#     else
+#     {{
+#         /* CQE found */
+#         fprintf(stdout, "completion was found in CQ with status 0x%x\\n", wc.status);
+#         /* check the completion status (here we don't care about the completion opcode */
+#         if(wc.status != IBV_WC_SUCCESS)
+#         {{
+#             fprintf(stderr, "got bad completion with status: 0x%x, vendor syndrome: 0x%x\\n", 
+#                     wc.status, wc.vendor_err);
+#             rc = 1;
+#         }}
+#     }}
+# """
     
 class DestroyQP(VerbCall):
     """Destroy a QP."""
@@ -763,6 +781,10 @@ class CloseDevice(VerbCall):
     def __init__(self):
         pass
 
+    @classmethod
+    def from_trace(cls, info: str, ctx : CodeGenContext = None):
+        return cls()
+    
     def generate_c(self, ctx: CodeGenContext) -> str:
         ib_ctx = ctx.ib_ctx
         return f"""
@@ -793,5 +815,20 @@ VERB_FACTORY = {
     "ibv_post_send": PostSend.from_trace,
     "ibv_post_recv": PostRecv.from_trace,
     "ibv_get_device_list": GetDeviceList.from_trace,
-    "ibv_open_device": OpenDevice.from_trace
+    "ibv_open_device": OpenDevice.from_trace,
+    "ibv_free_device_list": FreeDeviceList.from_trace,
+    "ibv_query_device": QueryDeviceAttr.from_trace,
+    "ibv_query_port": QueryPortAttr.from_trace,
+    "ibv_query_gid": QueryGID.from_trace,
+    "ibv_alloc_pd": AllocPD.from_trace,
+    "ibv_create_cq": CreateCQ.from_trace,
+    "ibv_modify_qp": ModifyQP.from_trace,
+    "ibv_modify_qp_rtr": ModifyQPToRTR.from_trace,
+    "ibv_modify_qp_rts": ModifyQPToRTS.from_trace,
+    "ibv_poll_cq": PollCQ.from_trace,
+    "ibv_destroy_qp": DestroyQP.from_trace,
+    "ibv_dereg_mr": DestroyMR.from_trace,
+    "ibv_destroy_cq": DestroyCQ.from_trace,
+    "ibv_dealloc_pd": DestroyPD.from_trace,
+    "ibv_close_device": CloseDevice.from_trace
 }

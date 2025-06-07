@@ -1,6 +1,24 @@
 from codegen_context import CodeGenContext
 from verbs import *
 import os
+from typing import List, Dict
+import json
+
+def parse_trace(json_path: str, ctx) -> List[VerbCall]:
+    """Read trace_output.json and convert to VerbCall list."""
+    calls: List[VerbCall] = []
+    with open(json_path, "r") as fp:
+        for line in fp:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            verb = rec["verb"]
+            info = rec["info"]
+            ctor = VERB_FACTORY.get(verb)
+            if ctor:
+                calls.append(ctor(info, ctx))
+    return calls
 
 def generate_replay_code_fixed(buf_size, server_name="192.168.56.11"):
     ctx = CodeGenContext()
@@ -254,8 +272,14 @@ int main() {{
 
 if __name__ == "__main__":
     # Example usage generating server side code by passing server_name=None
-    code = generate_replay_code_fixed(buf_size=4096, server_name="192.168.56.11")
+    # code = generate_replay_code_fixed(buf_size=4096, server_name="192.168.56.11")
+    # print(code)
+    # with open("verbs_replay_fixed.c", "w") as f:
+    #     f.write(code)
+    # os.system('gcc -o verbs_replay_fixed verbs_replay_fixed.c  -libverbs -g')
+    
+    ctx = CodeGenContext()
+    calls = parse_trace("trace_output.json", ctx)
+    code = "".join(call.generate_c(ctx) for call in calls)
     print(code)
-    with open("verbs_replay_fixed.c", "w") as f:
-        f.write(code)
-    os.system('gcc -o verbs_replay_fixed verbs_replay_fixed.c  -libverbs -g')
+    
