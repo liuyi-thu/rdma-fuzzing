@@ -4,6 +4,7 @@ import os
 from typing import List, Dict
 import json
 
+
 def parse_trace(json_path: str, ctx) -> List[VerbCall]:
     """Read trace_output.json and convert to VerbCall list."""
     calls: List[VerbCall] = []
@@ -20,19 +21,22 @@ def parse_trace(json_path: str, ctx) -> List[VerbCall]:
                 calls.append(ctor(info, ctx))
     return calls
 
+
 def generate_replay_code_fixed(buf_size, server_name="192.168.56.11"):
     ctx = CodeGenContext()
     calls = [
-        SockConnect(server_name=server_name, port=19875),  # Connect or wait depending on server_name
+        # Connect or wait depending on server_name
+        SockConnect(server_name=server_name, port=19875),
         # resources_create start
         GetDeviceList(),
         OpenDevice(),
         FreeDeviceList(),
         QueryDeviceAttr(),
         QueryPortAttr(),
-        AllocPD(pd_addr = "PD", ctx = ctx),
-        CreateCQ(cq_addr= "CQ", ctx = ctx),
-        RegMR(pd_addr="PD", buf="buf", length=buf_size, mr_addr="MR", flags="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE", ctx=ctx),
+        AllocPD(pd_addr="PD", ctx=ctx),
+        CreateCQ(cq_addr="CQ", ctx=ctx),
+        RegMR(pd_addr="PD", buf="buf", length=buf_size, mr_addr="MR",
+              flags="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE", ctx=ctx),
         CreateQP(pd_addr="PD", qp_addr="QP", qp_type="IBV_QPT_RC", cap_params={
             "max_send_wr": 1,
             "max_recv_wr": 1,
@@ -46,14 +50,15 @@ def generate_replay_code_fixed(buf_size, server_name="192.168.56.11"):
         ModifyQP(qp_addr="QP", state="IBV_QPS_INIT"),
         PostRecv(qp_addr="QP", wr_id="0"),  # Post a receive request
         # modify QP to RTR state
-        ModifyQPToRTR(qp_addr="QP", remote_qpn=1, dlid=0, dgid="0"), # 这是一个问题，remote_qpn和dlid应该从远端获取，暂时写死为1和0
+        # 这是一个问题，remote_qpn和dlid应该从远端获取，暂时写死为1和0
+        ModifyQPToRTR(qp_addr="QP", remote_qpn=1, dlid=0, dgid="0"),
         # modify QP to RTS state
         ModifyQPToRTS(qp_addr="QP"),
         SockSyncDummy(),  # Dummy sync, no actual data transfer
         # connect_qp end
         # post_send start
         PostSend(qp_addr="QP", wr_id="1", opcode="IBV_WR_SEND"),
-        PollCQ(cq_addr = "CQ"),
+        PollCQ(cq_addr="CQ"),
         # post_send end
         SockSyncDummy(char="R"),  # Dummy sync, no actual data transfer
         DestroyQP(qp_addr="QP"),  # Destroy the QP
@@ -61,7 +66,7 @@ def generate_replay_code_fixed(buf_size, server_name="192.168.56.11"):
         DestroyCQ(cq_addr="CQ"),  # Destroy the CQ
         DestroyPD(pd_addr="PD"),  # Destroy the PD
         CloseDevice(),  # Close the device context
-        SocketClose(sock="sock")  # Close the socket connection 
+        SocketClose(sock="sock")  # Close the socket connection
     ]
 
     header = f"""#include <stdio.h>
@@ -265,21 +270,21 @@ int main() {{
 #     if len(sys.argv) != 2:
 #         print("Usage: python verbs_replay.py <trace_output.json>")
 #         sys.exit(1)
-    
+
 #     trace_file = sys.argv[1]
 #     code = generate_replay_code(trace_file)
 #     print(code)
 
+
 if __name__ == "__main__":
     # Example usage generating server side code by passing server_name=None
-    # code = generate_replay_code_fixed(buf_size=4096, server_name="192.168.56.11")
-    # print(code)
-    # with open("verbs_replay_fixed.c", "w") as f:
-    #     f.write(code)
-    # os.system('gcc -o verbs_replay_fixed verbs_replay_fixed.c  -libverbs -g')
-    
-    ctx = CodeGenContext()
-    calls = parse_trace("trace_output.json", ctx)
-    code = "".join(call.generate_c(ctx) for call in calls)
+    code = generate_replay_code_fixed(buf_size=4096, server_name="192.168.56.11")
     print(code)
-    
+    with open("verbs_replay_fixed.c", "w") as f:
+        f.write(code)
+    os.system('gcc -o verbs_replay_fixed verbs_replay_fixed.c  -libverbs -g')
+
+    # ctx = CodeGenContext()
+    # calls = parse_trace("trace_output.json", ctx)
+    # code = "".join(call.generate_c(ctx) for call in calls)
+    # print(code)
