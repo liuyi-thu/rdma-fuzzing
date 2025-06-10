@@ -19,6 +19,8 @@ class CodeGenContext:
         self.cq_cnt = 0
 
         self.gid_idx = 1
+        
+        self.max_QPs = 10
 
     # ---- alloc helpers ----
     def alloc_qp(self, addr):

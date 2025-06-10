@@ -75,12 +75,10 @@ class SockConnect(UtilityCall):
 #         return -1;
 #     }}
 # """
-
-class SockSyncData(UtilityCall):
+class ExportQPInfo(UtilityCall):
     def __init__(self, qp_addr: str = "QP", mr_addr: str = "MR"):
         self.qp_addr = qp_addr  # QP address, used to get the QP number
         self.mr_addr = mr_addr
-        pass
 
     @classmethod
     def from_trace(cls, info: str):
@@ -90,26 +88,65 @@ class SockSyncData(UtilityCall):
         return cls(qp_addr=qp, mr_addr=mr)
     
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_addr = ctx.get_qp("QP")
-        mr = ctx.get_mr("MR")
+        qp = ctx.get_qp(self.qp_addr)
+        mr = ctx.get_mr(self.mr_addr)
+        qpn = qp.replace("qp[", "").replace("]", "")  # e.g., "0" for qp[0]
 
         return f"""
-    local_con_data.addr = htonll((uintptr_t)buf);
+    /* Export connection data */
+    local_con_data.addr = htonll((uintptr_t)bufs[{qpn}]);
     local_con_data.rkey = htonl({mr}->rkey);
-    local_con_data.qp_num = htonl({qp_addr}->qp_num);
+    local_con_data.qp_num = htonl({qp}->qp_num);
     local_con_data.lid = htons(port_attr.lid);
     memcpy(local_con_data.gid, &my_gid, 16);
+"""
+
+class ImportQPInfo(UtilityCall):
+    def __init__(self, qpn: int = 0):
+        self.qpn = qpn  # QP address, used to get the QP number
+        pass
+
+    @classmethod
+    def from_trace(cls, info: str):
+        return cls()
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        qp_num = self.qpn
+        return f"""
+    /* Import connection data */
+    remote_con_datas[{qp_num}].addr = ntohll(tmp_con_data.addr);
+    remote_con_datas[{qp_num}].rkey = ntohl(tmp_con_data.rkey);
+    remote_con_datas[{qp_num}].qp_num = ntohl(tmp_con_data.qp_num);
+    remote_con_datas[{qp_num}].lid = ntohs(tmp_con_data.lid);
+    memcpy(remote_con_datas[{qp_num}].gid, tmp_con_data.gid, 16);
+"""
+
+#         return f"""
+#     /* Import connection data */
+#     remote_con_data.addr = ntohll(tmp_con_data.addr);
+#     remote_con_data.rkey = ntohl(tmp_con_data.rkey);
+#     remote_con_data.qp_num = ntohl(tmp_con_data.qp_num);
+#     remote_con_data.lid = ntohs(tmp_con_data.lid);
+#     memcpy(remote_con_data.gid, tmp_con_data.gid, 16);
+# """
+
+class SockSyncData(UtilityCall):
+    def __init__(self):
+        pass
+
+    @classmethod
+    def from_trace(cls, info: str):
+        return cls()
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+
+        return f"""
     if(sock_sync_data(sock, sizeof(struct cm_con_data_t), (char *) &local_con_data, (char *) &tmp_con_data) < 0)
     {{
         fprintf(stderr, "failed to exchange connection data between sides\\n");
         return 1;
     }}
 
-    remote_con_data.addr = ntohll(tmp_con_data.addr);
-    remote_con_data.rkey = ntohl(tmp_con_data.rkey);
-    remote_con_data.qp_num = ntohl(tmp_con_data.qp_num);
-    remote_con_data.lid = ntohs(tmp_con_data.lid);
-    memcpy(remote_con_data.gid, tmp_con_data.gid, 16);
 """
     
 class SockSyncDummy(UtilityCall):
@@ -318,14 +355,23 @@ class ModifyQP(VerbCall):
     """
 
 class ModifyQPToRTR(VerbCall):
-    def __init__(self, qp_addr: str, remote_qpn: int = 0, dlid: int = 0, dgid: str = "0"):
+    # def __init__(self, qp_addr: str, remote_qpn: int = 0, dlid: int = 0, dgid: str = "0"):
+    #     self.qp_addr = qp_addr
+    #     # self.remote_qpn = remote_qpn
+    #     # self.dlid = dlid
+    #     # self.dgid = dgid  # Global ID, not used in this example
+    #     self.remote_qpn = "remote_con_data.qp_num"
+    #     self.dlid = "remote_con_data.lid"
+    #     self.dgid = "remote_con_data.gid"  # Use the gid from the remote connection data
+    def __init__(self, qp_addr: str, qpn: int = 0):
         self.qp_addr = qp_addr
         # self.remote_qpn = remote_qpn
         # self.dlid = dlid
         # self.dgid = dgid  # Global ID, not used in this example
-        self.remote_qpn = "remote_con_data.qp_num"
-        self.dlid = "remote_con_data.lid"
-        self.dgid = "remote_con_data.gid"  # Use the gid from the remote connection data
+        self.qpn = qpn
+        self.remote_qpn = f"remote_con_datas[{self.qpn}].qp_num"
+        self.dlid = f"remote_con_datas[{self.qpn}].lid"
+        self.dgid = f"remote_con_datas[{self.qpn}].gid"  # Use the gid from the remote connection data
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -394,9 +440,10 @@ class ModifyQPToRTS(VerbCall):
 """
     
 class CreateQP(VerbCall):
-    def __init__(self, pd_addr="pd[0]", qp_addr="unknown", qp_type="IBV_QPT_RC", cap_params=None, ctx = None):
+    def __init__(self, pd_addr="pd[0]", qp_addr="unknown", cq_addr = "cq[0]", qp_type="IBV_QPT_RC", cap_params=None, ctx = None):
         self.pd_addr = pd_addr
         self.qp_addr = qp_addr
+        self.cq_addr = cq_addr  # Completion queue address, used for code generation
         self.qp_type = qp_type
         self.cap_params = cap_params or {}
         ctx.alloc_qp(self.qp_addr)
@@ -408,12 +455,14 @@ class CreateQP(VerbCall):
         cap_params = {k: kv[k] for k in cap_keys if k in kv}
         pd = kv.get("pd", "pd[0]")
         qp = kv.get("qp", "unknown")
+        cq = kv.get("cq", "cq[0]")  # Default CQ address
         
-        return cls(pd_addr=pd, qp_addr=qp, qp_type="IBV_QPT_RC", cap_params=cap_params, ctx = ctx)
+        return cls(pd_addr=pd, qp_addr=qp, cq_addr=cq, qp_type="IBV_QPT_RC", cap_params=cap_params, ctx = ctx)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         qp_name = ctx.get_qp(self.qp_addr)
         pd_name = ctx.get_pd(self.pd_addr)
+        cq_name = ctx.get_cq(self.cq_addr)
         attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         attr_name = f"attr_init{attr_suffix}"
         cap = self.cap_params
@@ -424,8 +473,8 @@ class CreateQP(VerbCall):
     /* ibv_create_qp */
     struct ibv_qp_init_attr {attr_name} = {{0}};
     {attr_name}.qp_type = {self.qp_type};
-    {attr_name}.send_cq = cq[0];
-    {attr_name}.recv_cq = cq[0];
+    {attr_name}.send_cq = {cq_name};
+    {attr_name}.recv_cq = {cq_name};
     {cap_lines}
     {qp_name} = ibv_create_qp({pd_name}, &{attr_name});
 """
@@ -457,7 +506,7 @@ class RegMR(VerbCall):
 
 
 class PostSend(VerbCall):
-    def __init__(self, qp_addr: str, mr_addr: str,wr_id: str = "0", opcode: str = "IBV_WR_SEND", 
+    def __init__(self, qp_addr: str, mr_addr: str, wr_id: str = "0", opcode: str = "IBV_WR_SEND", 
                  remote_addr: str = None, rkey: str = None, send_flags: str = "IBV_SEND_SIGNALED"):
         self.qp_addr = qp_addr
         self.mr_addr = mr_addr  # Memory Region address, used for lkey
@@ -486,10 +535,11 @@ class PostSend(VerbCall):
         
     def generate_c(self, ctx: CodeGenContext) -> str:
         qp_name = ctx.get_qp(self.qp_addr)
+        qpn = qp_name.replace("qp[", "").replace("]", "")  # e.g., "0" for qp[0]
         suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         sr = f"sr{suffix}"
         mr = ctx.get_mr(self.mr_addr)
-        buf = "buf"
+        buf = "bufs[" + qpn + "]"  # Use bufs array for multiple QPs
         sge = f"sge_send{suffix}"
         bad_wr = f"bad_wr_send{suffix}"
 
@@ -500,25 +550,25 @@ class PostSend(VerbCall):
         # {sr}.wr.rdma.rkey = {self.rkey};"""
 
         return f"""
-        /* ibv_post_send */
-        struct ibv_send_wr {sr};
-        struct ibv_sge {sge};
-        struct ibv_send_wr *{bad_wr} = NULL;
+    /* ibv_post_send */
+    struct ibv_send_wr {sr};
+    struct ibv_sge {sge};
+    struct ibv_send_wr *{bad_wr} = NULL;
 
-        memset(&{sge}, 0, sizeof({sge}));
-        {sge}.addr = (uintptr_t){buf};
-        {sge}.length = MSG_SIZE;
-        {sge}.lkey = {mr}->lkey;
+    memset(&{sge}, 0, sizeof({sge}));
+    {sge}.addr = (uintptr_t){buf};
+    {sge}.length = MSG_SIZE;
+    {sge}.lkey = {mr}->lkey;
 
-        memset(&{sr}, 0, sizeof({sr}));
-        {sr}.next = NULL;
-        {sr}.wr_id = {self.wr_id};
-        {sr}.sg_list = &{sge};
-        {sr}.num_sge = 1;
-        {sr}.opcode = {self.opcode};
-        {sr}.send_flags = {self.send_flags};{rdma_lines}
+    memset(&{sr}, 0, sizeof({sr}));
+    {sr}.next = NULL;
+    {sr}.wr_id = {self.wr_id};
+    {sr}.sg_list = &{sge};
+    {sr}.num_sge = 1;
+    {sr}.opcode = {self.opcode};
+    {sr}.send_flags = {self.send_flags};{rdma_lines}
 
-        ibv_post_send({qp_name}, &{sr}, &{bad_wr});
+    ibv_post_send({qp_name}, &{sr}, &{bad_wr});
 """
 
 
@@ -546,30 +596,31 @@ class PostRecv(VerbCall):
     # """
     def generate_c(self, ctx: CodeGenContext) -> str:
         qp_name = ctx.get_qp(self.qp_addr)
+        qpn = qp_name.replace("qp[", "").replace("]", "")
         suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         rr = f"rr{suffix}"
         mr = ctx.get_mr(self.mr_addr)
-        buf = "buf"
+        buf = "bufs[" + qpn + "]"  # Use bufs array for multiple QPs
         sge = f"sge_recv{suffix}"
         bad_wr = f"bad_wr_recv{suffix}"
 
         return f"""
-        /* ibv_post_recv */
-        struct ibv_recv_wr {rr};
-        struct ibv_sge {sge};
-        struct ibv_recv_wr *{bad_wr};
-        memset(&{sge}, 0, sizeof({sge}));
-        {sge}.addr = (uintptr_t){buf};
-        {sge}.length = {self.length};
-        {sge}.lkey = {mr}->lkey;
+    /* ibv_post_recv */
+    struct ibv_recv_wr {rr};
+    struct ibv_sge {sge};
+    struct ibv_recv_wr *{bad_wr};
+    memset(&{sge}, 0, sizeof({sge}));
+    {sge}.addr = (uintptr_t){buf};
+    {sge}.length = {self.length};
+    {sge}.lkey = {mr}->lkey;
 
-        memset(&{rr}, 0, sizeof({rr}));
-        {rr}.next = NULL;
-        {rr}.wr_id = {self.wr_id};
-        {rr}.sg_list = &{sge};
-        {rr}.num_sge = 1;
+    memset(&{rr}, 0, sizeof({rr}));
+    {rr}.next = NULL;
+    {rr}.wr_id = {self.wr_id};
+    {rr}.sg_list = &{sge};
+    {rr}.num_sge = 1;
 
-        ibv_post_recv({qp_name}, &{rr}, &{bad_wr});
+    ibv_post_recv({qp_name}, &{rr}, &{bad_wr});
     """
     
 class PollCQ(VerbCall):
