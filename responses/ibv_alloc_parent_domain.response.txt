@@ -1,0 +1,41 @@
+```python
+class AllocParentDomain(VerbCall):
+    """
+    Allocate a new parent domain using an existing protection domain.
+
+    Attributes:
+        pd_addr (str): Address of the existing protection domain.
+        parent_pd_addr (str): Address for the new parent domain.
+    """
+    def __init__(self, context, pd_addr: str, parent_pd_addr: str, ctx: CodeGenContext):
+        self.context = context  # Associated IBV context
+        self.pd_addr = pd_addr  # Address of the existing protection domain
+        self.parent_pd_addr = parent_pd_addr
+        ctx.alloc_pd(parent_pd_addr)  # Register the Parent Domain address in the context
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        pd = kv.get("pd", "unknown")
+        pd_new = kv.get("parent_pd", "unknown")
+        return cls(context=ctx.ib_ctx, pd_addr=pd, parent_pd_addr=pd_new, ctx=ctx)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        pd_name = ctx.get_pd(self.pd_addr)
+        parent_pd_name = ctx.get_pd(self.parent_pd_addr)
+        pd_context = "NULL"  # Default value used for pd_context
+        return f"""
+    /* ibv_alloc_parent_domain */
+    struct ibv_parent_domain_init_attr pd_attr_{self.parent_pd_addr} = {{0}};
+    pd_attr_{self.parent_pd_addr}.pd = {ctx.get_pd(self.pd_addr)};
+    pd_attr_{self.parent_pd_addr}.td = NULL; /* NULL indicates no thread domain */
+    pd_attr_{self.parent_pd_addr}.comp_mask = IBV_PARENT_DOMAIN_INIT_ATTR_PD_CONTEXT;
+    pd_attr_{self.parent_pd_addr}.pd_context = {pd_context};
+
+    {parent_pd_name} = ibv_alloc_parent_domain({ctx.ib_ctx}, &pd_attr_{self.parent_pd_addr});
+    if (!{parent_pd_name}) {{
+        fprintf(stderr, "Failed to allocate parent domain\\n");
+        return -1;
+    }}
+"""
+```

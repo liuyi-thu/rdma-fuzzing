@@ -1,0 +1,27 @@
+```python
+class FreeDM(VerbCall):
+    """Release a device memory buffer (DM)."""
+
+    def __init__(self, dm_addr: str):
+        self.dm_addr = dm_addr
+        
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        dm = kv.get("dm", "unknown")
+        ctx.use_dm(dm)  # Ensure the DM is used before generating code
+        return cls(dm_addr=dm)
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        dm_name = ctx.get_dm(self.dm_addr)
+        return f"""
+    /* ibv_free_dm */
+    if (ibv_free_dm({dm_name})) {{
+        fprintf(stderr, "Failed to free device memory (DM)\\n");
+        return -1;
+    }}
+"""
+
+# Add this function to VERB_FACTORY for mapping
+VERB_FACTORY["ibv_free_dm"] = FreeDM.from_trace
+```

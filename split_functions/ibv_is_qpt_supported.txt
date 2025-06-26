@@ -1,0 +1,13 @@
+Function Name: ibv_is_qpt_supported
+Output:
+int ibv_is_qpt_supported(uint32_t caps, enum ibv_qp_type qpt);
+enum ibv_qp_type {
+    IBV_QPT_RC = 2,
+    IBV_QPT_UC = 3,
+    IBV_QPT_UD = 4,
+    IBV_QPT_RAW_PACKET = 8,
+    IBV_QPT_XRC_SEND = 9,
+    IBV_QPT_XRC_RECV = 10,
+    IBV_QPT_DRIVER = 255,
+};
+

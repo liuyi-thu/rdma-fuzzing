@@ -1,0 +1,19 @@
+```python
+class IbvWrStart(VerbCall):
+    def __init__(self, qp_ex_addr: str):
+        self.qp_ex_addr = qp_ex_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        qp_ex = kv.get("qp_ex", "unknown")
+        ctx.use_qp(qp_ex)  # Ensure the QP extension is used before generating code
+        return cls(qp_ex_addr=qp_ex)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        qp_ex_name = ctx.get_qp(self.qp_ex_addr)
+        return f"""
+    /* ibv_wr_start */
+    ibv_wr_start({qp_ex_name});
+"""
+```

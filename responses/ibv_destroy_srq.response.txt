@@ -1,0 +1,24 @@
+```python
+class DestroySRQ(VerbCall):
+    """Destroy a Shared Receive Queue (SRQ)."""
+    
+    def __init__(self, srq_addr: str):
+        self.srq_addr = srq_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        srq = kv.get("srq", "unknown")
+        ctx.use_srq(srq)  # Ensure the SRQ is used before generating code
+        return cls(srq_addr=srq)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        srq_name = ctx.get_srq(self.srq_addr)
+        return f"""
+    /* ibv_destroy_srq */
+    if (ibv_destroy_srq({srq_name}) != 0) {{
+        fprintf(stderr, "Failed to destroy SRQ\\n");
+        return -1;
+    }}
+"""
+```

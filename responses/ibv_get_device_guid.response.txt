@@ -1,0 +1,20 @@
+```python
+class GetDeviceGUID(VerbCall):
+    """Get the Global Unique Identifier (GUID) of the RDMA device."""
+
+    def __init__(self, device="dev_list[0]"):
+        self.device = device
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext = None):
+        kv = _parse_kv(info)
+        device = kv.get("device", "dev_list[0]")
+        return cls(device=device)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        return f"""
+    /* ibv_get_device_guid */
+    __be64 guid = ibv_get_device_guid({self.device});
+    printf("Device GUID: %llx\\n", (unsigned long long)be64toh(guid));
+"""
+```

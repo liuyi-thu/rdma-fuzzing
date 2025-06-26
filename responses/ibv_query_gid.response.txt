@@ -1,0 +1,23 @@
+```python
+class QueryGID(VerbCall):
+    def __init__(self, port_num: int = 1, index: int = 0):
+        self.port_num = port_num
+        self.index = index
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        port_num = int(kv.get("port_num", "1"))
+        index = int(kv.get("index", "0"))
+        return cls(port_num=port_num, index=index)
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        gid_var = "my_gid"
+        return f"""
+    /* ibv_query_gid */
+    if (ibv_query_gid({ctx.ib_ctx}, {self.port_num}, {self.index}, &{gid_var})) {{
+        fprintf(stderr, "Failed to query GID\\n");
+        return -1;
+    }}
+"""
+```

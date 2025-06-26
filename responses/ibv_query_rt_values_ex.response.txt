@@ -1,0 +1,22 @@
+```python
+class QueryRTValuesEx(VerbCall):
+    def __init__(self):
+        pass
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        return cls()
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        ib_ctx = ctx.ib_ctx
+        return f"""
+    /* ibv_query_rt_values_ex */
+    struct ibv_values_ex values;
+    values.comp_mask = IBV_VALUES_MASK_RAW_CLOCK; /* Request to query the raw clock */
+    if (ibv_query_rt_values_ex({ib_ctx}, &values)) {{
+        fprintf(stderr, "Failed to query real time values\\n");
+        return -1;
+    }}
+    fprintf(stdout, "HW raw clock queried successfully\\n");
+"""
+```

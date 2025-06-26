@@ -1,0 +1,24 @@
+```python
+class DestroyFlow(VerbCall):
+    """Destroy a flow steering rule."""
+
+    def __init__(self, flow_id: str):
+        self.flow_id = flow_id
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        flow_id = kv.get("flow_id", "unknown")
+        ctx.use_flow(flow_id)  # Ensure the flow is used before generating code
+        return cls(flow_id=flow_id)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        flow_name = ctx.get_flow(self.flow_id)
+        return f"""
+    /* ibv_destroy_flow */
+    if (ibv_destroy_flow({flow_name})) {{
+        fprintf(stderr, "Failed to destroy flow\\n");
+        return -1;
+    }}
+"""
+```

@@ -1,0 +1,53 @@
+```python
+class PostRecv(VerbCall):
+    """Posts a list of work requests to a receive queue."""
+    def __init__(self, qp_addr: str, mr_addr: str, wr_id: str = "0", length: str = "MSG_SIZE"):
+        self.qp_addr = qp_addr
+        self.mr_addr = mr_addr
+        self.wr_id = wr_id
+        self.length = length
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        qp = kv.get("qp", "unknown")
+        mr = kv.get("mr", "MR")
+        ctx.use_qp(qp)
+        ctx.use_mr(mr)
+        return cls(
+            qp_addr=qp,
+            mr_addr=mr,
+            wr_id=kv.get("wr_id", "0"),
+            length=kv.get("length", "MSG_SIZE")
+        )
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        qp_name = ctx.get_qp(self.qp_addr)
+        qpn = qp_name.replace("qp[", "").replace("]", "")
+        suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
+        rr = f"rr{suffix}"
+        mr = ctx.get_mr(self.mr_addr)
+        buf = "bufs[" + qpn + "]"
+        sge = f"sge_recv{suffix}"
+        bad_wr = f"bad_wr_recv{suffix}"
+
+        return f"""
+    /* ibv_post_recv */
+    struct ibv_recv_wr {rr};
+    struct ibv_sge {sge};
+    struct ibv_recv_wr *{bad_wr} = NULL;
+
+    memset(&{sge}, 0, sizeof({sge}));
+    {sge}.addr = (uintptr_t){buf};
+    {sge}.length = {self.length};
+    {sge}.lkey = {mr}->lkey;
+
+    memset(&{rr}, 0, sizeof({rr}));
+    {rr}.next = NULL;
+    {rr}.wr_id = {self.wr_id};
+    {rr}.sg_list = &{sge};
+    {rr}.num_sge = 1;
+
+    ibv_post_recv({qp_name}, &{rr}, &{bad_wr});
+"""
+```

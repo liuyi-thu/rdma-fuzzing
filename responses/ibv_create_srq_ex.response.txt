@@ -1,0 +1,52 @@
+```python
+class CreateSRQEx(VerbCall):
+    def __init__(self, srq_addr: str, pd_addr: str, cq_addr: str, srq_type: str = "IBV_SRQT_BASIC", max_wr: int = 10, max_sge: int = 1, srq_limit: int = 0, ctx = None):
+        self.srq_addr = srq_addr
+        self.pd_addr = pd_addr
+        self.cq_addr = cq_addr
+        self.srq_type = srq_type
+        self.max_wr = max_wr
+        self.max_sge = max_sge
+        self.srq_limit = srq_limit
+        ctx.alloc_srq(srq_addr)  # Register the SRQ address in the context
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        return cls(
+            srq_addr=kv.get("srq", "unknown"),
+            pd_addr=kv.get("pd", "unknown"),
+            cq_addr=kv.get("cq", "unknown"),
+            srq_type=kv.get("srq_type", "IBV_SRQT_BASIC"),
+            max_wr=int(kv.get("max_wr", 10)),
+            max_sge=int(kv.get("max_sge", 1)),
+            srq_limit=int(kv.get("srq_limit", 0)),
+            ctx=ctx
+        )
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        srq_name = ctx.get_srq(self.srq_addr)
+        pd_name = ctx.get_pd(self.pd_addr)
+        cq_name = ctx.get_cq(self.cq_addr)
+        srq_init_attr_ex = f"srq_init_attr_ex_{srq_name.replace('srq[', '').replace(']', '')}"
+
+        return f"""
+    /* ibv_create_srq_ex */
+    struct ibv_srq_init_attr_ex {srq_init_attr_ex} = {{0}};
+    {srq_init_attr_ex}.srq_context = NULL;
+    {srq_init_attr_ex}.attr.max_wr = {self.max_wr};
+    {srq_init_attr_ex}.attr.max_sge = {self.max_sge};
+    {srq_init_attr_ex}.attr.srq_limit = {self.srq_limit};
+    {srq_init_attr_ex}.srq_type = {self.srq_type};
+    {srq_init_attr_ex}.pd = {pd_name};
+    {srq_init_attr_ex}.cq = {cq_name};
+    {srq_name} = ibv_create_srq_ex({ctx.ib_ctx}, &{srq_init_attr_ex});
+    if (!{srq_name}) {{
+        fprintf(stderr, "Failed to create SRQ\\n");
+        return -1;
+    }}
+"""
+
+# Register the created VerbCall with VERB_FACTORY
+VERB_FACTORY["ibv_create_srq_ex"] = CreateSRQEx.from_trace
+```

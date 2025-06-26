@@ -1,0 +1,209 @@
+请补全以下函数对应的verb描述（用在verbs.py中）：
+
+- ibv_alloc_parent_domain
+
+请直接生成python代码，我之后会自行添加到verbs.py中。
+函数详细信息：
+Function Name: ibv_alloc_parent_domain
+Output:
+struct ibv_pd * ibv_alloc_parent_domain(struct ibv_context * context, struct ibv_parent_domain_init_attr * attr);
+struct ibv_pd {
+    struct ibv_context * context;
+    struct ibv_context {
+        struct ibv_device * device;
+        struct ibv_device {
+            struct _ibv_device_ops _ops;
+            struct _ibv_device_ops {
+                struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+                void (*)(struct ibv_context *) _dummy2;
+            };
+            enum ibv_node_type node_type;
+            enum ibv_node_type {
+                IBV_NODE_UNKNOWN = -1,
+                IBV_NODE_CA = 1,
+                IBV_NODE_SWITCH = 2,
+                IBV_NODE_ROUTER = 3,
+                IBV_NODE_RNIC = 4,
+                IBV_NODE_USNIC = 5,
+                IBV_NODE_USNIC_UDP = 6,
+                IBV_NODE_UNSPECIFIED = 7,
+            };
+            enum ibv_transport_type transport_type;
+            enum ibv_transport_type {
+                IBV_TRANSPORT_UNKNOWN = -1,
+                IBV_TRANSPORT_IB = 0,
+                IBV_TRANSPORT_IWARP = 1,
+                IBV_TRANSPORT_USNIC = 2,
+                IBV_TRANSPORT_USNIC_UDP = 3,
+                IBV_TRANSPORT_UNSPECIFIED = 4,
+            };
+            char[64] name;
+            char[64] dev_name;
+            char[256] dev_path;
+            char[256] ibdev_path;
+        };
+        struct ibv_context_ops ops;
+        struct ibv_context_ops {
+            int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+            int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+            void *(*)(void) _compat_alloc_pd;
+            void *(*)(void) _compat_dealloc_pd;
+            void *(*)(void) _compat_reg_mr;
+            void *(*)(void) _compat_rereg_mr;
+            void *(*)(void) _compat_dereg_mr;
+            struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+            int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+            int (*)(struct ibv_mw *) dealloc_mw;
+            void *(*)(void) _compat_create_cq;
+            int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+            int (*)(struct ibv_cq *, int) req_notify_cq;
+            void *(*)(void) _compat_cq_event;
+            void *(*)(void) _compat_resize_cq;
+            void *(*)(void) _compat_destroy_cq;
+            void *(*)(void) _compat_create_srq;
+            void *(*)(void) _compat_modify_srq;
+            void *(*)(void) _compat_query_srq;
+            void *(*)(void) _compat_destroy_srq;
+            int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+            void *(*)(void) _compat_create_qp;
+            void *(*)(void) _compat_query_qp;
+            void *(*)(void) _compat_modify_qp;
+            void *(*)(void) _compat_destroy_qp;
+            int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+            int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+            void *(*)(void) _compat_create_ah;
+            void *(*)(void) _compat_destroy_ah;
+            void *(*)(void) _compat_attach_mcast;
+            void *(*)(void) _compat_detach_mcast;
+            void *(*)(void) _compat_async_event;
+        };
+        int cmd_fd;
+        int async_fd;
+        int num_comp_vectors;
+        pthread_mutex_t mutex;
+        void * abi_compat;
+    };
+    uint32_t handle;
+};
+struct ibv_parent_domain_init_attr {
+    struct ibv_pd * pd;
+    struct ibv_td * td;
+    struct ibv_td {
+        struct ibv_context * context;
+    };
+    uint32_t comp_mask;
+    void *(*)(struct ibv_pd *, void *, int, int, uint64_t) alloc;
+    void (*)(struct ibv_pd *, void *, void *, uint64_t) free;
+    void * pd_context;
+};
+
+函数相关文档：
+---
+date: 2017-11-06
+section: 3
+title: IBV_ALLOC_PARENT_DOMAIN
+---
+
+# NAME
+
+ibv_alloc_parent_domain(), ibv_dealloc_pd() - allocate and deallocate
+the parent domain object
+
+# SYNOPSIS
+
+    #include <infiniband/verbs.h>
+
+    struct ibv_pd *ibv_alloc_parent_domain(struct ibv_context *context, struct ibv_parent_domain_init_attr *attr);
+
+# DESCRIPTION
+
+**ibv_alloc_parent_domain()** allocates a parent domain object for the
+RDMA device context *context.*
+
+The parent domain object extends the normal protection domain with
+additional objects, such as a thread domain.
+
+A parent domain is completely interchangeable with the *struct ibv_pd*
+used to create it, and can be used as an input argument to any function
+accepting a *struct ibv_pd.*
+
+The behavior of each verb may be different if the verb is passed a
+parent domain *struct ibv_pd* that contains a *struct ibv_td pointer.*
+For instance the verb may choose to share resources between objects
+using the same thread domain. The exact behavior is provider dependent.
+
+The *attr* argument specifies the following:
+
+    enum ibv_parent_domain_init_attr_mask {
+    IBV_PARENT_DOMAIN_INIT_ATTR_ALLOCATORS = 1 << 0,
+    IBV_PARENT_DOMAIN_INIT_ATTR_PD_CONTEXT = 1 << 1,
+    };
+
+    struct ibv_parent_domain_init_attr {
+    struct ibv_pd *pd; /* reference to a protection domain, can't be NULL */
+    struct ibv_td *td; /* reference to a thread domain, or NULL */
+    uint32_t comp_mask;
+    void *(*alloc)(struct ibv_pd *pd, void *pd_context, size_t size,
+                   size_t alignment, uint64_t resource_type);
+    void (*free)(struct ibv_pd *pd, void *pd_context, void *ptr,
+                 uint64_t resource_type);
+    void *pd_context;
+    };
+
+**ibv_dealloc_pd()** will deallocate the parent domain as its exposed as
+an ibv_pd *pd.* All resources created with the parent domain should be
+destroyed prior to deallocating the parent domain.
+
+# ARGUMENTS
+
+**pd** Reference to the protection domain that this parent domain uses.
+
+**td** An optional thread domain that the parent domain uses.
+
+**comp_mask** Bit-mask of optional fields in the
+ibv_parent_domain_init_attr struct.
+
+**alloc** Custom memory allocation function for this parent domain.
+Provider memory allocations will use this function to allocate the
+needed memory. The allocation function is passed the parent domain
+**pd** and the user-specified context **pd_context.** In addition, the
+callback receives the **size** and the **alignment** of the requested
+buffer, as well a vendor-specific **resource_type** , which is derived
+from the rdma_driver_id enum (upper 32 bits) and a vendor specific
+resource code. The function returns the pointer to the allocated buffer,
+or NULL to designate an error. It may also return
+**IBV_ALLOCATOR_USE_DEFAULT** asking the callee to allocate the buffer
+using the default allocator.
+
+The callback makes sure the allocated buffer is initialized with zeros.
+It is also the responsibility of the callback to make sure the memory
+cannot be COWed, e.g. by using madvise(MADV_DONTFORK) or by allocating
+anonymous shared memory.
+
+**free** Callback to free memory buffers that were allocated using a
+successful alloc().
+
+**pd_context** A pointer for additional user-specific data to be
+associated with this parent domain. The pointer is passed back to the
+custom allocator functions.
+
+# RETURN VALUE
+
+**ibv_alloc_parent_domain()** returns a pointer to the allocated struct
+*ibv_pd* object, or NULL if the request fails (and sets errno to
+indicate the failure reason).
+
+# SEE ALSO
+
+**ibv_alloc_parent_domain**(3), **ibv_dealloc_pd**(3),
+**ibv_alloc_pd**(3), **ibv_alloc_td**(3)
+
+# AUTHORS
+
+Alex Rosenbaum \<alexr@mellanox.com\>
+
+:   
+
+Yishai Hadas \<yishaih@mellanox.com\>
+
+请确保描述简洁明了，适合放在verbs.py中。输出中只需要含有python代码本身即可，无需含有说明性文字。

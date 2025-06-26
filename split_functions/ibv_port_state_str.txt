@@ -1,0 +1,12 @@
+Function Name: ibv_port_state_str
+Output:
+const char * ibv_port_state_str(enum ibv_port_state port_state);
+enum ibv_port_state {
+    IBV_PORT_NOP = 0,
+    IBV_PORT_DOWN = 1,
+    IBV_PORT_INIT = 2,
+    IBV_PORT_ARMED = 3,
+    IBV_PORT_ACTIVE = 4,
+    IBV_PORT_ACTIVE_DEFER = 5,
+};
+

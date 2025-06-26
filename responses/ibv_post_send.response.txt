@@ -1,0 +1,88 @@
+```python
+class PostSend(VerbCall):
+    """Post Send Work Request to a Queue Pair's Send Queue.
+
+    This class generates the code for the `ibv_post_send` verb, which posts a linked list of
+    work requests (WRs) to the send queue of a specified Queue Pair (QP). 
+
+    The `ibv_post_send` function interface:
+    ```c
+    int ibv_post_send(struct ibv_qp *qp, struct ibv_send_wr *wr,
+                      struct ibv_send_wr **bad_wr);
+    ```
+
+    Parameters:
+    - qp_addr (str): The address of the Queue Pair (QP) to which the work request is to be posted.
+    - mr_addr (str): The Memory Region (MR) address used for the local keys in scatter/gather entries.
+    - wr_id (str): User-defined ID of the work request. Default is "0".
+    - opcode (str): Specifies the operation type. Default is "IBV_WR_SEND".
+    - remote_addr (str): Remote memory buffer's start address (for RDMA operations).
+    - rkey (str): Remote key of the memory region (for RDMA operations).
+    - send_flags (str): Flags defining properties of the WR, for example, `IBV_SEND_SIGNALED`.
+    """
+
+    def __init__(self, qp_addr: str, mr_addr: str, wr_id: str = "0", opcode: str = "IBV_WR_SEND", 
+                 remote_addr: str = None, rkey: str = None, send_flags: str = "IBV_SEND_SIGNALED"):
+        self.qp_addr = qp_addr
+        self.mr_addr = mr_addr
+        self.wr_id = wr_id
+        self.opcode = opcode
+        self.remote_addr = remote_addr
+        self.rkey = rkey
+        self.send_flags = send_flags
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        qp = kv.get("qp", "unknown")
+        mr = kv.get("mr", "MR")
+        ctx.use_qp(qp)
+        ctx.use_mr(mr)
+        return cls(
+            qp_addr=qp,
+            mr_addr=mr,
+            wr_id=kv.get("wr_id", "0"),
+            opcode=kv.get("opcode", "IBV_WR_SEND"),
+            remote_addr=kv.get("remote_addr"),
+            rkey=kv.get("rkey"),
+            send_flags=kv.get("send_flags", "IBV_SEND_SIGNALED")
+        )
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        qp_name = ctx.get_qp(self.qp_addr)
+        qpn = qp_name.replace("qp[", "").replace("]", "")
+        suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
+        sr = f"sr{suffix}"
+        mr = ctx.get_mr(self.mr_addr)
+        buf = "bufs[" + qpn + "]"
+        sge = f"sge_send{suffix}"
+        bad_wr = f"bad_wr_send{suffix}"
+
+        rdma_lines = ""
+        if self.remote_addr and self.rkey:
+            rdma_lines = f"""
+    {sr}.wr.rdma.remote_addr = {self.remote_addr};
+    {sr}.wr.rdma.rkey = {self.rkey};"""
+
+        return f"""
+    /* ibv_post_send */
+    struct ibv_send_wr {sr};
+    struct ibv_sge {sge};
+    struct ibv_send_wr *{bad_wr} = NULL;
+
+    memset(&{sge}, 0, sizeof({sge}));
+    {sge}.addr = (uintptr_t){buf};
+    {sge}.length = MSG_SIZE;
+    {sge}.lkey = {mr}->lkey;
+
+    memset(&{sr}, 0, sizeof({sr}));
+    {sr}.next = NULL;
+    {sr}.wr_id = {self.wr_id};
+    {sr}.sg_list = &{sge};
+    {sr}.num_sge = 1;
+    {sr}.opcode = {self.opcode};
+    {sr}.send_flags = {self.send_flags};{rdma_lines}
+
+    ibv_post_send({qp_name}, &{sr}, &{bad_wr});
+"""
+```

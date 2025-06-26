@@ -1,0 +1,25 @@
+```python
+class DeregMR(VerbCall):
+    """Deregister a Memory Region."""
+
+    def __init__(self, mr_addr: str):
+        self.mr_addr = mr_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        mr = kv.get("mr", "unknown")
+        ctx.use_mr(mr)  # Ensure the MR is used before generating code
+        return cls(mr_addr=mr)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        mr_name = ctx.get_mr(self.mr_addr)
+        return f"""
+    /* ibv_dereg_mr */
+    int ret = ibv_dereg_mr({mr_name});
+    if (ret) {{
+        fprintf(stderr, "Failed to deregister MR\\n");
+        return ret;
+    }}
+"""
+```

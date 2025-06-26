@@ -1,0 +1,22 @@
+```python
+class ImportDM(VerbCall):
+    def __init__(self, dm_handle: int):
+        self.dm_handle = dm_handle
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        dm_handle = int(kv.get("dm_handle", "0"))
+        return cls(dm_handle=dm_handle)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        ib_ctx = ctx.ib_ctx
+        return f"""
+    /* ibv_import_dm */
+    struct ibv_dm *dm = ibv_import_dm({ib_ctx}, {self.dm_handle});
+    if (!dm) {{
+        fprintf(stderr, "Failed to import device memory\\n");
+        return -1;
+    }}
+"""
+```

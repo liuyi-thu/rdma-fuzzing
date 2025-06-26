@@ -1,0 +1,26 @@
+```python
+class GetDeviceIndex(VerbCall):
+    """Retrieve the device index for the specified IB device."""
+    
+    def __init__(self, device_name: str):
+        self.device_name = device_name
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        device_name = kv.get("device", "unknown")
+        ctx.use_device(device_name)  # Register the device in the context
+        return cls(device_name=device_name)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        device = ctx.get_device(self.device_name)
+        index_var = f"device_index_{self.device_name}"
+        return f"""
+    /* Retrieve IB device index */
+    int {index_var} = ibv_get_device_index({device});
+    if ({index_var} < 0) {{
+        fprintf(stderr, "Failed to get device index for {device}\\n");
+        return -1;
+    }}
+"""
+```

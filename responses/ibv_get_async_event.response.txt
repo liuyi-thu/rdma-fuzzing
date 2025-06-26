@@ -1,0 +1,90 @@
+```python
+class GetAsyncEvent(VerbCall):
+    def __init__(self):
+        pass
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext = None):
+        kv = _parse_kv(info)
+        return cls()
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        return f"""
+    /* ibv_get_async_event */
+    struct ibv_async_event async_event;
+    if (ibv_get_async_event({ctx.ib_ctx}, &async_event)) {{
+        fprintf(stderr, "Failed to get async_event\\n");
+        return -1;
+    }}
+
+    /* Process the async event */
+    switch (async_event.event_type) {{
+        case IBV_EVENT_CQ_ERR:
+            fprintf(stderr, "CQ error\\n");
+            break;
+        case IBV_EVENT_QP_FATAL:
+            fprintf(stderr, "QP fatal error\\n");
+            break;
+        case IBV_EVENT_QP_REQ_ERR:
+            fprintf(stderr, "QP request error\\n");
+            break;
+        case IBV_EVENT_QP_ACCESS_ERR:
+            fprintf(stderr, "QP access error\\n");
+            break;
+        case IBV_EVENT_COMM_EST:
+            fprintf(stderr, "Communication established\\n");
+            break;
+        case IBV_EVENT_SQ_DRAINED:
+            fprintf(stderr, "Send Queue drained\\n");
+            break;
+        case IBV_EVENT_PATH_MIG:
+            fprintf(stderr, "Path migrated\\n");
+            break;
+        case IBV_EVENT_PATH_MIG_ERR:
+            fprintf(stderr, "Path migration error\\n");
+            break;
+        case IBV_EVENT_DEVICE_FATAL:
+            fprintf(stderr, "Device fatal error\\n");
+            break;
+        case IBV_EVENT_PORT_ACTIVE:
+            fprintf(stderr, "Port active\\n");
+            break;
+        case IBV_EVENT_PORT_ERR:
+            fprintf(stderr, "Port error\\n");
+            break;
+        case IBV_EVENT_LID_CHANGE:
+            fprintf(stderr, "LID changed\\n");
+            break;
+        case IBV_EVENT_PKEY_CHANGE:
+            fprintf(stderr, "P_Key table changed\\n");
+            break;
+        case IBV_EVENT_SM_CHANGE:
+            fprintf(stderr, "SM changed\\n");
+            break;
+        case IBV_EVENT_SRQ_ERR:
+            fprintf(stderr, "SRQ error\\n");
+            break;
+        case IBV_EVENT_SRQ_LIMIT_REACHED:
+            fprintf(stderr, "SRQ limit reached\\n");
+            break;
+        case IBV_EVENT_QP_LAST_WQE_REACHED:
+            fprintf(stderr, "Last WQE reached\\n");
+            break;
+        case IBV_EVENT_CLIENT_REREGISTER:
+            fprintf(stderr, "Client re-register request\\n");
+            break;
+        case IBV_EVENT_GID_CHANGE:
+            fprintf(stderr, "GID table changed\\n");
+            break;
+        case IBV_EVENT_WQ_FATAL:
+            fprintf(stderr, "WQ fatal error\\n");
+            break;
+        default:
+            fprintf(stderr, "Unknown event type\\n");
+            break;
+    }}
+
+    /* Acknowledge the async event */
+    ibv_ack_async_event(&async_event);
+"""
+```

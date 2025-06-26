@@ -4,3 +4,4 @@ utils/
 baks/
 verbs_*.c
 *.json
+responses_*/

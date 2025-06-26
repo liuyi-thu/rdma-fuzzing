@@ -1,0 +1,62 @@
+```python
+class PostSRQOps(VerbCall):
+    """Perform operations on a special shared receive queue (SRQ)."""
+
+    def __init__(self, srq_addr: str, wr_id: str, opcode: str, flags: str, tm_params: Dict):
+        self.srq_addr = srq_addr
+        self.wr_id = wr_id
+        self.opcode = opcode
+        self.flags = flags
+        self.tm_params = tm_params
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        srq = kv.get("srq", "unknown")
+        ctx.use_srq(srq)  # Ensure the SRQ is used before generating code
+        return cls(
+            srq_addr=srq,
+            wr_id=kv.get("wr_id", "0"),
+            opcode=kv.get("opcode", "IBV_WR_TAG_ADD"),
+            flags=kv.get("flags", "0"),
+            tm_params={
+                "unexpected_cnt": kv.get("unexpected_cnt", "0"),
+                "handle": kv.get("handle", "0"),
+                "recv_wr_id": kv.get("recv_wr_id", "0"),
+                "sg_list": kv.get("sg_list", "NULL"),
+                "num_sge": kv.get("num_sge", "0"),
+                "tag": kv.get("tag", "0"),
+                "mask": kv.get("mask", "0")
+            }
+        )
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        srq_name = ctx.get_srq(self.srq_addr)
+        op_wr_suffix = "_" + self.srq_addr.replace("srq[", "").replace("]", "")
+        op_wr_name = f"op_wr{op_wr_suffix}"
+        bad_op_name = f"bad_op{op_wr_suffix}"
+        tm_params = self.tm_params
+
+        return f"""
+    /* ibv_post_srq_ops */
+    struct ibv_ops_wr {op_wr_name};
+    struct ibv_ops_wr *{bad_op_name};
+
+    memset(&{op_wr_name}, 0, sizeof({op_wr_name}));
+    {op_wr_name}.wr_id = {self.wr_id};
+    {op_wr_name}.opcode = {self.opcode};
+    {op_wr_name}.flags = {self.flags};
+    {op_wr_name}.tm.unexpected_cnt = {tm_params.get("unexpected_cnt")};
+    {op_wr_name}.tm.handle = {tm_params.get("handle")};
+    {op_wr_name}.tm.add.recv_wr_id = {tm_params.get("recv_wr_id")};
+    {op_wr_name}.tm.add.sg_list = {tm_params.get("sg_list")};
+    {op_wr_name}.tm.add.num_sge = {tm_params.get("num_sge")};
+    {op_wr_name}.tm.add.tag = {tm_params.get("tag")};
+    {op_wr_name}.tm.add.mask = {tm_params.get("mask")};
+
+    if (ibv_post_srq_ops({srq_name}, &{op_wr_name}, &{bad_op_name})) {{
+        fprintf(stderr, "Failed to post srq ops\\n");
+        return -1;
+    }}
+"""
+```

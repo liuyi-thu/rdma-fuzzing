@@ -1,0 +1,24 @@
+```python
+class DeallocPD(VerbCall):
+    """Deallocate a protection domain (PD)."""
+    def __init__(self, pd_addr: str):
+        self.pd_addr = pd_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        pd = kv.get("pd", "unknown")
+        ctx.use_pd(pd)  # Ensure the PD is used before generating code
+        return cls(pd_addr=pd)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        pd_name = ctx.get_pd(self.pd_addr)
+        return f"""
+    /* ibv_dealloc_pd */
+    int result = ibv_dealloc_pd({pd_name});
+    if (result != 0) {{
+        fprintf(stderr, "Failed to deallocate PD: errno %d\\n", result);
+        return -1;
+    }}
+"""
+```

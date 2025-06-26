@@ -1,0 +1,31 @@
+Based on the provided implementations, I recommend using the following code:
+
+```python
+class ImportDevice(VerbCall):
+    def __init__(self, cmd_fd: int):
+        self.cmd_fd = cmd_fd
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        cmd_fd = int(kv.get("cmd_fd", "-1"))  # Default to -1 if not found
+        return cls(cmd_fd=cmd_fd)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        return f"""
+    /* ibv_import_device */
+    ctx = ibv_import_device({self.cmd_fd});
+    if (!ctx) {{
+        fprintf(stderr, "Failed to import device\\n");
+        return -1;
+    }}
+"""
+```
+
+### Explanation:
+1. **Initialization**: The constructor takes the `cmd_fd` as an integer, which is consistent across most choices.
+2. **from_trace**: It uses `-1` as the default value when `cmd_fd` is not found in the input, which typically signifies error condition in Unix systems.
+3. **Code Generation**: Uses `ctx` directly, which is already the defined context variable, making it consistent with the encapsulating application logic.
+4. **Error Handling**: It checks if `ctx` is `None` and returns `-1`, indicating a failure as in other similar code templates.
+
+This version should integrate well into your existing structure and logic in `verbs.py`. You can adjust the context setting logic if needed based on your specific application requirements.

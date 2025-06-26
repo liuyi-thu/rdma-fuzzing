@@ -975,15 +975,15 @@ static int connect_qp(struct resources *res)
     }
 
     /* let the client post RR to be prepared for incoming messages */
-    if(config.server_name)
-    {
-        rc = post_receive(res);
-        if(rc)
-        {
-            fprintf(stderr, "failed to post RR\n");
-            goto connect_qp_exit;
-        }
-    }
+    // if(config.server_name)
+    // {
+    //     rc = post_receive(res);
+    //     if(rc)
+    //     {
+    //         fprintf(stderr, "failed to post RR\n");
+    //         goto connect_qp_exit;
+    //     }
+    // }
 
     /* modify the QP to RTR (ready to receive) */
     rc = modify_qp_to_rtr(res->qp, remote_con_data.qp_num, remote_con_data.lid, remote_con_data.gid);

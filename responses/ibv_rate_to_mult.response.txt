@@ -1,0 +1,20 @@
+```python
+class IbvRateToMult(VerbCall):
+    """Convert IB rate enumeration to multiplier of 2.5 Gbit/sec (IBV_RATE_TO_MULT)"""
+    
+    def __init__(self, rate: str):
+        self.rate = rate
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        rate = kv.get("rate", "IBV_RATE_MAX")
+        return cls(rate=rate)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        return f"""
+    /* ibv_rate_to_mult */
+    int multiplier = ibv_rate_to_mult({self.rate});
+    printf("Rate multiplier for {self.rate}: %d\\n", multiplier);
+"""
+```

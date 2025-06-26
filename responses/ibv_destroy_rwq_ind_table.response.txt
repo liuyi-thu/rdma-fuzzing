@@ -1,0 +1,28 @@
+以下是我推荐的实现，它确保了在使用前验证和检索 RWQ Indirection Table 的命名，并给出清晰的日志信息：
+
+```python
+class DestroyRWQIndTable(VerbCall):
+    """Destroy a Receive Work Queue Indirection Table (RWQ IND TBL)."""
+    
+    def __init__(self, rwq_ind_table_addr: str):
+        self.rwq_ind_table_addr = rwq_ind_table_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        rwq_ind_table = kv.get("rwq_ind_table", "unknown")
+        ctx.use_rwq_ind_table(rwq_ind_table)  # Ensure the RWQ IND TBL is used before generating code
+        return cls(rwq_ind_table_addr=rwq_ind_table)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        rwq_ind_table_name = ctx.get_rwq_ind_table(self.rwq_ind_table_addr)
+        return f"""
+    /* ibv_destroy_rwq_ind_table */
+    if (ibv_destroy_rwq_ind_table({rwq_ind_table_name})) {{
+        fprintf(stderr, "Failed to destroy RWQ IND TBL\\n");
+        return -1;
+    }}
+"""
+```
+
+这个实现通过 `ctx.get_rwq_ind_table` 函数从上下文中检索 RWQ Indirection Table 名称，并在 `generate_c` 方法中使用正确的错误消息记录错误。它结合了清晰的日志和确保在生成代码前正确处理和验证 RWQ Indirection Table 的使用。

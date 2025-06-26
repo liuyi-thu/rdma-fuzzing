@@ -1,0 +1,28 @@
+```python
+class QueryPKey(VerbCall):
+    """Query an InfiniBand port's P_Key table entry."""
+
+    def __init__(self, port_num: int = 1, index: int = 0, pkey: str = "pkey"):
+        self.port_num = port_num
+        self.index = index
+        self.pkey = pkey
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        port_num = int(kv.get("port_num", "1"))
+        index = int(kv.get("index", "0"))
+        pkey = kv.get("pkey", "pkey")
+        ctx.alloc_pkey(pkey)
+        return cls(port_num=port_num, index=index, pkey=pkey)
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        pkey_name = ctx.get_pkey(self.pkey)
+        return f"""
+    /* ibv_query_pkey */
+    if (ibv_query_pkey({ctx.ib_ctx}, {self.port_num}, {self.index}, &{pkey_name})) {{
+        fprintf(stderr, "Failed to query P_Key\\n");
+        return -1;
+    }}
+"""
+```

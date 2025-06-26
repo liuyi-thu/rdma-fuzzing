@@ -1,0 +1,23 @@
+```python
+class QueryPortAttr(VerbCall):
+    """Query the attributes of a specified RDMA port on a given device context."""
+    
+    def __init__(self, port_num: int = 1):
+        self.port_num = port_num
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext = None):
+        kv = _parse_kv(info)
+        return cls(port_num=int(kv.get("port_num", "1")))
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        ib_ctx = ctx.ib_ctx
+        port_attr = ctx.port_attr
+        return f"""
+    /* ibv_query_port */
+    if (ibv_query_port({ib_ctx}, {self.port_num}, &{port_attr})) {{
+        fprintf(stderr, "Failed to query port attributes\\n");
+        return -1;
+    }}
+"""
+```

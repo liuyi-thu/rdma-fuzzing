@@ -1,0 +1,28 @@
+```python
+class DeallocTD(VerbCall):
+    """Deallocate an RDMA thread domain (TD) object."""
+    def __init__(self, td_addr: str):
+        self.td_addr = td_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        td = kv.get("td", "unknown")
+        ctx.use_td(td)  # Ensure the TD is used before generating code
+        return cls(td_addr=td)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        td_name = ctx.get_td(self.td_addr)
+        return f"""
+    /* ibv_dealloc_td */
+    if (ibv_dealloc_td({td_name})) {{
+        fprintf(stderr, "Failed to deallocate TD\\n");
+        return -1;
+    }}
+"""
+
+# Mapping verb -> constructor (extend the existing mapping)
+VERB_FACTORY.update({
+    "ibv_dealloc_td": DeallocTD.from_trace
+})
+```

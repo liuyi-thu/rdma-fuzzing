@@ -1,0 +1,23 @@
+```python
+class DestroyCompChannel(VerbCall):
+    """Destroy a completion event channel."""
+    def __init__(self, comp_channel_addr: str):
+        self.comp_channel_addr = comp_channel_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        comp_channel = kv.get("comp_channel", "unknown")
+        ctx.use_comp_channel(comp_channel)  # Ensure the completion channel is used before generating code
+        return cls(comp_channel_addr=comp_channel)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        comp_channel_name = ctx.get_comp_channel(self.comp_channel_addr)
+        return f"""
+    /* ibv_destroy_comp_channel */
+    if (ibv_destroy_comp_channel({comp_channel_name})) {{
+        fprintf(stderr, "Failed to destroy completion channel\\n");
+        return -1;
+    }}
+"""
+```

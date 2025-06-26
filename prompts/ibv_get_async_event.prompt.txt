@@ -1,0 +1,318 @@
+请补全以下函数对应的verb描述（用在verbs.py中）：
+
+- ibv_get_async_event
+
+请直接生成python代码，我之后会自行添加到verbs.py中。
+函数详细信息：
+Function Name: ibv_get_async_event
+Output:
+int ibv_get_async_event(struct ibv_context * context, struct ibv_async_event * event);
+struct ibv_context {
+    struct ibv_device * device;
+    struct ibv_device {
+        struct _ibv_device_ops _ops;
+        struct _ibv_device_ops {
+            struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+            void (*)(struct ibv_context *) _dummy2;
+        };
+        enum ibv_node_type node_type;
+        enum ibv_node_type {
+            IBV_NODE_UNKNOWN = -1,
+            IBV_NODE_CA = 1,
+            IBV_NODE_SWITCH = 2,
+            IBV_NODE_ROUTER = 3,
+            IBV_NODE_RNIC = 4,
+            IBV_NODE_USNIC = 5,
+            IBV_NODE_USNIC_UDP = 6,
+            IBV_NODE_UNSPECIFIED = 7,
+        };
+        enum ibv_transport_type transport_type;
+        enum ibv_transport_type {
+            IBV_TRANSPORT_UNKNOWN = -1,
+            IBV_TRANSPORT_IB = 0,
+            IBV_TRANSPORT_IWARP = 1,
+            IBV_TRANSPORT_USNIC = 2,
+            IBV_TRANSPORT_USNIC_UDP = 3,
+            IBV_TRANSPORT_UNSPECIFIED = 4,
+        };
+        char[64] name;
+        char[64] dev_name;
+        char[256] dev_path;
+        char[256] ibdev_path;
+    };
+    struct ibv_context_ops ops;
+    struct ibv_context_ops {
+        int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+        int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+        void *(*)(void) _compat_alloc_pd;
+        void *(*)(void) _compat_dealloc_pd;
+        void *(*)(void) _compat_reg_mr;
+        void *(*)(void) _compat_rereg_mr;
+        void *(*)(void) _compat_dereg_mr;
+        struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+        int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+        int (*)(struct ibv_mw *) dealloc_mw;
+        void *(*)(void) _compat_create_cq;
+        int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+        int (*)(struct ibv_cq *, int) req_notify_cq;
+        void *(*)(void) _compat_cq_event;
+        void *(*)(void) _compat_resize_cq;
+        void *(*)(void) _compat_destroy_cq;
+        void *(*)(void) _compat_create_srq;
+        void *(*)(void) _compat_modify_srq;
+        void *(*)(void) _compat_query_srq;
+        void *(*)(void) _compat_destroy_srq;
+        int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+        void *(*)(void) _compat_create_qp;
+        void *(*)(void) _compat_query_qp;
+        void *(*)(void) _compat_modify_qp;
+        void *(*)(void) _compat_destroy_qp;
+        int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+        int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+        void *(*)(void) _compat_create_ah;
+        void *(*)(void) _compat_destroy_ah;
+        void *(*)(void) _compat_attach_mcast;
+        void *(*)(void) _compat_detach_mcast;
+        void *(*)(void) _compat_async_event;
+    };
+    int cmd_fd;
+    int async_fd;
+    int num_comp_vectors;
+    pthread_mutex_t mutex;
+    void * abi_compat;
+};
+struct ibv_async_event {
+    union (unnamed union at verbs.h:474:2) element;
+    enum ibv_event_type event_type;
+    enum ibv_event_type {
+        IBV_EVENT_CQ_ERR = 0,
+        IBV_EVENT_QP_FATAL = 1,
+        IBV_EVENT_QP_REQ_ERR = 2,
+        IBV_EVENT_QP_ACCESS_ERR = 3,
+        IBV_EVENT_COMM_EST = 4,
+        IBV_EVENT_SQ_DRAINED = 5,
+        IBV_EVENT_PATH_MIG = 6,
+        IBV_EVENT_PATH_MIG_ERR = 7,
+        IBV_EVENT_DEVICE_FATAL = 8,
+        IBV_EVENT_PORT_ACTIVE = 9,
+        IBV_EVENT_PORT_ERR = 10,
+        IBV_EVENT_LID_CHANGE = 11,
+        IBV_EVENT_PKEY_CHANGE = 12,
+        IBV_EVENT_SM_CHANGE = 13,
+        IBV_EVENT_SRQ_ERR = 14,
+        IBV_EVENT_SRQ_LIMIT_REACHED = 15,
+        IBV_EVENT_QP_LAST_WQE_REACHED = 16,
+        IBV_EVENT_CLIENT_REREGISTER = 17,
+        IBV_EVENT_GID_CHANGE = 18,
+        IBV_EVENT_WQ_FATAL = 19,
+    };
+};
+
+函数相关文档：
+---
+date: 2006-10-31
+section: 3
+title: IBV_GET_ASYNC_EVENT
+---
+
+# NAME
+
+ibv_get_async_event, ibv_ack_async_event - get or acknowledge
+asynchronous events
+
+# SYNOPSIS
+
+    #include <infiniband/verbs.h>
+
+    int ibv_get_async_event(struct ibv_context *context,
+     struct ibv_async_event *event);
+
+    void ibv_ack_async_event(struct ibv_async_event *event);
+
+# DESCRIPTION
+
+**ibv_get_async_event()** waits for the next async event of the RDMA
+device context *context* and returns it through the pointer *event,*
+which is an ibv_async_event struct, as defined in
+\<infiniband/verbs.h\>.
+
+    struct ibv_async_event {
+    union {
+    struct ibv_cq  *cq;             /* CQ that got the event */
+    struct ibv_qp  *qp;             /* QP that got the event */
+    struct ibv_srq *srq;            /* SRQ that got the event */
+    struct ibv_wq  *wq;             /* WQ that got the event */
+    int             port_num;       /* port number that got the event */
+    } element;
+    enum ibv_event_type     event_type;     /* type of the event */
+    };
+
+One member of the element union will be valid, depending on the
+event_type member of the structure. event_type will be one of the
+following events:
+
+*QP events:*
+
+**IBV_EVENT_QP_FATAL Error occurred on a QP and it transitioned to error state**
+
+:   
+
+    **IBV_EVENT_QP_REQ_ERR Invalid Request Local Work Queue Error**
+
+    :   
+
+        **IBV_EVENT_QP_ACCESS_ERR Local access violation error**
+
+        :   
+
+            **IBV_EVENT_COMM_EST Communication was established on a QP**
+
+            :   
+
+                **IBV_EVENT_SQ_DRAINED Send Queue was drained of outstanding messages in progress**
+
+                :   
+
+                    **IBV_EVENT_PATH_MIG A connection has migrated to the alternate path**
+
+                    :   
+
+                        **IBV_EVENT_PATH_MIG_ERR A connection failed to migrate to the alternate path**
+
+                        :   
+
+                            **IBV_EVENT_QP_LAST_WQE_REACHED Last WQE Reached on a QP associated with an SRQ**
+
+                            :   
+
+*CQ events:*
+
+**IBV_EVENT_CQ_ERR CQ is in error (CQ overrun)**
+
+:   
+
+*SRQ events:*
+
+**IBV_EVENT_SRQ_ERR Error occurred on an SRQ**
+
+:   
+
+    **IBV_EVENT_SRQ_LIMIT_REACHED SRQ limit was reached**
+
+    :   
+
+*WQ events:*
+
+**IBV_EVENT_WQ_FATAL Error occurred on a WQ and it transitioned to error state**
+
+:   
+
+*Port events:*
+
+**IBV_EVENT_PORT_ACTIVE Link became active on a port**
+
+:   
+
+    **IBV_EVENT_PORT_ERR Link became unavailable on a port**
+
+    :   
+
+        **IBV_EVENT_LID_CHANGE LID was changed on a port**
+
+        :   
+
+            **IBV_EVENT_PKEY_CHANGE P_Key table was changed on a port**
+
+            :   
+
+                **IBV_EVENT_SM_CHANGE SM was changed on a port**
+
+                :   
+
+                    **IBV_EVENT_CLIENT_REREGISTER SM sent a CLIENT_REREGISTER request to a port**
+
+                    :   
+
+                        **IBV_EVENT_GID_CHANGE GID table was changed on a port**
+
+                        :   
+
+*CA events:*
+
+**IBV_EVENT_DEVICE_FATAL CA is in FATAL state**
+
+:   
+
+**ibv_ack_async_event()** acknowledge the async event *event.*
+
+# RETURN VALUE
+
+**ibv_get_async_event()** returns 0 on success, and -1 on error.
+
+**ibv_ack_async_event()** returns no value.
+
+# NOTES
+
+All async events that **ibv_get_async_event()** returns must be
+acknowledged using **ibv_ack_async_event().** To avoid races, destroying
+an object (CQ, SRQ or QP) will wait for all affiliated events for the
+object to be acknowledged; this avoids an application retrieving an
+affiliated event after the corresponding object has already been
+destroyed.
+
+**ibv_get_async_event()** is a blocking function. If multiple threads
+call this function simultaneously, then when an async event occurs, only
+one thread will receive it, and it is not possible to predict which
+thread will receive it.
+
+# EXAMPLES
+
+The following code example demonstrates one possible way to work with
+async events in non-blocking mode. It performs the following steps:
+
+1\. Set the async events queue work mode to be non-blocked\
+2. Poll the queue until it has an async event\
+3. Get the async event and ack it
+
+    /* change the blocking mode of the async event queue */
+    flags = fcntl(ctx->async_fd, F_GETFL);
+    rc = fcntl(ctx->async_fd, F_SETFL, flags | O_NONBLOCK);
+    if (rc < 0) {
+            fprintf(stderr, "Failed to change file descriptor of async event queue\n");
+            return 1;
+    }
+
+    /*
+     * poll the queue until it has an event and sleep ms_timeout
+     * milliseconds between any iteration
+     */
+    my_pollfd.fd      = ctx->async_fd;
+    my_pollfd.events  = POLLIN;
+    my_pollfd.revents = 0;
+
+    do {
+            rc = poll(&my_pollfd, 1, ms_timeout);
+    } while (rc == 0);
+    if (rc < 0) {
+            fprintf(stderr, "poll failed\n");
+            return 1;
+    }
+
+    /* Get the async event */
+    if (ibv_get_async_event(ctx, &async_event)) {
+            fprintf(stderr, "Failed to get async_event\n");
+            return 1;
+    }
+
+    /* Ack the event */
+    ibv_ack_async_event(&async_event);
+
+# SEE ALSO
+
+**ibv_open_device**(3)
+
+# AUTHORS
+
+Dotan Barak \<dotanba@gmail.com\>
+
+请确保描述简洁明了，适合放在verbs.py中。输出中只需要含有python代码本身即可，无需含有说明性文字。

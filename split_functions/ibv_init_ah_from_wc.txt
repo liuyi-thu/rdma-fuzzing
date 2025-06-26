@@ -1,0 +1,168 @@
+Function Name: ibv_init_ah_from_wc
+Output:
+int ibv_init_ah_from_wc(struct ibv_context * context, uint8_t port_num, struct ibv_wc * wc, struct ibv_grh * grh, struct ibv_ah_attr * ah_attr);
+struct ibv_context {
+    struct ibv_device * device;
+    struct ibv_device {
+        struct _ibv_device_ops _ops;
+        struct _ibv_device_ops {
+            struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+            void (*)(struct ibv_context *) _dummy2;
+        };
+        enum ibv_node_type node_type;
+        enum ibv_node_type {
+            IBV_NODE_UNKNOWN = -1,
+            IBV_NODE_CA = 1,
+            IBV_NODE_SWITCH = 2,
+            IBV_NODE_ROUTER = 3,
+            IBV_NODE_RNIC = 4,
+            IBV_NODE_USNIC = 5,
+            IBV_NODE_USNIC_UDP = 6,
+            IBV_NODE_UNSPECIFIED = 7,
+        };
+        enum ibv_transport_type transport_type;
+        enum ibv_transport_type {
+            IBV_TRANSPORT_UNKNOWN = -1,
+            IBV_TRANSPORT_IB = 0,
+            IBV_TRANSPORT_IWARP = 1,
+            IBV_TRANSPORT_USNIC = 2,
+            IBV_TRANSPORT_USNIC_UDP = 3,
+            IBV_TRANSPORT_UNSPECIFIED = 4,
+        };
+        char[64] name;
+        char[64] dev_name;
+        char[256] dev_path;
+        char[256] ibdev_path;
+    };
+    struct ibv_context_ops ops;
+    struct ibv_context_ops {
+        int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+        int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+        void *(*)(void) _compat_alloc_pd;
+        void *(*)(void) _compat_dealloc_pd;
+        void *(*)(void) _compat_reg_mr;
+        void *(*)(void) _compat_rereg_mr;
+        void *(*)(void) _compat_dereg_mr;
+        struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+        int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+        int (*)(struct ibv_mw *) dealloc_mw;
+        void *(*)(void) _compat_create_cq;
+        int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+        int (*)(struct ibv_cq *, int) req_notify_cq;
+        void *(*)(void) _compat_cq_event;
+        void *(*)(void) _compat_resize_cq;
+        void *(*)(void) _compat_destroy_cq;
+        void *(*)(void) _compat_create_srq;
+        void *(*)(void) _compat_modify_srq;
+        void *(*)(void) _compat_query_srq;
+        void *(*)(void) _compat_destroy_srq;
+        int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+        void *(*)(void) _compat_create_qp;
+        void *(*)(void) _compat_query_qp;
+        void *(*)(void) _compat_modify_qp;
+        void *(*)(void) _compat_destroy_qp;
+        int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+        int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+        void *(*)(void) _compat_create_ah;
+        void *(*)(void) _compat_destroy_ah;
+        void *(*)(void) _compat_attach_mcast;
+        void *(*)(void) _compat_detach_mcast;
+        void *(*)(void) _compat_async_event;
+    };
+    int cmd_fd;
+    int async_fd;
+    int num_comp_vectors;
+    pthread_mutex_t mutex;
+    void * abi_compat;
+};
+struct ibv_wc {
+    uint64_t wr_id;
+    enum ibv_wc_status status;
+    enum ibv_wc_status {
+        IBV_WC_SUCCESS = 0,
+        IBV_WC_LOC_LEN_ERR = 1,
+        IBV_WC_LOC_QP_OP_ERR = 2,
+        IBV_WC_LOC_EEC_OP_ERR = 3,
+        IBV_WC_LOC_PROT_ERR = 4,
+        IBV_WC_WR_FLUSH_ERR = 5,
+        IBV_WC_MW_BIND_ERR = 6,
+        IBV_WC_BAD_RESP_ERR = 7,
+        IBV_WC_LOC_ACCESS_ERR = 8,
+        IBV_WC_REM_INV_REQ_ERR = 9,
+        IBV_WC_REM_ACCESS_ERR = 10,
+        IBV_WC_REM_OP_ERR = 11,
+        IBV_WC_RETRY_EXC_ERR = 12,
+        IBV_WC_RNR_RETRY_EXC_ERR = 13,
+        IBV_WC_LOC_RDD_VIOL_ERR = 14,
+        IBV_WC_REM_INV_RD_REQ_ERR = 15,
+        IBV_WC_REM_ABORT_ERR = 16,
+        IBV_WC_INV_EECN_ERR = 17,
+        IBV_WC_INV_EEC_STATE_ERR = 18,
+        IBV_WC_FATAL_ERR = 19,
+        IBV_WC_RESP_TIMEOUT_ERR = 20,
+        IBV_WC_GENERAL_ERR = 21,
+        IBV_WC_TM_ERR = 22,
+        IBV_WC_TM_RNDV_INCOMPLETE = 23,
+    };
+    enum ibv_wc_opcode opcode;
+    enum ibv_wc_opcode {
+        IBV_WC_SEND = 0,
+        IBV_WC_RDMA_WRITE = 1,
+        IBV_WC_RDMA_READ = 2,
+        IBV_WC_COMP_SWAP = 3,
+        IBV_WC_FETCH_ADD = 4,
+        IBV_WC_BIND_MW = 5,
+        IBV_WC_LOCAL_INV = 6,
+        IBV_WC_TSO = 7,
+        IBV_WC_FLUSH = 8,
+        IBV_WC_ATOMIC_WRITE = 9,
+        IBV_WC_RECV = 128,
+        IBV_WC_RECV_RDMA_WITH_IMM = 129,
+        IBV_WC_TM_ADD = 130,
+        IBV_WC_TM_DEL = 131,
+        IBV_WC_TM_SYNC = 132,
+        IBV_WC_TM_RECV = 133,
+        IBV_WC_TM_NO_TAG = 134,
+        IBV_WC_DRIVER1 = 135,
+        IBV_WC_DRIVER2 = 136,
+        IBV_WC_DRIVER3 = 137,
+    };
+    uint32_t vendor_err;
+    uint32_t byte_len;
+    uint32_t qp_num;
+    uint32_t src_qp;
+    unsigned int wc_flags;
+    uint16_t pkey_index;
+    uint16_t slid;
+    uint8_t sl;
+    uint8_t dlid_path_bits;
+};
+struct ibv_grh {
+    __be32 version_tclass_flow;
+    __be16 paylen;
+    uint8_t next_hdr;
+    uint8_t hop_limit;
+    union ibv_gid sgid;
+    union ibv_gid {
+        uint8_t[16] raw;
+        struct (unnamed struct at verbs.h:66:2) global;
+    };
+    union ibv_gid dgid;
+};
+struct ibv_ah_attr {
+    struct ibv_global_route grh;
+    struct ibv_global_route {
+        union ibv_gid dgid;
+        uint32_t flow_label;
+        uint8_t sgid_index;
+        uint8_t hop_limit;
+        uint8_t traffic_class;
+    };
+    uint16_t dlid;
+    uint8_t sl;
+    uint8_t src_path_bits;
+    uint8_t static_rate;
+    uint8_t is_global;
+    uint8_t port_num;
+};
+

@@ -1,0 +1,23 @@
+```python
+class AckCQEvents(VerbCall):
+    """Acknowledge completion queue events for a given CQ."""
+
+    def __init__(self, cq_addr: str, nevents: int = 1):
+        self.cq_addr = cq_addr
+        self.nevents = nevents
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        cq = kv.get("cq", "unknown")
+        nevents = int(kv.get("nevents", 1))
+        ctx.use_cq(cq)  # Ensure the CQ is used before generating code
+        return cls(cq_addr=cq, nevents=nevents)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        cq_name = ctx.get_cq(self.cq_addr)
+        return f"""
+    /* ibv_ack_cq_events */
+    ibv_ack_cq_events({cq_name}, {self.nevents});
+"""
+```

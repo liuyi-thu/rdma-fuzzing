@@ -1,0 +1,191 @@
+请补全以下函数对应的verb描述（用在verbs.py中）：
+
+- ibv_query_gid_ex
+
+请直接生成python代码，我之后会自行添加到verbs.py中。
+函数详细信息：
+Function Name: ibv_query_gid_ex
+Output:
+int ibv_query_gid_ex(struct ibv_context * context, uint32_t port_num, uint32_t gid_index, struct ibv_gid_entry * entry, uint32_t flags);
+struct ibv_context {
+    struct ibv_device * device;
+    struct ibv_device {
+        struct _ibv_device_ops _ops;
+        struct _ibv_device_ops {
+            struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+            void (*)(struct ibv_context *) _dummy2;
+        };
+        enum ibv_node_type node_type;
+        enum ibv_node_type {
+            IBV_NODE_UNKNOWN = -1,
+            IBV_NODE_CA = 1,
+            IBV_NODE_SWITCH = 2,
+            IBV_NODE_ROUTER = 3,
+            IBV_NODE_RNIC = 4,
+            IBV_NODE_USNIC = 5,
+            IBV_NODE_USNIC_UDP = 6,
+            IBV_NODE_UNSPECIFIED = 7,
+        };
+        enum ibv_transport_type transport_type;
+        enum ibv_transport_type {
+            IBV_TRANSPORT_UNKNOWN = -1,
+            IBV_TRANSPORT_IB = 0,
+            IBV_TRANSPORT_IWARP = 1,
+            IBV_TRANSPORT_USNIC = 2,
+            IBV_TRANSPORT_USNIC_UDP = 3,
+            IBV_TRANSPORT_UNSPECIFIED = 4,
+        };
+        char[64] name;
+        char[64] dev_name;
+        char[256] dev_path;
+        char[256] ibdev_path;
+    };
+    struct ibv_context_ops ops;
+    struct ibv_context_ops {
+        int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+        int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+        void *(*)(void) _compat_alloc_pd;
+        void *(*)(void) _compat_dealloc_pd;
+        void *(*)(void) _compat_reg_mr;
+        void *(*)(void) _compat_rereg_mr;
+        void *(*)(void) _compat_dereg_mr;
+        struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+        int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+        int (*)(struct ibv_mw *) dealloc_mw;
+        void *(*)(void) _compat_create_cq;
+        int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+        int (*)(struct ibv_cq *, int) req_notify_cq;
+        void *(*)(void) _compat_cq_event;
+        void *(*)(void) _compat_resize_cq;
+        void *(*)(void) _compat_destroy_cq;
+        void *(*)(void) _compat_create_srq;
+        void *(*)(void) _compat_modify_srq;
+        void *(*)(void) _compat_query_srq;
+        void *(*)(void) _compat_destroy_srq;
+        int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+        void *(*)(void) _compat_create_qp;
+        void *(*)(void) _compat_query_qp;
+        void *(*)(void) _compat_modify_qp;
+        void *(*)(void) _compat_destroy_qp;
+        int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+        int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+        void *(*)(void) _compat_create_ah;
+        void *(*)(void) _compat_destroy_ah;
+        void *(*)(void) _compat_attach_mcast;
+        void *(*)(void) _compat_detach_mcast;
+        void *(*)(void) _compat_async_event;
+    };
+    int cmd_fd;
+    int async_fd;
+    int num_comp_vectors;
+    pthread_mutex_t mutex;
+    void * abi_compat;
+};
+struct ibv_gid_entry {
+    union ibv_gid gid;
+    union ibv_gid {
+        uint8_t[16] raw;
+        struct (unnamed struct at verbs.h:66:2) global;
+    };
+    uint32_t gid_index;
+    uint32_t port_num;
+    uint32_t gid_type;
+    uint32_t ndev_ifindex;
+};
+
+函数相关文档：
+---
+date: 2020-04-24
+footer: libibverbs
+header: "Libibverbs Programmer's Manual"
+layout: page
+license: 'Licensed under the OpenIB.org BSD license (FreeBSD Variant) - See COPYING.md'
+section: 3
+title: IBV_QUERY_GID_EX
+---
+
+# NAME
+
+ibv_query_gid_ex - Query an InfiniBand port's GID table entry
+
+# SYNOPSIS
+
+```c
+#include <infiniband/verbs.h>
+
+int ibv_query_gid_ex(struct ibv_context *context,
+                     uint32_t port_num,
+                     uint32_t gid_index,
+                     struct ibv_gid_entry *entry,
+                     uint32_t flags);
+```
+
+# DESCRIPTION
+
+**ibv_query_gid_ex()** returns the GID entry at *entry* for
+*gid_index* of port *port_num* for device context *context*.
+
+# ARGUMENTS
+
+*context*
+:	The context of the device to query.
+
+*port_num*
+:	The number of port to query its GID table.
+
+*gid_index*
+:	The index of the GID table entry to query.
+
+## *entry* Argument
+:	An ibv_gid_entry struct, as defined in <infiniband/verbs.h>.
+```c
+struct ibv_gid_entry {
+		union ibv_gid gid;
+		uint32_t gid_index;
+		uint32_t port_num;
+		uint32_t gid_type;
+		uint32_t ndev_ifindex;
+};
+```
+
+	*gid*
+:			The GID entry.
+
+	*gid_index*
+:			The GID table index of this entry.
+
+	*port_num*
+:			The port number that this GID belongs to.
+
+	*gid_type*
+:			enum ibv_gid_type, can be one of IBV_GID_TYPE_IB, IBV_GID_TYPE_ROCE_V1 or IBV_GID_TYPE_ROCE_V2.
+
+	*ndev_ifindex*
+:			The interface index of the net device associated with this GID.
+			It is 0 if there is no net device associated with it.
+
+*flags*
+:	Extra fields to query post *ndev_ifindex*, for now must be 0.
+
+# RETURN VALUE
+
+**ibv_query_gid_ex()** returns 0 on success or errno value on error.
+
+# ERRORS
+
+ENODATA
+:	*gid_index* is within the GID table size of port *port_num* but there is no data in this index.
+
+# SEE ALSO
+
+**ibv_open_device**(3),
+**ibv_query_device**(3),
+**ibv_query_pkey**(3),
+**ibv_query_port**(3),
+**ibv_query_gid_table**(3)
+
+# AUTHOR
+
+Parav Pandit <parav@nvidia.com>
+
+请确保描述简洁明了，适合放在verbs.py中。输出中只需要含有python代码本身即可，无需含有说明性文字。

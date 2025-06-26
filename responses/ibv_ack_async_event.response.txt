@@ -1,0 +1,17 @@
+```python
+class AckAsyncEvent(VerbCall):
+    def __init__(self, event_addr: str):
+        self.event_addr = event_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        event = kv.get("event", "unknown")
+        return cls(event_addr=event)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        return f"""
+    /* ibv_ack_async_event */
+    ibv_ack_async_event(&{self.event_addr});
+"""
+```

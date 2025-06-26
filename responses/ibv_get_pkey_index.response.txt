@@ -1,0 +1,24 @@
+```python
+class GetPKeyIndex(VerbCall):
+    def __init__(self, port_num: int, pkey: int):
+        self.port_num = port_num
+        self.pkey = pkey
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext = None):
+        kv = _parse_kv(info)
+        port_num = int(kv.get("port_num", 1))
+        pkey = int(kv.get("pkey", 0))
+        return cls(port_num=port_num, pkey=pkey)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        ib_ctx = ctx.ib_ctx
+        return f"""
+    /* ibv_get_pkey_index */
+    int pkey_index;
+    if ((pkey_index = ibv_get_pkey_index({ib_ctx}, {self.port_num}, {self.pkey})) < 0) {{
+        fprintf(stderr, "Failed to get P_Key index\\n");
+        return -1;
+    }}
+"""
+```

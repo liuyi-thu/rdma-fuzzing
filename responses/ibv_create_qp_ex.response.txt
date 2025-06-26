@@ -1,0 +1,62 @@
+```python
+class CreateQPEx(VerbCall):
+    def __init__(self, ctx: CodeGenContext, qp_addr: str, pd_addr: str, send_cq_addr: str,
+                 recv_cq_addr: str, srq_addr: Optional[str], qp_type: str = "IBV_QPT_RC", 
+                 cap_params: Optional[Dict[str, int]] = None, comp_mask: int = 0,
+                 create_flags: int = 0):
+        self.qp_addr = qp_addr
+        self.pd_addr = pd_addr
+        self.send_cq_addr = send_cq_addr
+        self.recv_cq_addr = recv_cq_addr
+        self.srq_addr = srq_addr
+        self.qp_type = qp_type
+        self.cap_params = cap_params or {}
+        self.comp_mask = comp_mask
+        self.create_flags = create_flags
+        ctx.alloc_qp(qp_addr)  # Register the QP in the context
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        qp = kv.get("qp", "unknown")
+        pd = kv.get("pd", "pd[0]")
+        send_cq = kv.get("send_cq", "cq[0]")
+        recv_cq = kv.get("recv_cq", "cq[0]")
+        srq = kv.get("srq", None)
+        cap_keys = {"max_send_wr", "max_recv_wr", "max_send_sge", "max_recv_sge", "max_inline_data"}
+        cap_params = {k: int(kv[k]) for k in cap_keys if k in kv}
+        qp_type = kv.get("qp_type", "IBV_QPT_RC")
+        comp_mask = int(kv.get("comp_mask", "0"))
+        create_flags = int(kv.get("create_flags", "0"))
+        return cls(ctx, qp, pd, send_cq, recv_cq, srq, qp_type, cap_params, comp_mask, create_flags)
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        qp_name = ctx.get_qp(self.qp_addr)
+        pd_name = ctx.get_pd(self.pd_addr)
+        send_cq_name = ctx.get_cq(self.send_cq_addr)
+        recv_cq_name = ctx.get_cq(self.recv_cq_addr)
+        srq_name = ctx.get_srq(self.srq_addr) if self.srq_addr else "NULL"
+        attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
+        attr_name = f"attr_ex{attr_suffix}"
+        cap = self.cap_params
+        cap_lines = "\n    ".join(
+            f"{attr_name}.cap.{k} = {v};" for k, v in cap.items()
+        )
+        return f"""
+    /* ibv_create_qp_ex */
+    struct ibv_qp_init_attr_ex {attr_name} = {{}};
+    {attr_name}.qp_context = NULL;
+    {attr_name}.send_cq = {send_cq_name};
+    {attr_name}.recv_cq = {recv_cq_name};
+    {attr_name}.srq = {srq_name};
+    {attr_name}.qp_type = {self.qp_type};
+    {attr_name}.comp_mask = {self.comp_mask};
+    {attr_name}.create_flags = {self.create_flags};
+    {cap_lines}
+    {qp_name} = ibv_create_qp_ex({ctx.ib_ctx}, &{attr_name});
+    if (!{qp_name}) {{
+        fprintf(stderr, "Failed to create QP\\n");
+        return -1;
+    }}
+"""
+```

@@ -1,0 +1,31 @@
+```python
+class IsForkInitialized(VerbCall):
+    """Check if fork support is enabled using ibv_is_fork_initialized."""
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext = None):
+        return cls()
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        return f"""
+    /* Check if fork support is initialized */
+    enum ibv_fork_status fork_status = ibv_is_fork_initialized();
+    switch (fork_status) {{
+        case IBV_FORK_DISABLED:
+            fprintf(stdout, "Fork support is disabled\\n");
+            break;
+        case IBV_FORK_ENABLED:
+            fprintf(stdout, "Fork support is enabled\\n");
+            break;
+        case IBV_FORK_UNNEEDED:
+            fprintf(stdout, "Fork support is unneeded\\n");
+            break;
+        default:
+            fprintf(stdout, "Unknown fork status\\n");
+            break;
+    }}
+"""
+```

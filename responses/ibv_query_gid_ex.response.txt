@@ -1,0 +1,27 @@
+```python
+class QueryGIDEx(VerbCall):
+    def __init__(self, port_num: int = 1, gid_index: int = 0, flags: int = 0):
+        self.port_num = port_num
+        self.gid_index = gid_index
+        self.flags = flags
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        port_num = int(kv.get("port_num", 1))
+        gid_index = int(kv.get("gid_index", 0))
+        flags = int(kv.get("flags", 0))
+        return cls(port_num=port_num, gid_index=gid_index, flags=flags)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        ib_ctx = ctx.ib_ctx
+        return f"""
+    /* ibv_query_gid_ex */
+    struct ibv_gid_entry entry = {{0}};
+    int ret = ibv_query_gid_ex({ib_ctx}, {self.port_num}, {self.gid_index}, &entry, {self.flags});
+    if (ret) {{
+        fprintf(stderr, "Failed to query GID\\n");
+        return -1;
+    }}
+"""
+```

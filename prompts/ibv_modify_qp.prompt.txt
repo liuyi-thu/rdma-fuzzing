@@ -1,0 +1,436 @@
+请补全以下函数对应的verb描述（用在verbs.py中）：
+
+- ibv_modify_qp
+
+请直接生成python代码，我之后会自行添加到verbs.py中。
+函数详细信息：
+Function Name: ibv_modify_qp
+Output:
+int ibv_modify_qp(struct ibv_qp * qp, struct ibv_qp_attr * attr, int attr_mask);
+struct ibv_qp {
+    struct ibv_context * context;
+    struct ibv_context {
+        struct ibv_device * device;
+        struct ibv_device {
+            struct _ibv_device_ops _ops;
+            struct _ibv_device_ops {
+                struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+                void (*)(struct ibv_context *) _dummy2;
+            };
+            enum ibv_node_type node_type;
+            enum ibv_node_type {
+                IBV_NODE_UNKNOWN = -1,
+                IBV_NODE_CA = 1,
+                IBV_NODE_SWITCH = 2,
+                IBV_NODE_ROUTER = 3,
+                IBV_NODE_RNIC = 4,
+                IBV_NODE_USNIC = 5,
+                IBV_NODE_USNIC_UDP = 6,
+                IBV_NODE_UNSPECIFIED = 7,
+            };
+            enum ibv_transport_type transport_type;
+            enum ibv_transport_type {
+                IBV_TRANSPORT_UNKNOWN = -1,
+                IBV_TRANSPORT_IB = 0,
+                IBV_TRANSPORT_IWARP = 1,
+                IBV_TRANSPORT_USNIC = 2,
+                IBV_TRANSPORT_USNIC_UDP = 3,
+                IBV_TRANSPORT_UNSPECIFIED = 4,
+            };
+            char[64] name;
+            char[64] dev_name;
+            char[256] dev_path;
+            char[256] ibdev_path;
+        };
+        struct ibv_context_ops ops;
+        struct ibv_context_ops {
+            int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+            int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+            void *(*)(void) _compat_alloc_pd;
+            void *(*)(void) _compat_dealloc_pd;
+            void *(*)(void) _compat_reg_mr;
+            void *(*)(void) _compat_rereg_mr;
+            void *(*)(void) _compat_dereg_mr;
+            struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+            int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+            int (*)(struct ibv_mw *) dealloc_mw;
+            void *(*)(void) _compat_create_cq;
+            int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+            int (*)(struct ibv_cq *, int) req_notify_cq;
+            void *(*)(void) _compat_cq_event;
+            void *(*)(void) _compat_resize_cq;
+            void *(*)(void) _compat_destroy_cq;
+            void *(*)(void) _compat_create_srq;
+            void *(*)(void) _compat_modify_srq;
+            void *(*)(void) _compat_query_srq;
+            void *(*)(void) _compat_destroy_srq;
+            int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+            void *(*)(void) _compat_create_qp;
+            void *(*)(void) _compat_query_qp;
+            void *(*)(void) _compat_modify_qp;
+            void *(*)(void) _compat_destroy_qp;
+            int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+            int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+            void *(*)(void) _compat_create_ah;
+            void *(*)(void) _compat_destroy_ah;
+            void *(*)(void) _compat_attach_mcast;
+            void *(*)(void) _compat_detach_mcast;
+            void *(*)(void) _compat_async_event;
+        };
+        int cmd_fd;
+        int async_fd;
+        int num_comp_vectors;
+        pthread_mutex_t mutex;
+        void * abi_compat;
+    };
+    void * qp_context;
+    struct ibv_pd * pd;
+    struct ibv_pd {
+        struct ibv_context * context;
+        uint32_t handle;
+    };
+    struct ibv_cq * send_cq;
+    struct ibv_cq {
+        struct ibv_context * context;
+        struct ibv_comp_channel * channel;
+        struct ibv_comp_channel {
+            struct ibv_context * context;
+            int fd;
+            int refcnt;
+        };
+        void * cq_context;
+        uint32_t handle;
+        int cqe;
+        pthread_mutex_t mutex;
+        pthread_cond_t cond;
+        uint32_t comp_events_completed;
+        uint32_t async_events_completed;
+    };
+    struct ibv_cq * recv_cq;
+    struct ibv_srq * srq;
+    struct ibv_srq {
+        struct ibv_context * context;
+        void * srq_context;
+        struct ibv_pd * pd;
+        uint32_t handle;
+        pthread_mutex_t mutex;
+        pthread_cond_t cond;
+        uint32_t events_completed;
+    };
+    uint32_t handle;
+    uint32_t qp_num;
+    enum ibv_qp_state state;
+    enum ibv_qp_state {
+        IBV_QPS_RESET = 0,
+        IBV_QPS_INIT = 1,
+        IBV_QPS_RTR = 2,
+        IBV_QPS_RTS = 3,
+        IBV_QPS_SQD = 4,
+        IBV_QPS_SQE = 5,
+        IBV_QPS_ERR = 6,
+        IBV_QPS_UNKNOWN = 7,
+    };
+    enum ibv_qp_type qp_type;
+    enum ibv_qp_type {
+        IBV_QPT_RC = 2,
+        IBV_QPT_UC = 3,
+        IBV_QPT_UD = 4,
+        IBV_QPT_RAW_PACKET = 8,
+        IBV_QPT_XRC_SEND = 9,
+        IBV_QPT_XRC_RECV = 10,
+        IBV_QPT_DRIVER = 255,
+    };
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    uint32_t events_completed;
+};
+struct ibv_qp_attr {
+    enum ibv_qp_state qp_state;
+    enum ibv_qp_state cur_qp_state;
+    enum ibv_mtu path_mtu;
+    enum ibv_mtu {
+        IBV_MTU_256 = 1,
+        IBV_MTU_512 = 2,
+        IBV_MTU_1024 = 3,
+        IBV_MTU_2048 = 4,
+        IBV_MTU_4096 = 5,
+    };
+    enum ibv_mig_state path_mig_state;
+    enum ibv_mig_state {
+        IBV_MIG_MIGRATED = 0,
+        IBV_MIG_REARM = 1,
+        IBV_MIG_ARMED = 2,
+    };
+    uint32_t qkey;
+    uint32_t rq_psn;
+    uint32_t sq_psn;
+    uint32_t dest_qp_num;
+    unsigned int qp_access_flags;
+    struct ibv_qp_cap cap;
+    struct ibv_qp_cap {
+        uint32_t max_send_wr;
+        uint32_t max_recv_wr;
+        uint32_t max_send_sge;
+        uint32_t max_recv_sge;
+        uint32_t max_inline_data;
+    };
+    struct ibv_ah_attr ah_attr;
+    struct ibv_ah_attr {
+        struct ibv_global_route grh;
+        struct ibv_global_route {
+            union ibv_gid dgid;
+            union ibv_gid {
+                uint8_t[16] raw;
+                struct (unnamed struct at verbs.h:66:2) global;
+            };
+            uint32_t flow_label;
+            uint8_t sgid_index;
+            uint8_t hop_limit;
+            uint8_t traffic_class;
+        };
+        uint16_t dlid;
+        uint8_t sl;
+        uint8_t src_path_bits;
+        uint8_t static_rate;
+        uint8_t is_global;
+        uint8_t port_num;
+    };
+    struct ibv_ah_attr alt_ah_attr;
+    uint16_t pkey_index;
+    uint16_t alt_pkey_index;
+    uint8_t en_sqd_async_notify;
+    uint8_t sq_draining;
+    uint8_t max_rd_atomic;
+    uint8_t max_dest_rd_atomic;
+    uint8_t min_rnr_timer;
+    uint8_t port_num;
+    uint8_t timeout;
+    uint8_t retry_cnt;
+    uint8_t rnr_retry;
+    uint8_t alt_port_num;
+    uint8_t alt_timeout;
+    uint32_t rate_limit;
+};
+
+函数相关文档：
+---
+date: 2006-10-31
+section: 3
+title: IBV_MODIFY_QP
+---
+
+# NAME
+
+ibv_modify_qp - modify the attributes of a queue pair (QP)
+
+# SYNOPSIS
+
+    #include <infiniband/verbs.h>
+
+    int ibv_modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr,
+     int attr_mask);
+
+# DESCRIPTION
+
+**ibv_modify_qp()** modifies the attributes of QP *qp* with the
+attributes in *attr* according to the mask *attr_mask.* The argument
+*attr* is an ibv_qp_attr struct, as defined in \<infiniband/verbs.h\>.
+
+    struct ibv_qp_attr {
+    enum ibv_qp_state       qp_state;               /* Move the QP to this state */
+    enum ibv_qp_state       cur_qp_state;           /* Assume this is the current QP state */
+    enum ibv_mtu            path_mtu;               /* Path MTU (valid only for RC/UC QPs) */
+    enum ibv_mig_state      path_mig_state;         /* Path migration state (valid if HCA supports APM) */
+    uint32_t                qkey;                   /* Q_Key for the QP (valid only for UD QPs) */
+    uint32_t                rq_psn;                 /* PSN for receive queue (valid only for RC/UC QPs) */
+    uint32_t                sq_psn;                 /* PSN for send queue */
+    uint32_t                dest_qp_num;            /* Destination QP number (valid only for RC/UC QPs) */
+    unsigned int            qp_access_flags;        /* Mask of enabled remote access operations (valid only for RC/UC QPs) */
+    struct ibv_qp_cap       cap;                    /* QP capabilities (valid if HCA supports QP resizing) */
+    struct ibv_ah_attr      ah_attr;                /* Primary path address vector (valid only for RC/UC QPs) */
+    struct ibv_ah_attr      alt_ah_attr;            /* Alternate path address vector (valid only for RC/UC QPs) */
+    uint16_t                pkey_index;             /* Primary P_Key index */
+    uint16_t                alt_pkey_index;         /* Alternate P_Key index */
+    uint8_t                 en_sqd_async_notify;    /* Enable SQD.drained async notification (Valid only if qp_state is SQD) */
+    uint8_t                 sq_draining;            /* Is the QP draining? Irrelevant for ibv_modify_qp() */
+    uint8_t                 max_rd_atomic;          /* Number of outstanding RDMA reads & atomic operations on the destination QP (valid only for RC QPs) */
+    uint8_t                 max_dest_rd_atomic;     /* Number of responder resources for handling incoming RDMA reads & atomic operations (valid only for RC QPs) */
+    uint8_t                 min_rnr_timer;          /* Minimum RNR NAK timer (valid only for RC QPs) */
+    uint8_t                 port_num;               /* Primary port number */
+    uint8_t                 timeout;                /* Local ack timeout for primary path (valid only for RC QPs) */
+    uint8_t                 retry_cnt;              /* Retry count (valid only for RC QPs) */
+    uint8_t                 rnr_retry;              /* RNR retry (valid only for RC QPs) */
+    uint8_t                 alt_port_num;           /* Alternate port number */
+    uint8_t                 alt_timeout;            /* Local ack timeout for alternate path (valid only for RC QPs) */
+    uint32_t                rate_limit;             /* Rate limit in kbps for packet pacing */
+    };
+
+For details on struct ibv_qp_cap see the description of
+**ibv_create_qp().** For details on struct ibv_ah_attr see the
+description of **ibv_create_ah().**
+
+The argument *attr_mask* specifies the QP attributes to be modified. The
+argument is either 0 or the bitwise OR of one or more of the following
+flags:
+
+**IBV_QP_STATE Modify qp_state**
+
+:   
+
+    **IBV_QP_CUR_STATE Set cur_qp_state**
+
+    :   
+
+        **IBV_QP_EN_SQD_ASYNC_NOTIFY Set en_sqd_async_notify**
+
+        :   
+
+            **IBV_QP_ACCESS_FLAGS Set qp_access_flags**
+
+            :   
+
+                **IBV_QP_PKEY_INDEX Set pkey_index**
+
+                :   
+
+                    **IBV_QP_PORT Set port_num**
+
+                    :   
+
+                        **IBV_QP_QKEY Set qkey**
+
+                        :   
+
+                            **IBV_QP_AV Set ah_attr**
+
+                            :   
+
+                                **IBV_QP_PATH_MTU Set path_mtu**
+
+                                :   
+
+                                    **IBV_QP_TIMEOUT Set timeout**
+
+                                    :   
+
+                                        **IBV_QP_RETRY_CNT Set retry_cnt**
+
+                                        :   
+
+                                            **IBV_QP_RNR_RETRY Set rnr_retry**
+
+                                            :   
+
+                                                **IBV_QP_RQ_PSN Set rq_psn**
+
+                                                :   
+
+                                                    **IBV_QP_MAX_QP_RD_ATOMIC Set max_rd_atomic**
+
+                                                    :   
+
+                                                        **IBV_QP_ALT_PATH Set the alternative path via: alt_ah_attr, alt_pkey_index, alt_port_num, alt_timeout**
+
+                                                        :   
+
+                                                            **IBV_QP_MIN_RNR_TIMER Set min_rnr_timer**
+
+                                                            :   
+
+                                                                **IBV_QP_SQ_PSN Set sq_psn**
+
+                                                                :   
+
+                                                                    **IBV_QP_MAX_DEST_RD_ATOMIC Set max_dest_rd_atomic**
+
+                                                                    :   
+
+                                                                        **IBV_QP_PATH_MIG_STATE Set path_mig_state**
+
+                                                                        :   
+
+                                                                            **IBV_QP_CAP Set cap**
+
+                                                                            :   
+
+                                                                                **IBV_QP_DEST_QPN Set dest_qp_num**
+
+                                                                                :   
+
+                                                                                    **IBV_QP_RATE_LIMIT Set rate_limit**
+
+                                                                                    :   # RETURN VALUE
+
+**ibv_modify_qp()** returns 0 on success, or the value of errno on
+failure (which indicates the failure reason).
+
+# NOTES
+
+If any of the modify attributes or the modify mask are invalid, none of
+the attributes will be modified (including the QP state).
+
+Not all devices support resizing QPs. To check if a device supports it,
+check if the **IBV_DEVICE_RESIZE_MAX_WR** bit is set in the device
+capabilities flags.
+
+Not all devices support alternate paths. To check if a device supports
+it, check if the **IBV_DEVICE_AUTO_PATH_MIG** bit is set in the device
+capabilities flags.
+
+The following tables indicate for each QP Transport Service Type, the
+minimum list of attributes that must be changed upon transitioning QP
+state from: Reset \--\> Init \--\> RTR \--\> RTS.
+
+    For QP Transport Service Type  IBV_QPT_UD:
+
+    Next state     Required attributes
+    ----------     ----------------------------------------
+    Init           IBV_QP_STATE, IBV_QP_PKEY_INDEX, IBV_QP_PORT, 
+                   IBV_QP_QKEY 
+    RTR            IBV_QP_STATE 
+    RTS            IBV_QP_STATE, IBV_QP_SQ_PSN 
+
+    For QP Transport Service Type  IBV_QPT_UC:
+
+    Next state     Required attributes
+    ----------     ----------------------------------------
+    Init           IBV_QP_STATE, IBV_QP_PKEY_INDEX, IBV_QP_PORT, 
+                   IBV_QP_ACCESS_FLAGS 
+    RTR            IBV_QP_STATE, IBV_QP_AV, IBV_QP_PATH_MTU, 
+                   IBV_QP_DEST_QPN, IBV_QP_RQ_PSN 
+    RTS            IBV_QP_STATE, IBV_QP_SQ_PSN 
+
+    For QP Transport Service Type  IBV_QPT_RC:
+
+    Next state     Required attributes
+    ----------     ----------------------------------------
+    Init           IBV_QP_STATE, IBV_QP_PKEY_INDEX, IBV_QP_PORT, 
+                   IBV_QP_ACCESS_FLAGS 
+    RTR            IBV_QP_STATE, IBV_QP_AV, IBV_QP_PATH_MTU, 
+                   IBV_QP_DEST_QPN, IBV_QP_RQ_PSN, 
+                   IBV_QP_MAX_DEST_RD_ATOMIC, IBV_QP_MIN_RNR_TIMER 
+    RTS            IBV_QP_STATE, IBV_QP_SQ_PSN, IBV_QP_MAX_QP_RD_ATOMIC, 
+                   IBV_QP_RETRY_CNT, IBV_QP_RNR_RETRY, IBV_QP_TIMEOUT 
+
+    For QP Transport Service Type  IBV_QPT_RAW_PACKET:
+
+    Next state     Required attributes
+    ----------     ----------------------------------------
+    Init           IBV_QP_STATE, IBV_QP_PORT
+    RTR            IBV_QP_STATE
+    RTS            IBV_QP_STATE
+
+If port flag IBV_QPF_GRH_REQUIRED is set then ah_attr and alt_ah_attr
+must be passed with definition of \'struct ibv_ah_attr { .is_global = 1;
+.grh = {\...}; }\'.
+
+# SEE ALSO
+
+**ibv_create_qp**(3), **ibv_destroy_qp**(3), **ibv_query_qp**(3),
+**ibv_create_ah**(3)
+
+# AUTHORS
+
+Dotan Barak \<dotanba@gmail.com\>
+
+请确保描述简洁明了，适合放在verbs.py中。输出中只需要含有python代码本身即可，无需含有说明性文字。

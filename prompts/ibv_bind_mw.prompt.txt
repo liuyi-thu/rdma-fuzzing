@@ -1,0 +1,284 @@
+请补全以下函数对应的verb描述（用在verbs.py中）：
+
+- ibv_bind_mw
+
+请直接生成python代码，我之后会自行添加到verbs.py中。
+函数详细信息：
+Function Name: ibv_bind_mw
+Output:
+int ibv_bind_mw(struct ibv_qp * qp, struct ibv_mw * mw, struct ibv_mw_bind * mw_bind);
+struct ibv_qp {
+    struct ibv_context * context;
+    struct ibv_context {
+        struct ibv_device * device;
+        struct ibv_device {
+            struct _ibv_device_ops _ops;
+            struct _ibv_device_ops {
+                struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+                void (*)(struct ibv_context *) _dummy2;
+            };
+            enum ibv_node_type node_type;
+            enum ibv_node_type {
+                IBV_NODE_UNKNOWN = -1,
+                IBV_NODE_CA = 1,
+                IBV_NODE_SWITCH = 2,
+                IBV_NODE_ROUTER = 3,
+                IBV_NODE_RNIC = 4,
+                IBV_NODE_USNIC = 5,
+                IBV_NODE_USNIC_UDP = 6,
+                IBV_NODE_UNSPECIFIED = 7,
+            };
+            enum ibv_transport_type transport_type;
+            enum ibv_transport_type {
+                IBV_TRANSPORT_UNKNOWN = -1,
+                IBV_TRANSPORT_IB = 0,
+                IBV_TRANSPORT_IWARP = 1,
+                IBV_TRANSPORT_USNIC = 2,
+                IBV_TRANSPORT_USNIC_UDP = 3,
+                IBV_TRANSPORT_UNSPECIFIED = 4,
+            };
+            char[64] name;
+            char[64] dev_name;
+            char[256] dev_path;
+            char[256] ibdev_path;
+        };
+        struct ibv_context_ops ops;
+        struct ibv_context_ops {
+            int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+            int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+            void *(*)(void) _compat_alloc_pd;
+            void *(*)(void) _compat_dealloc_pd;
+            void *(*)(void) _compat_reg_mr;
+            void *(*)(void) _compat_rereg_mr;
+            void *(*)(void) _compat_dereg_mr;
+            struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+            int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+            int (*)(struct ibv_mw *) dealloc_mw;
+            void *(*)(void) _compat_create_cq;
+            int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+            int (*)(struct ibv_cq *, int) req_notify_cq;
+            void *(*)(void) _compat_cq_event;
+            void *(*)(void) _compat_resize_cq;
+            void *(*)(void) _compat_destroy_cq;
+            void *(*)(void) _compat_create_srq;
+            void *(*)(void) _compat_modify_srq;
+            void *(*)(void) _compat_query_srq;
+            void *(*)(void) _compat_destroy_srq;
+            int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+            void *(*)(void) _compat_create_qp;
+            void *(*)(void) _compat_query_qp;
+            void *(*)(void) _compat_modify_qp;
+            void *(*)(void) _compat_destroy_qp;
+            int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+            int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+            void *(*)(void) _compat_create_ah;
+            void *(*)(void) _compat_destroy_ah;
+            void *(*)(void) _compat_attach_mcast;
+            void *(*)(void) _compat_detach_mcast;
+            void *(*)(void) _compat_async_event;
+        };
+        int cmd_fd;
+        int async_fd;
+        int num_comp_vectors;
+        pthread_mutex_t mutex;
+        void * abi_compat;
+    };
+    void * qp_context;
+    struct ibv_pd * pd;
+    struct ibv_pd {
+        struct ibv_context * context;
+        uint32_t handle;
+    };
+    struct ibv_cq * send_cq;
+    struct ibv_cq {
+        struct ibv_context * context;
+        struct ibv_comp_channel * channel;
+        struct ibv_comp_channel {
+            struct ibv_context * context;
+            int fd;
+            int refcnt;
+        };
+        void * cq_context;
+        uint32_t handle;
+        int cqe;
+        pthread_mutex_t mutex;
+        pthread_cond_t cond;
+        uint32_t comp_events_completed;
+        uint32_t async_events_completed;
+    };
+    struct ibv_cq * recv_cq;
+    struct ibv_srq * srq;
+    struct ibv_srq {
+        struct ibv_context * context;
+        void * srq_context;
+        struct ibv_pd * pd;
+        uint32_t handle;
+        pthread_mutex_t mutex;
+        pthread_cond_t cond;
+        uint32_t events_completed;
+    };
+    uint32_t handle;
+    uint32_t qp_num;
+    enum ibv_qp_state state;
+    enum ibv_qp_state {
+        IBV_QPS_RESET = 0,
+        IBV_QPS_INIT = 1,
+        IBV_QPS_RTR = 2,
+        IBV_QPS_RTS = 3,
+        IBV_QPS_SQD = 4,
+        IBV_QPS_SQE = 5,
+        IBV_QPS_ERR = 6,
+        IBV_QPS_UNKNOWN = 7,
+    };
+    enum ibv_qp_type qp_type;
+    enum ibv_qp_type {
+        IBV_QPT_RC = 2,
+        IBV_QPT_UC = 3,
+        IBV_QPT_UD = 4,
+        IBV_QPT_RAW_PACKET = 8,
+        IBV_QPT_XRC_SEND = 9,
+        IBV_QPT_XRC_RECV = 10,
+        IBV_QPT_DRIVER = 255,
+    };
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    uint32_t events_completed;
+};
+struct ibv_mw {
+    struct ibv_context * context;
+    struct ibv_pd * pd;
+    uint32_t rkey;
+    uint32_t handle;
+    enum ibv_mw_type type;
+    enum ibv_mw_type {
+        IBV_MW_TYPE_1 = 1,
+        IBV_MW_TYPE_2 = 2,
+    };
+};
+struct ibv_mw_bind {
+    uint64_t wr_id;
+    unsigned int send_flags;
+    struct ibv_mw_bind_info bind_info;
+    struct ibv_mw_bind_info {
+        struct ibv_mr * mr;
+        struct ibv_mr {
+            struct ibv_context * context;
+            struct ibv_pd * pd;
+            void * addr;
+            int length;
+            uint32_t handle;
+            uint32_t lkey;
+            uint32_t rkey;
+        };
+        uint64_t addr;
+        uint64_t length;
+        unsigned int mw_access_flags;
+    };
+};
+
+函数相关文档：
+---
+date: 2016-02-02
+section: 3
+title: IBV_BIND_MW
+---
+
+# NAME
+
+ibv_bind_mw - post a request to bind a type 1 memory window to a memory
+region
+
+# SYNOPSIS
+
+    #include <infiniband/verbs.h>
+
+    int ibv_bind_mw(struct ibv_qp *qp, struct ibv_mw *mw",
+     struct ibv_mw_bind *mw_bind");
+
+# DESCRIPTION
+
+**ibv_bind_mw()** posts to the queue pair *qp* a request to bind the
+memory window *mw* according to the details in *mw_bind.*
+
+The argument *mw_bind* is an ibv_mw_bind struct, as defined in
+\<infiniband/verbs.h\>.
+
+    struct ibv_mw_bind {
+    uint64_t                     wr_id;           /* User defined WR ID */
+    unsigned int                 send_flags;      /* Use ibv_send_flags */
+    struct ibv_mw_bind_info      bind_info;       /* MW bind information */
+    }
+
+    struct ibv_mw_bind_info {
+    struct ibv_mr                *mr;             /* The MR to bind the MW to */
+    uint64_t                     addr;            /* The address the MW should start at */
+    uint64_t                     length;          /* The length (in bytes) the MW should span */
+    unsigned int                 mw_access_flags; /* Access flags to the MW. Use ibv_access_flags */
+    };
+
+The QP Transport Service Type must be either UC, RC or XRC_SEND for bind
+operations.
+
+The attribute send_flags describes the properties of the WR. It is
+either 0 or the bitwise OR of one or more of the following flags:
+
+**IBV_SEND_FENCE Set the fence indicator.**
+
+:   
+
+    **IBV_SEND_SIGNALED Set the completion notification indicator. Relevant only if QP was created with sq_sig_all=0**
+
+    :   
+
+The mw_access_flags define the allowed access to the MW after the bind
+completes successfully. It is either 0 or the bitwise OR of one or more
+of the following flags:
+
+**IBV_ACCESS_REMOTE_WRITE Enable Remote Write Access. Requires local write access to the MR.**
+
+:   
+
+    **IBV_ACCESS_REMOTE_READ Enable Remote Read Access**
+
+    :   
+
+        **IBV_ACCESS_REMOTE_ATOMIC Enable Remote Atomic Operation Access (if supported). Requires local write access to the MR.**
+
+        :   
+
+            **IBV_ACCESS_ZERO_BASED If set, the address set on the \'remote_addr\' field on the WR will be an offset from the MW\'s start address.**
+
+            :   # RETURN VALUE
+
+**ibv_bind_mw()** returns 0 on success, or the value of errno on failure
+(which indicates the failure reason). In case of a success, the R_key of
+the memory window after the bind is returned in the mw_bind-\>mw-\>rkey
+field.
+
+# NOTES
+
+The bind does not complete when the function return - it is merely
+posted to the QP. The user should keep a copy of the old R_key, and fix
+the mw structure if the subsequent CQE for the bind operation indicates
+a failure. The user may safely send the R_key using a send request on
+the same QP, (based on QP ordering rules: a send after a bind request on
+the same QP are always ordered), but must not transfer it to the remote
+in any other manner before reading a successful CQE.
+
+Note that for type 2 MW, one should directly post bind WR to the QP,
+using ibv_post_send.
+
+# SEE ALSO
+
+**ibv_alloc_mw**(3), **ibv_post_send**(3), **ibv_poll_cq**(3)
+**ibv_reg_mr**(3),
+
+# AUTHORS
+
+Majd Dibbiny \<majd@mellanox.com\>
+
+:   
+
+Yishai Hadas \<yishaih@mellanox.com\>
+
+请确保描述简洁明了，适合放在verbs.py中。输出中只需要含有python代码本身即可，无需含有说明性文字。

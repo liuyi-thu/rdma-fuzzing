@@ -1,0 +1,24 @@
+```python
+class OpenDevice(VerbCall):
+    """Open an RDMA device and create a context for use."""
+    
+    def __init__(self):
+        pass
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext = None):
+        kv = _parse_kv(info)
+        return cls()  # No special initialization needed from trace
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        ib_ctx = ctx.ib_ctx
+        dev_list = ctx.dev_list  # Assuming correct allocation of device list
+        return f"""
+    /* ibv_open_device */
+    {ib_ctx} = ibv_open_device({dev_list}[0]);
+    if (!{ib_ctx}) {{
+        fprintf(stderr, "Failed to open device\\n");
+        return -1;
+    }}
+"""
+```

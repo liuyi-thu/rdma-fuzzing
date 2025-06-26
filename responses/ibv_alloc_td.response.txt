@@ -1,0 +1,26 @@
+```python
+class AllocTD(VerbCall):
+    """Represents ibv_alloc_td() verb call to allocate a thread domain object."""
+
+    def __init__(self, td_addr: str, ctx: CodeGenContext):
+        self.td_addr = td_addr
+        ctx.alloc_td(td_addr)
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        td = kv.get("td", "unknown")
+        return cls(td_addr=td, ctx=ctx)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        td_name = ctx.get_td(self.td_addr)
+        return f"""
+    /* ibv_alloc_td */
+    struct ibv_td_init_attr td_attr = {{0}};
+    {td_name} = ibv_alloc_td({ctx.ib_ctx}, &td_attr);
+    if (!{td_name}) {{
+        fprintf(stderr, "Failed to allocate thread domain\\n");
+        return -1;
+    }}
+"""
+```

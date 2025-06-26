@@ -1,0 +1,35 @@
+```python
+class OpenXRCD(VerbCall):
+    """Open an XRC Domain and associate it with a device context."""
+
+    def __init__(self, context: str, xrcd_init_attr: Dict[str, Union[int, str]]):
+        self.context = context
+        self.xrcd_init_attr = xrcd_init_attr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        context = kv.get("context", "ctx")
+        xrcd_init_attr = {
+            "comp_mask": int(kv.get("comp_mask", 0)),
+            "fd": int(kv.get("fd", -1)),
+            "oflags": int(kv.get("oflags", 0))
+        }
+        return cls(context=context, xrcd_init_attr=xrcd_init_attr)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        xrcd_name = f"xrcd{ctx.qp_cnt}"  # Example: xrcd0 for the first call
+        return f"""
+    /* ibv_open_xrcd */
+    struct ibv_xrcd_init_attr xrcd_init_attr = {{0}};
+    xrcd_init_attr.comp_mask = {self.xrcd_init_attr['comp_mask']};
+    xrcd_init_attr.fd = {self.xrcd_init_attr['fd']};
+    xrcd_init_attr.oflags = {self.xrcd_init_attr['oflags']};
+
+    struct ibv_xrcd *{xrcd_name} = ibv_open_xrcd({self.context}, &xrcd_init_attr);
+    if (!{xrcd_name}) {{
+        fprintf(stderr, "Failed to open XRCD\\n");
+        return -1;
+    }}
+"""
+```

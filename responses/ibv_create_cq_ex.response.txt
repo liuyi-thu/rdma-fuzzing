@@ -1,0 +1,58 @@
+Based on the various options provided, the choice for generating code for `ibv_create_cq_ex` depends on clarity, completeness, and flexibility. Here is an improved version that consolidates the best features of each option, focusing on code context handling, verbosity, and dynamic field allocation, ensuring correctness:
+
+```python
+class CreateCQEx(VerbCall):
+    def __init__(self, cq_addr: str, cqe: int, wc_flags: int, comp_vector: int = 0, channel: Optional[str] = None, comp_mask: int = 0, flags: int = 0, parent_domain: Optional[str] = None, ctx: CodeGenContext = None):
+        self.cq_addr = cq_addr
+        self.cqe = cqe
+        self.wc_flags = wc_flags
+        self.comp_vector = comp_vector
+        self.channel = channel or "NULL"
+        self.comp_mask = comp_mask
+        self.flags = flags
+        self.parent_domain = parent_domain or "NULL"
+        if ctx:
+            ctx.alloc_cq(cq_addr)  # Register the CQ address in the context
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        cq = kv.get("cq", "unknown")
+        cqe = int(kv.get("cqe", 1))
+        wc_flags = int(kv.get("wc_flags", 0))
+        comp_vector = int(kv.get("comp_vector", 0))
+        channel = kv.get("channel")
+        comp_mask = int(kv.get("comp_mask", 0))
+        flags = int(kv.get("flags", 0))
+        parent_domain = kv.get("parent_domain")
+        return cls(cq_addr=cq, cqe=cqe, wc_flags=wc_flags, comp_vector=comp_vector, channel=channel, comp_mask=comp_mask, flags=flags, parent_domain=parent_domain, ctx=ctx)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        cq_name = ctx.get_cq(self.cq_addr)
+        return f"""
+    /* ibv_create_cq_ex */
+    struct ibv_cq_init_attr_ex cq_attr_ex;
+    memset(&cq_attr_ex, 0, sizeof(cq_attr_ex));
+    cq_attr_ex.cqe = {self.cqe};
+    cq_attr_ex.cq_context = NULL; /* No specific context */
+    cq_attr_ex.channel = {self.channel};
+    cq_attr_ex.comp_vector = {self.comp_vector};
+    cq_attr_ex.wc_flags = {self.wc_flags};
+    cq_attr_ex.comp_mask = {self.comp_mask};
+    cq_attr_ex.flags = {self.flags};
+    cq_attr_ex.parent_domain = {self.parent_domain};
+
+    {cq_name} = ibv_create_cq_ex({ctx.ib_ctx}, &cq_attr_ex);
+    if (!{cq_name}) {{
+        fprintf(stderr, "Failed to create extended completion queue\\n");
+        return -1;
+    }}
+"""
+```
+
+### Key Points:
+1. **Contextual Integration**: The `__init__` method registers the CQ in the code generation context (`ctx`), ensuring consistent tracking.
+2. **Field Handling**: Uses defaults and provides options to include optional fields (`channel`, `parent_domain`) effectively.
+3. **Error Checking**: Includes error handling for failed CQ creation, which is crucial for robust code.
+
+This implementation provides flexibility for setting properties specific to `ibv_create_cq_ex` and ensures that it utilizes the context management system provided to handle resources efficiently.

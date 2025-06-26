@@ -1,0 +1,45 @@
+```python
+class CreateFlow(VerbCall):
+    def __init__(self, qp_addr: str, flow_attr: dict):
+        self.qp_addr = qp_addr
+        self.flow_attr = flow_attr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        qp = kv.get("qp", "unknown")
+        # Convert flow attributes from the trace into a dict
+        flow_attr = {
+            "comp_mask": kv.get("comp_mask", "0"),
+            "type": kv.get("type", "IBV_FLOW_ATTR_NORMAL"),
+            "size": kv.get("size", "sizeof(flow_attr)"),
+            "priority": kv.get("priority", "0"),
+            "num_of_specs": kv.get("num_of_specs", "0"),
+            "port": kv.get("port", "1"),
+            "flags": kv.get("flags", "0"),
+            # Additional specs should be parsed as needed
+        }
+        ctx.use_qp(qp)  # Ensure the QP is used before generating code
+        return cls(qp_addr=qp, flow_attr=flow_attr)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        qp_name = ctx.get_qp(self.qp_addr)
+        attr_name = f"flow_attr_{qp_name.replace('qp[', '').replace(']', '')}"
+        flow_attr_lines = "\n    ".join(
+            f".{key} = {value}," for key, value in self.flow_attr.items()
+        )
+        return f"""
+    /* ibv_create_flow */
+    struct raw_eth_flow_attr {attr_name} = {{
+        .attr = {{
+            {flow_attr_lines}
+        }},
+        /* Add additional flow specs here as needed */
+    }};
+    struct ibv_flow *flow = ibv_create_flow({qp_name}, (struct ibv_flow_attr *)&{attr_name});
+    if (!flow) {{
+        fprintf(stderr, "Failed to create flow\\n");
+        return -1;
+    }}
+"""
+```

@@ -1,0 +1,44 @@
+Based on your requirements and the verb generation examples provided, here's the best implementation for the `ibv_flow_action_esp` verb:
+
+```python
+class FlowActionESP(VerbCall):
+    def __init__(self, ctx: str = "ctx", esp_params: Dict[str, any] = {}):
+        self.ctx = ctx
+        self.esp_params = esp_params
+    
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext = None):
+        kv = _parse_kv(info)
+        esp_params = {
+            "esp_attr": kv.get("esp_attr"),
+            "keymat_proto": kv.get("keymat_proto"),
+            "keymat_len": kv.get("keymat_len"),
+            "keymat_ptr": kv.get("keymat_ptr"),
+            "replay_proto": kv.get("replay_proto"),
+            "replay_len": kv.get("replay_len"),
+            "replay_ptr": kv.get("replay_ptr"),
+            "esp_encap": kv.get("esp_encap"),
+            "comp_mask": kv.get("comp_mask"),
+            "esn": kv.get("esn")
+        }
+        return cls(ctx=ctx.ib_ctx, esp_params=esp_params)
+    
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        esp_var = "esp_params"
+        esp_lines = "\n    ".join(
+            f"{esp_var}.{key} = {value};" for key, value in self.esp_params.items()
+        )
+        
+        return f"""
+    struct ibv_flow_action_esp {esp_var};
+    memset(&{esp_var}, 0, sizeof({esp_var}));
+    {esp_lines}
+    struct ibv_flow_action *esp_action = ibv_create_flow_action_esp({self.ctx}, &{esp_var});
+    if (!esp_action) {{
+        fprintf(stderr, "Failed to create ESP flow action\\n");
+        return -1;
+    }}
+"""
+```
+
+This concise yet flexible implementation ensures that only required ESP parameters are added and makes extensive use of dictionary manipulation to maintain brevity and clarity within the class methods.

@@ -1,0 +1,152 @@
+请补全以下函数对应的verb描述（用在verbs.py中）：
+
+- ibv_import_dm
+
+请直接生成python代码，我之后会自行添加到verbs.py中。
+函数详细信息：
+Function Name: ibv_import_dm
+Output:
+struct ibv_dm * ibv_import_dm(struct ibv_context * context, uint32_t dm_handle);
+struct ibv_dm {
+    struct ibv_context * context;
+    struct ibv_context {
+        struct ibv_device * device;
+        struct ibv_device {
+            struct _ibv_device_ops _ops;
+            struct _ibv_device_ops {
+                struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+                void (*)(struct ibv_context *) _dummy2;
+            };
+            enum ibv_node_type node_type;
+            enum ibv_node_type {
+                IBV_NODE_UNKNOWN = -1,
+                IBV_NODE_CA = 1,
+                IBV_NODE_SWITCH = 2,
+                IBV_NODE_ROUTER = 3,
+                IBV_NODE_RNIC = 4,
+                IBV_NODE_USNIC = 5,
+                IBV_NODE_USNIC_UDP = 6,
+                IBV_NODE_UNSPECIFIED = 7,
+            };
+            enum ibv_transport_type transport_type;
+            enum ibv_transport_type {
+                IBV_TRANSPORT_UNKNOWN = -1,
+                IBV_TRANSPORT_IB = 0,
+                IBV_TRANSPORT_IWARP = 1,
+                IBV_TRANSPORT_USNIC = 2,
+                IBV_TRANSPORT_USNIC_UDP = 3,
+                IBV_TRANSPORT_UNSPECIFIED = 4,
+            };
+            char[64] name;
+            char[64] dev_name;
+            char[256] dev_path;
+            char[256] ibdev_path;
+        };
+        struct ibv_context_ops ops;
+        struct ibv_context_ops {
+            int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+            int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+            void *(*)(void) _compat_alloc_pd;
+            void *(*)(void) _compat_dealloc_pd;
+            void *(*)(void) _compat_reg_mr;
+            void *(*)(void) _compat_rereg_mr;
+            void *(*)(void) _compat_dereg_mr;
+            struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+            int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+            int (*)(struct ibv_mw *) dealloc_mw;
+            void *(*)(void) _compat_create_cq;
+            int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+            int (*)(struct ibv_cq *, int) req_notify_cq;
+            void *(*)(void) _compat_cq_event;
+            void *(*)(void) _compat_resize_cq;
+            void *(*)(void) _compat_destroy_cq;
+            void *(*)(void) _compat_create_srq;
+            void *(*)(void) _compat_modify_srq;
+            void *(*)(void) _compat_query_srq;
+            void *(*)(void) _compat_destroy_srq;
+            int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+            void *(*)(void) _compat_create_qp;
+            void *(*)(void) _compat_query_qp;
+            void *(*)(void) _compat_modify_qp;
+            void *(*)(void) _compat_destroy_qp;
+            int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+            int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+            void *(*)(void) _compat_create_ah;
+            void *(*)(void) _compat_destroy_ah;
+            void *(*)(void) _compat_attach_mcast;
+            void *(*)(void) _compat_detach_mcast;
+            void *(*)(void) _compat_async_event;
+        };
+        int cmd_fd;
+        int async_fd;
+        int num_comp_vectors;
+        pthread_mutex_t mutex;
+        void * abi_compat;
+    };
+    int (*)(struct ibv_dm *, uint64_t, const void *, int) memcpy_to_dm;
+    int (*)(void *, struct ibv_dm *, uint64_t, int) memcpy_from_dm;
+    uint32_t comp_mask;
+    uint32_t handle;
+};
+
+函数相关文档：
+---
+date: 2021-1-17
+footer: libibverbs
+header: "Libibverbs Programmer's Manual"
+layout: page
+license: 'Licensed under the OpenIB.org BSD license (FreeBSD Variant) - See COPYING.md'
+section: 3
+title: ibv_import_dm ibv_unimport_dm
+---
+
+# NAME
+
+ibv_import_dm - import an DM from a given ibv_context
+
+ibv_unimport_dm - unimport an DM
+
+# SYNOPSIS
+
+```c
+#include <infiniband/verbs.h>
+
+struct ibv_dm *ibv_import_dm(struct ibv_context *context, uint32_t dm_handle);
+void ibv_unimport_dm(struct ibv_dm *dm)
+
+```
+
+
+# DESCRIPTION
+
+**ibv_import_dm()** returns a Device memory (DM) that is associated with the given
+*dm_handle* in the RDMA context.
+
+The input *dm_handle* value must be a valid kernel handle for an DM object in the assosicated RDMA context.
+It can be achieved from the original DM by getting its ibv_dm->handle member value.
+
+**ibv_unimport_dm()** un import the DM.
+Once the DM usage has been ended ibv_free_dm() or ibv_unimport_dm() should be called.
+The first one will go to the kernel to destroy the object once the second one way cleanup what
+ever is needed/opposite of the import without calling the kernel.
+
+This is the responsibility of the application to coordinate between all ibv_context(s) that use this DM.
+Once destroy is done no other process can touch the object except for unimport. All users of the context must
+collaborate to ensure this.
+
+# RETURN VALUE
+
+**ibv_import_dm()** returns a pointer to the allocated DM, or NULL if the request fails and errno is set.
+
+# NOTES
+
+# SEE ALSO
+
+**ibv_alloc_dm**(3),
+**ibv_free_dm**(3),
+
+# AUTHOR
+
+Maor Gottlieb <maorg@nvidia.com>
+
+请确保描述简洁明了，适合放在verbs.py中。输出中只需要含有python代码本身即可，无需含有说明性文字。

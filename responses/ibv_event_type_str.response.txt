@@ -1,0 +1,22 @@
+```python
+class EventTypeStr(VerbCall):
+    """Generate code for ibv_event_type_str.
+
+    Returns a string describing the enum value for the given event type."""
+
+    def __init__(self, event: str):
+        self.event = event
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        event = kv.get("event", "IBV_EVENT_COMM_EST")
+        return cls(event=event)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        return f"""
+    /* ibv_event_type_str */
+    const char *event_desc = ibv_event_type_str({self.event});
+    fprintf(stdout, "Event description: %s\\n", event_desc);
+"""
+```

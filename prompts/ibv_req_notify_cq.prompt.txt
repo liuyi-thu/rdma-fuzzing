@@ -1,0 +1,158 @@
+请补全以下函数对应的verb描述（用在verbs.py中）：
+
+- ibv_req_notify_cq
+
+请直接生成python代码，我之后会自行添加到verbs.py中。
+函数详细信息：
+Function Name: ibv_req_notify_cq
+Output:
+int ibv_req_notify_cq(struct ibv_cq * cq, int solicited_only);
+struct ibv_cq {
+    struct ibv_context * context;
+    struct ibv_context {
+        struct ibv_device * device;
+        struct ibv_device {
+            struct _ibv_device_ops _ops;
+            struct _ibv_device_ops {
+                struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+                void (*)(struct ibv_context *) _dummy2;
+            };
+            enum ibv_node_type node_type;
+            enum ibv_node_type {
+                IBV_NODE_UNKNOWN = -1,
+                IBV_NODE_CA = 1,
+                IBV_NODE_SWITCH = 2,
+                IBV_NODE_ROUTER = 3,
+                IBV_NODE_RNIC = 4,
+                IBV_NODE_USNIC = 5,
+                IBV_NODE_USNIC_UDP = 6,
+                IBV_NODE_UNSPECIFIED = 7,
+            };
+            enum ibv_transport_type transport_type;
+            enum ibv_transport_type {
+                IBV_TRANSPORT_UNKNOWN = -1,
+                IBV_TRANSPORT_IB = 0,
+                IBV_TRANSPORT_IWARP = 1,
+                IBV_TRANSPORT_USNIC = 2,
+                IBV_TRANSPORT_USNIC_UDP = 3,
+                IBV_TRANSPORT_UNSPECIFIED = 4,
+            };
+            char[64] name;
+            char[64] dev_name;
+            char[256] dev_path;
+            char[256] ibdev_path;
+        };
+        struct ibv_context_ops ops;
+        struct ibv_context_ops {
+            int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+            int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+            void *(*)(void) _compat_alloc_pd;
+            void *(*)(void) _compat_dealloc_pd;
+            void *(*)(void) _compat_reg_mr;
+            void *(*)(void) _compat_rereg_mr;
+            void *(*)(void) _compat_dereg_mr;
+            struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+            int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+            int (*)(struct ibv_mw *) dealloc_mw;
+            void *(*)(void) _compat_create_cq;
+            int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+            int (*)(struct ibv_cq *, int) req_notify_cq;
+            void *(*)(void) _compat_cq_event;
+            void *(*)(void) _compat_resize_cq;
+            void *(*)(void) _compat_destroy_cq;
+            void *(*)(void) _compat_create_srq;
+            void *(*)(void) _compat_modify_srq;
+            void *(*)(void) _compat_query_srq;
+            void *(*)(void) _compat_destroy_srq;
+            int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+            void *(*)(void) _compat_create_qp;
+            void *(*)(void) _compat_query_qp;
+            void *(*)(void) _compat_modify_qp;
+            void *(*)(void) _compat_destroy_qp;
+            int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+            int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+            void *(*)(void) _compat_create_ah;
+            void *(*)(void) _compat_destroy_ah;
+            void *(*)(void) _compat_attach_mcast;
+            void *(*)(void) _compat_detach_mcast;
+            void *(*)(void) _compat_async_event;
+        };
+        int cmd_fd;
+        int async_fd;
+        int num_comp_vectors;
+        pthread_mutex_t mutex;
+        void * abi_compat;
+    };
+    struct ibv_comp_channel * channel;
+    struct ibv_comp_channel {
+        struct ibv_context * context;
+        int fd;
+        int refcnt;
+    };
+    void * cq_context;
+    uint32_t handle;
+    int cqe;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    uint32_t comp_events_completed;
+    uint32_t async_events_completed;
+};
+
+函数相关文档：
+---
+date: 2006-10-31
+footer: libibverbs
+header: "Libibverbs Programmer's Manual"
+layout: page
+license: 'Licensed under the OpenIB.org BSD license (FreeBSD Variant) - See COPYING.md'
+section: 3
+title: IBV_REQ_NOTIFY_CQ
+---
+
+# NAME
+
+ibv_req_notify_cq - request completion notification on a completion queue (CQ)
+
+# SYNOPSIS
+
+```c
+#include <infiniband/verbs.h>
+
+int ibv_req_notify_cq(struct ibv_cq *cq, int solicited_only);
+```
+
+# DESCRIPTION
+
+**ibv_req_notify_cq()** requests a completion notification on the completion
+queue (CQ) *cq*.
+
+Upon the addition of a new CQ entry (CQE) to *cq*, a completion event will be
+added to the completion channel associated with the CQ. If the argument
+*solicited_only* is zero, a completion event is generated for any new CQE.  If
+*solicited_only* is non-zero, an event is only generated for a new CQE with
+that is considered "solicited."  A CQE is solicited if it is a receive
+completion for a message with the Solicited Event header bit set, or if the
+status is not successful.  All other successful receive completions, or any
+successful send completion is unsolicited.
+
+# RETURN VALUE
+
+**ibv_req_notify_cq()** returns 0 on success, or the value of errno on failure
+(which indicates the failure reason).
+
+# NOTES
+
+The request for notification is "one shot."  Only one completion event will be
+generated for each call to **ibv_req_notify_cq()**.
+
+# SEE ALSO
+
+**ibv_create_comp_channel**(3),
+**ibv_create_cq**(3),
+**ibv_get_cq_event**(3)
+
+# AUTHOR
+
+Dotan Barak <dotanba@gmail.com>
+
+请确保描述简洁明了，适合放在verbs.py中。输出中只需要含有python代码本身即可，无需含有说明性文字。

@@ -1,0 +1,514 @@
+请补全以下函数对应的verb描述（用在verbs.py中）：
+
+- ibv_wr_complete
+
+请直接生成python代码，我之后会自行添加到verbs.py中。
+函数详细信息：
+Function Name: ibv_wr_complete
+Output:
+int ibv_wr_complete(struct ibv_qp_ex * qp);
+struct ibv_qp_ex {
+    struct ibv_qp qp_base;
+    struct ibv_qp {
+        struct ibv_context * context;
+        struct ibv_context {
+            struct ibv_device * device;
+            struct ibv_device {
+                struct _ibv_device_ops _ops;
+                struct _ibv_device_ops {
+                    struct ibv_context *(*)(struct ibv_device *, int) _dummy1;
+                    void (*)(struct ibv_context *) _dummy2;
+                };
+                enum ibv_node_type node_type;
+                enum ibv_node_type {
+                    IBV_NODE_UNKNOWN = -1,
+                    IBV_NODE_CA = 1,
+                    IBV_NODE_SWITCH = 2,
+                    IBV_NODE_ROUTER = 3,
+                    IBV_NODE_RNIC = 4,
+                    IBV_NODE_USNIC = 5,
+                    IBV_NODE_USNIC_UDP = 6,
+                    IBV_NODE_UNSPECIFIED = 7,
+                };
+                enum ibv_transport_type transport_type;
+                enum ibv_transport_type {
+                    IBV_TRANSPORT_UNKNOWN = -1,
+                    IBV_TRANSPORT_IB = 0,
+                    IBV_TRANSPORT_IWARP = 1,
+                    IBV_TRANSPORT_USNIC = 2,
+                    IBV_TRANSPORT_USNIC_UDP = 3,
+                    IBV_TRANSPORT_UNSPECIFIED = 4,
+                };
+                char[64] name;
+                char[64] dev_name;
+                char[256] dev_path;
+                char[256] ibdev_path;
+            };
+            struct ibv_context_ops ops;
+            struct ibv_context_ops {
+                int (*)(struct ibv_context *, struct ibv_device_attr *) _compat_query_device;
+                int (*)(struct ibv_context *, uint8_t, struct _compat_ibv_port_attr *) _compat_query_port;
+                void *(*)(void) _compat_alloc_pd;
+                void *(*)(void) _compat_dealloc_pd;
+                void *(*)(void) _compat_reg_mr;
+                void *(*)(void) _compat_rereg_mr;
+                void *(*)(void) _compat_dereg_mr;
+                struct ibv_mw *(*)(struct ibv_pd *, enum ibv_mw_type) alloc_mw;
+                int (*)(struct ibv_qp *, struct ibv_mw *, struct ibv_mw_bind *) bind_mw;
+                int (*)(struct ibv_mw *) dealloc_mw;
+                void *(*)(void) _compat_create_cq;
+                int (*)(struct ibv_cq *, int, struct ibv_wc *) poll_cq;
+                int (*)(struct ibv_cq *, int) req_notify_cq;
+                void *(*)(void) _compat_cq_event;
+                void *(*)(void) _compat_resize_cq;
+                void *(*)(void) _compat_destroy_cq;
+                void *(*)(void) _compat_create_srq;
+                void *(*)(void) _compat_modify_srq;
+                void *(*)(void) _compat_query_srq;
+                void *(*)(void) _compat_destroy_srq;
+                int (*)(struct ibv_srq *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_srq_recv;
+                void *(*)(void) _compat_create_qp;
+                void *(*)(void) _compat_query_qp;
+                void *(*)(void) _compat_modify_qp;
+                void *(*)(void) _compat_destroy_qp;
+                int (*)(struct ibv_qp *, struct ibv_send_wr *, struct ibv_send_wr **) post_send;
+                int (*)(struct ibv_qp *, struct ibv_recv_wr *, struct ibv_recv_wr **) post_recv;
+                void *(*)(void) _compat_create_ah;
+                void *(*)(void) _compat_destroy_ah;
+                void *(*)(void) _compat_attach_mcast;
+                void *(*)(void) _compat_detach_mcast;
+                void *(*)(void) _compat_async_event;
+            };
+            int cmd_fd;
+            int async_fd;
+            int num_comp_vectors;
+            pthread_mutex_t mutex;
+            void * abi_compat;
+        };
+        void * qp_context;
+        struct ibv_pd * pd;
+        struct ibv_pd {
+            struct ibv_context * context;
+            uint32_t handle;
+        };
+        struct ibv_cq * send_cq;
+        struct ibv_cq {
+            struct ibv_context * context;
+            struct ibv_comp_channel * channel;
+            struct ibv_comp_channel {
+                struct ibv_context * context;
+                int fd;
+                int refcnt;
+            };
+            void * cq_context;
+            uint32_t handle;
+            int cqe;
+            pthread_mutex_t mutex;
+            pthread_cond_t cond;
+            uint32_t comp_events_completed;
+            uint32_t async_events_completed;
+        };
+        struct ibv_cq * recv_cq;
+        struct ibv_srq * srq;
+        struct ibv_srq {
+            struct ibv_context * context;
+            void * srq_context;
+            struct ibv_pd * pd;
+            uint32_t handle;
+            pthread_mutex_t mutex;
+            pthread_cond_t cond;
+            uint32_t events_completed;
+        };
+        uint32_t handle;
+        uint32_t qp_num;
+        enum ibv_qp_state state;
+        enum ibv_qp_state {
+            IBV_QPS_RESET = 0,
+            IBV_QPS_INIT = 1,
+            IBV_QPS_RTR = 2,
+            IBV_QPS_RTS = 3,
+            IBV_QPS_SQD = 4,
+            IBV_QPS_SQE = 5,
+            IBV_QPS_ERR = 6,
+            IBV_QPS_UNKNOWN = 7,
+        };
+        enum ibv_qp_type qp_type;
+        enum ibv_qp_type {
+            IBV_QPT_RC = 2,
+            IBV_QPT_UC = 3,
+            IBV_QPT_UD = 4,
+            IBV_QPT_RAW_PACKET = 8,
+            IBV_QPT_XRC_SEND = 9,
+            IBV_QPT_XRC_RECV = 10,
+            IBV_QPT_DRIVER = 255,
+        };
+        pthread_mutex_t mutex;
+        pthread_cond_t cond;
+        uint32_t events_completed;
+    };
+    uint64_t comp_mask;
+    uint64_t wr_id;
+    unsigned int wr_flags;
+    void (*)(struct ibv_qp_ex *, uint32_t, uint64_t, uint64_t, uint64_t) wr_atomic_cmp_swp;
+    void (*)(struct ibv_qp_ex *, uint32_t, uint64_t, uint64_t) wr_atomic_fetch_add;
+    void (*)(struct ibv_qp_ex *, struct ibv_mw *, uint32_t, const struct ibv_mw_bind_info *) wr_bind_mw;
+    void (*)(struct ibv_qp_ex *, uint32_t) wr_local_inv;
+    void (*)(struct ibv_qp_ex *, uint32_t, uint64_t) wr_rdma_read;
+    void (*)(struct ibv_qp_ex *, uint32_t, uint64_t) wr_rdma_write;
+    void (*)(struct ibv_qp_ex *, uint32_t, uint64_t, __be32) wr_rdma_write_imm;
+    void (*)(struct ibv_qp_ex *) wr_send;
+    void (*)(struct ibv_qp_ex *, __be32) wr_send_imm;
+    void (*)(struct ibv_qp_ex *, uint32_t) wr_send_inv;
+    void (*)(struct ibv_qp_ex *, void *, uint16_t, uint16_t) wr_send_tso;
+    void (*)(struct ibv_qp_ex *, struct ibv_ah *, uint32_t, uint32_t) wr_set_ud_addr;
+    void (*)(struct ibv_qp_ex *, uint32_t) wr_set_xrc_srqn;
+    void (*)(struct ibv_qp_ex *, void *, int) wr_set_inline_data;
+    void (*)(struct ibv_qp_ex *, int, const struct ibv_data_buf *) wr_set_inline_data_list;
+    void (*)(struct ibv_qp_ex *, uint32_t, uint64_t, uint32_t) wr_set_sge;
+    void (*)(struct ibv_qp_ex *, int, const struct ibv_sge *) wr_set_sge_list;
+    void (*)(struct ibv_qp_ex *) wr_start;
+    int (*)(struct ibv_qp_ex *) wr_complete;
+    void (*)(struct ibv_qp_ex *) wr_abort;
+    void (*)(struct ibv_qp_ex *, uint32_t, uint64_t, const void *) wr_atomic_write;
+    void (*)(struct ibv_qp_ex *, uint32_t, uint64_t, int, uint8_t, uint8_t) wr_flush;
+};
+
+函数相关文档：
+---
+date: 2018-11-27
+footer: libibverbs
+header: "Libibverbs Programmer's Manual"
+layout: page
+license: 'Licensed under the OpenIB.org BSD license (FreeBSD Variant) - See COPYING.md'
+section: 3
+title: IBV_WR API
+---
+
+# NAME
+
+ibv_wr_abort, ibv_wr_complete, ibv_wr_start - Manage regions allowed to post work
+
+ibv_wr_atomic_cmp_swp, ibv_wr_atomic_fetch_add - Post remote atomic operation work requests
+
+ibv_wr_bind_mw, ibv_wr_local_inv - Post work requests for memory windows
+
+ibv_wr_rdma_read, ibv_wr_rdma_write, ibv_wr_rdma_write_imm, ibv_wr_flush - Post RDMA work requests
+
+ibv_wr_send, ibv_wr_send_imm, ibv_wr_send_inv - Post send work requests
+
+ibv_wr_send_tso - Post segmentation offload work requests
+
+ibv_wr_set_inline_data, ibv_wr_set_inline_data_list - Attach inline data to the last work request
+
+ibv_wr_set_sge, ibv_wr_set_sge_list - Attach data to the last work request
+
+ibv_wr_set_ud_addr - Attach UD addressing info to the last work request
+
+ibv_wr_set_xrc_srqn - Attach an XRC SRQN to the last work request
+
+# SYNOPSIS
+
+```c
+#include <infiniband/verbs.h>
+
+void ibv_wr_abort(struct ibv_qp_ex *qp);
+int ibv_wr_complete(struct ibv_qp_ex *qp);
+void ibv_wr_start(struct ibv_qp_ex *qp);
+
+void ibv_wr_atomic_cmp_swp(struct ibv_qp_ex *qp, uint32_t rkey,
+                           uint64_t remote_addr, uint64_t compare,
+                           uint64_t swap);
+void ibv_wr_atomic_fetch_add(struct ibv_qp_ex *qp, uint32_t rkey,
+                             uint64_t remote_addr, uint64_t add);
+
+void ibv_wr_bind_mw(struct ibv_qp_ex *qp, struct ibv_mw *mw, uint32_t rkey,
+                    const struct ibv_mw_bind_info *bind_info);
+void ibv_wr_local_inv(struct ibv_qp_ex *qp, uint32_t invalidate_rkey);
+
+void ibv_wr_rdma_read(struct ibv_qp_ex *qp, uint32_t rkey,
+                      uint64_t remote_addr);
+void ibv_wr_rdma_write(struct ibv_qp_ex *qp, uint32_t rkey,
+                       uint64_t remote_addr);
+void ibv_wr_rdma_write_imm(struct ibv_qp_ex *qp, uint32_t rkey,
+                           uint64_t remote_addr, __be32 imm_data);
+
+void ibv_wr_send(struct ibv_qp_ex *qp);
+void ibv_wr_send_imm(struct ibv_qp_ex *qp, __be32 imm_data);
+void ibv_wr_send_inv(struct ibv_qp_ex *qp, uint32_t invalidate_rkey);
+void ibv_wr_send_tso(struct ibv_qp_ex *qp, void *hdr, uint16_t hdr_sz,
+                     uint16_t mss);
+
+void ibv_wr_set_inline_data(struct ibv_qp_ex *qp, void *addr, size_t length);
+void ibv_wr_set_inline_data_list(struct ibv_qp_ex *qp, size_t num_buf,
+                                 const struct ibv_data_buf *buf_list);
+void ibv_wr_set_sge(struct ibv_qp_ex *qp, uint32_t lkey, uint64_t addr,
+                    uint32_t length);
+void ibv_wr_set_sge_list(struct ibv_qp_ex *qp, size_t num_sge,
+                         const struct ibv_sge *sg_list);
+
+void ibv_wr_set_ud_addr(struct ibv_qp_ex *qp, struct ibv_ah *ah,
+                        uint32_t remote_qpn, uint32_t remote_qkey);
+void ibv_wr_set_xrc_srqn(struct ibv_qp_ex *qp, uint32_t remote_srqn);
+void ibv_wr_flush(struct ibv_qp_ex *qp, uint32_t rkey, uint64_t remote_addr,
+                  size_t len, uint8_t type, uint8_t level);
+```
+
+# DESCRIPTION
+
+The verbs work request API (ibv_wr_\*) allows efficient posting of work to a send
+queue using function calls instead of the struct based *ibv_post_send()*
+scheme. This approach is designed to minimize CPU branching and locking during
+the posting process.
+
+This API is intended to be used to access additional functionality beyond
+what is provided by *ibv_post_send()*.
+
+WRs batches of *ibv_post_send()* and this API WRs batches can interleave
+together just if they are not posted within the critical region of each other.
+(A critical region in this API formed by *ibv_wr_start()* and
+*ibv_wr_complete()*/*ibv_wr_abort()*)
+
+# USAGE
+
+To use these APIs the QP must be created using ibv_create_qp_ex() which allows
+setting the **IBV_QP_INIT_ATTR_SEND_OPS_FLAGS** in *comp_mask*. The
+*send_ops_flags* should be set to the OR of the work request types that will
+be posted to the QP.
+
+If the QP does not support all the requested work request types then QP
+creation will fail.
+
+Posting work requests to the QP is done within the critical region formed by
+*ibv_wr_start()* and *ibv_wr_complete()*/*ibv_wr_abort()* (see CONCURRENCY below).
+
+Each work request is created by calling a WR builder function (see the table
+column WR builder below) to start creating the work request, followed by
+allowed/required setter functions described below.
+
+The WR builder and setter combination can be called multiple times to
+efficiently post multiple work requests within a single critical region.
+
+Each WR builder will use the *wr_id* member of *struct ibv_qp_ex* to set the
+value to be returned in the completion. Some operations will also use the
+*wr_flags* member to influence operation (see Flags below). These values
+should be set before invoking the WR builder function.
+
+For example a simple send could be formed as follows:
+
+```C
+qpx->wr_id = 1;
+ibv_wr_send(qpx);
+ibv_wr_set_sge(qpx, lkey, &data, sizeof(data));
+```
+
+The section WORK REQUESTS describes the various WR builders and setters in
+details.
+
+Posting work is completed by calling *ibv_wr_complete()* or *ibv_wr_abort()*.
+No work is executed to the queue until *ibv_wr_complete()* returns
+success. *ibv_wr_abort()* will discard all work prepared since *ibv_wr_start()*.
+
+# WORK REQUESTS
+
+Many of the operations match the opcodes available for *ibv_post_send()*. Each
+operation has a WR builder function, a list of allowed setters, and a flag bit
+to request the operation with *send_ops_flags* in *struct
+ibv_qp_init_attr_ex* (see the EXAMPLE below).
+
+| Operation            | WR builder                | QP Type Supported                | setters  |
+|----------------------|---------------------------|----------------------------------|----------|
+| ATOMIC_CMP_AND_SWP   | ibv_wr_atomic_cmp_swp()   | RC, XRC_SEND                     | DATA, QP |
+| ATOMIC_FETCH_AND_ADD | ibv_wr_atomic_fetch_add() | RC, XRC_SEND                     | DATA, QP |
+| BIND_MW              | ibv_wr_bind_mw()          | UC, RC, XRC_SEND                 | NONE     |
+| LOCAL_INV            | ibv_wr_local_inv()        | UC, RC, XRC_SEND                 | NONE     |
+| RDMA_READ            | ibv_wr_rdma_read()        | RC, XRC_SEND                     | DATA, QP |
+| RDMA_WRITE           | ibv_wr_rdma_write()       | UC, RC, XRC_SEND                 | DATA, QP |
+| FLUSH                | ibv_wr_flush()            | RC, RD, XRC_SEND                 | DATA, QP |
+| RDMA_WRITE_WITH_IMM  | ibv_wr_rdma_write_imm()   | UC, RC, XRC_SEND                 | DATA, QP |
+| SEND                 | ibv_wr_send()             | UD, UC, RC, XRC_SEND, RAW_PACKET | DATA, QP |
+| SEND_WITH_IMM        | ibv_wr_send_imm()         | UD, UC, RC, SRC SEND             | DATA, QP |
+| SEND_WITH_INV        | ibv_wr_send_inv()         | UC, RC, XRC_SEND                 | DATA, QP |
+| TSO                  | ibv_wr_send_tso()         | UD, RAW_PACKET                   | DATA, QP |
+
+
+## Atomic operations
+
+Atomic operations are only atomic so long as all writes to memory go only
+through the same RDMA hardware. It is not atomic with writes performed by the
+CPU, or by other RDMA hardware in the system.
+
+*ibv_wr_atomic_cmp_swp()*
+:   If the remote 64 bit memory location specified by *rkey* and *remote_addr*
+    equals *compare* then set it to *swap*.
+
+*ibv_wr_atomic_fetch_add()*
+:   Add *add* to the 64 bit memory location specified *rkey* and *remote_addr*.
+
+## Memory Windows
+
+Memory window type 2 operations (See man page for ibv_alloc_mw).
+
+*ibv_wr_bind_mw()*
+:   Bind a MW type 2 specified by **mw**, set a new **rkey** and set its
+    properties by **bind_info**.
+
+*ibv_wr_local_inv()*
+:   Invalidate a MW type 2 which is associated with **rkey**.
+
+## RDMA
+
+*ibv_wr_rdma_read()*
+:   Read from the remote memory location specified *rkey* and
+    *remote_addr*. The number of bytes to read, and the local location to
+    store the data, is determined by the DATA buffers set after this call.
+
+*ibv_wr_rdma_write()*, *ibv_wr_rdma_write_imm()*
+:   Write to the remote memory location specified *rkey* and
+    *remote_addr*. The number of bytes to read, and the local location to get
+    the data, is determined by the DATA buffers set after this call.
+
+    The _imm version causes the remote side to get a IBV_WC_RECV_RDMA_WITH_IMM
+    containing the 32 bits of immediate data.
+
+## Message Send
+
+*ibv_wr_send()*, *ibv_wr_send_imm()*
+:   Send a message. The number of bytes to send, and the local location to get
+    the data, is determined by the DATA buffers set after this call.
+
+    The _imm version causes the remote side to get a IBV_WC_RECV_RDMA_WITH_IMM
+    containing the 32 bits of immediate data.
+
+*ibv_wr_send_inv()*
+:   The data transfer is the same as for *ibv_wr_send()*, however the remote
+    side will invalidate the MR specified by *invalidate_rkey* before
+    delivering a completion.
+
+*ibv_wr_send_tso()*
+:   Produce multiple SEND messages using TCP Segmentation Offload. The SGE
+    points to a TCP Stream buffer which will be segmented into
+    MSS size SENDs. The hdr includes the entire network headers up to and
+    including the TCP header and is prefixed before each segment.
+
+## QP Specific setters
+
+Certain QP types require each post to be accompanied by additional setters,
+these setters are mandatory for any operation listing a QP setter in the above
+table.
+
+*UD* QPs
+:   *ibv_wr_set_ud_addr()* must be called to set the destination address of
+    the work.
+
+*XRC_SEND* QPs
+:   *ibv_wr_set_xrc_srqn()* must be called to set the destination SRQN field.
+
+## DATA transfer setters
+
+For work that requires to transfer data one of the following setters should
+be called once after the WR builder:
+
+*ibv_wr_set_sge()*
+:   Transfer data to/from a single buffer given by the lkey, addr and
+    length. This is equivalent to *ibv_wr_set_sge_list()* with a single
+    element.
+
+*ibv_wr_set_sge_list()*
+:   Transfer data to/from a list of buffers, logically concatenated
+    together. Each buffer is specified by an element in an array of *struct
+    ibv_sge*.
+
+Inline setters will copy the send data during the setter and allows the caller
+to immediately re-use the buffer. This behavior is identical to the
+IBV_SEND_INLINE flag. Generally this copy is done in a way that optimizes
+SEND latency and is suitable for small messages. The provider will limit the
+amount of data it can support in a single operation. This limit is requested
+in the *max_inline_data* member of *struct ibv_qp_init_attr*. Valid only
+for SEND and RDMA_WRITE.
+
+*ibv_wr_set_inline_data()*
+:   Copy send data from a single buffer given by the addr and length.
+    This is equivalent to *ibv_wr_set_inline_data_list()* with a single
+    element.
+
+*ibv_wr_set_inline_data_list()*
+:   Copy send data from a list of buffers, logically concatenated
+    together. Each buffer is specified by an element in an array of *struct
+    ibv_inl_data*.
+
+## Flags
+
+A bit mask of flags may be specified in *wr_flags* to control the behavior of
+the work request.
+
+**IBV_SEND_FENCE**
+:   Do not start this work request until prior work has completed.
+
+**IBV_SEND_IP_CSUM**
+:   Offload the IPv4 and TCP/UDP checksum calculation
+
+**IBV_SEND_SIGNALED**
+:   A completion will be generated in the completion queue for the operation.
+
+**IBV_SEND_SOLICITED**
+:   Set the solicited bit in the RDMA packet. This informs the other side to
+    generate a completion event upon receiving the RDMA operation.
+
+# CONCURRENCY
+
+The provider will provide locking to ensure that *ibv_wr_start()* and
+*ibv_wr_complete()/abort()* form a per-QP critical section where no other
+threads can enter.
+
+If an *ibv_td* is provided during QP creation then no locking will be performed
+and it is up to the caller to ensure that only one thread can be within the
+critical region at a time.
+
+# RETURN VALUE
+
+Applications should use this API in a way that does not create failures. The
+individual APIs do not return a failure indication to avoid branching.
+
+If a failure is detected during operation, for instance due to an invalid
+argument, then *ibv_wr_complete()* will return failure and the entire posting
+will be aborted.
+
+# EXAMPLE
+
+```c
+/* create RC QP type and specify the required send opcodes */
+qp_init_attr_ex.qp_type = IBV_QPT_RC;
+qp_init_attr_ex.comp_mask |= IBV_QP_INIT_ATTR_SEND_OPS_FLAGS;
+qp_init_attr_ex.send_ops_flags |= IBV_QP_EX_WITH_RDMA_WRITE;
+qp_init_attr_ex.send_ops_flags |= IBV_QP_EX_WITH_RDMA_WRITE_WITH_IMM;
+
+ibv_qp *qp = ibv_create_qp_ex(ctx, qp_init_attr_ex);
+ibv_qp_ex *qpx = ibv_qp_to_qp_ex(qp);
+
+ibv_wr_start(qpx);
+
+/* create 1st WRITE WR entry */
+qpx->wr_id = my_wr_id_1;
+ibv_wr_rdma_write(qpx, rkey, remote_addr_1);
+ibv_wr_set_sge(qpx, lkey, local_addr_1, length_1);
+
+/* create 2nd WRITE_WITH_IMM WR entry */
+qpx->wr_id = my_wr_id_2;
+qpx->wr_flags = IBV_SEND_SIGNALED;
+ibv_wr_rdma_write_imm(qpx, rkey, remote_addr_2, htonl(0x1234));
+ibv_set_wr_sge(qpx, lkey, local_addr_2, length_2);
+
+/* Begin processing WRs */
+ret = ibv_wr_complete(qpx);
+```
+
+# SEE ALSO
+
+**ibv_post_send**(3), **ibv_create_qp_ex(3)**.
+
+# AUTHOR
+
+Jason Gunthorpe <jgg@mellanox.com>
+Guy Levi <guyle@mellanox.com>
+
+请确保描述简洁明了，适合放在verbs.py中。输出中只需要含有python代码本身即可，无需含有说明性文字。

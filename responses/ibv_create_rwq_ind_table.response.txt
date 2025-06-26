@@ -1,0 +1,41 @@
+```python
+class CreateRWQIndTable(VerbCall):
+    def __init__(self, context_addr: str, log_ind_tbl_size: int = 0, ind_tbl_addrs: list = []):
+        self.context_addr = context_addr
+        self.log_ind_tbl_size = log_ind_tbl_size
+        self.ind_tbl_addrs = ind_tbl_addrs or []
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        context = kv.get("context", "unknown")
+        ctx.use_context(context)
+        log_size = int(kv.get("log_ind_tbl_size", 0))
+        ind_tbl_addrs = kv.get("ind_tbl", "").split()
+        return cls(context_addr=context, log_ind_tbl_size=log_size, ind_tbl_addrs=ind_tbl_addrs)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        context_name = ctx.get_context(self.context_addr)
+        ind_tbl_name = f"ind_tbl[{len(self.ind_tbl_addrs)}]"
+        init_attr_name = f"init_attr_{self.context_addr}"
+
+        ind_tbl_entries = ", ".join(f"wq[{i}]" for i in range(len(self.ind_tbl_addrs)))
+        init_attr_struct = f"""
+    struct ibv_rwq_ind_table_init_attr {init_attr_name};
+    {init_attr_name}.log_ind_tbl_size = {self.log_ind_tbl_size};
+    {init_attr_name}.ind_tbl = {ind_tbl_name};
+    {init_attr_name}.comp_mask = 0; // Comp mask can be modified based on requirements
+"""
+
+        return f"""
+    /* ibv_create_rwq_ind_table */
+    struct ibv_rwq_ind_table *rwq_ind_table;
+    struct ibv_wq *{ind_tbl_name}[] = {{{ind_tbl_entries}}};
+    {init_attr_struct}
+    rwq_ind_table = ibv_create_rwq_ind_table({context_name}, &{init_attr_name});
+    if (!rwq_ind_table) {{
+        fprintf(stderr, "Failed to create RWQ indirection table\\n");
+        return -1;
+    }}
+"""
+```

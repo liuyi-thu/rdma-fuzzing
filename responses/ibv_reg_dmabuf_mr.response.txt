@@ -1,0 +1,36 @@
+```python
+class RegDmaBufMR(VerbCall):
+    def __init__(self, pd_addr: str, mr_addr: str, offset: int, length: int, iova: int, fd: int, access: int, ctx: CodeGenContext):
+        self.pd_addr = pd_addr
+        self.mr_addr = mr_addr
+        self.offset = offset
+        self.length = length
+        self.iova = iova
+        self.fd = fd
+        self.access = access
+        ctx.alloc_mr(mr_addr)  # Register the MR address in the context
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        pd = kv.get("pd", "pd[0]")
+        mr = kv.get("mr", "unknown")
+        offset = int(kv.get("offset", "0"))
+        length = int(kv.get("length", "0"))
+        iova = int(kv.get("iova", "0"))
+        fd = int(kv.get("fd", "0"))
+        access = int(kv.get("access", "0"))
+        return cls(pd_addr=pd, mr_addr=mr, offset=offset, length=length, iova=iova, fd=fd, access=access, ctx=ctx)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        mr_name = ctx.get_mr(self.mr_addr)
+        pd_name = ctx.get_pd(self.pd_addr)
+        return f"""
+    /* ibv_reg_dmabuf_mr */
+    {mr_name} = ibv_reg_dmabuf_mr({pd_name}, {self.offset}, {self.length}, {self.iova}, {self.fd}, {self.access});
+    if (!{mr_name}) {{
+        fprintf(stderr, "Failed to register dmabuf MR\\n");
+        return -1;
+    }}
+"""
+```

@@ -1,0 +1,37 @@
+```python
+class IbvCreateCQ(VerbCall):
+    def __init__(self, context: str, cqe: int, cq_context: str = "NULL",
+                 channel: str = "NULL", comp_vector: int = 0, cq_addr: str = "unknown"):
+        self.context = context
+        self.cqe = cqe
+        self.cq_context = cq_context
+        self.channel = channel
+        self.comp_vector = comp_vector
+        self.cq_addr = cq_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        context = kv.get("context", ctx.ib_ctx)
+        cqe = int(kv.get("cqe", 32))
+        cq_context = kv.get("cq_context", "NULL")
+        channel = kv.get("channel", "NULL")
+        comp_vector = int(kv.get("comp_vector", 0))
+        cq_addr = kv.get("cq", "unknown")
+        ctx.alloc_cq(cq_addr)
+        return cls(context=context, cqe=cqe, cq_context=cq_context,
+                   channel=channel, comp_vector=comp_vector, cq_addr=cq_addr)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        cq_name = ctx.get_cq(self.cq_addr)
+        return f"""
+    /* ibv_create_cq */
+    {cq_name} = ibv_create_cq({self.context}, {self.cqe}, 
+                              {self.cq_context}, {self.channel}, 
+                              {self.comp_vector});
+    if (!{cq_name}) {{
+        fprintf(stderr, "Failed to create completion queue\\n");
+        return -1;
+    }}
+"""
+```

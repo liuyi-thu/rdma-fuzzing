@@ -1,0 +1,28 @@
+Here's the Python code that best fits the verb description for `ibv_close_xrcd`:
+
+```python
+class CloseXRCD(VerbCall):
+    """Close an XRC domain."""
+
+    def __init__(self, xrcd_addr: str):
+        self.xrcd_addr = xrcd_addr
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        xrcd = kv.get("xrcd", "unknown")
+        ctx.use_xrcd(xrcd)  # Ensure the XRCD is used before generating code
+        return cls(xrcd_addr=xrcd)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        xrcd_name = ctx.get_xrcd(self.xrcd_addr)
+        return f"""
+    /* ibv_close_xrcd */
+    if (ibv_close_xrcd({xrcd_name})) {{
+        fprintf(stderr, "Failed to close XRCD\\n");
+        return -1;
+    }}
+"""
+```
+
+This version includes appropriate naming and the necessary interactions with the `CodeGenContext` to manage the XRCD address. It maintains clarity and error handling in the generated C code. 

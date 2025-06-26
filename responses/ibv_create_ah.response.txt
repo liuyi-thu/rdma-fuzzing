@@ -1,0 +1,56 @@
+Based on the provided options, here is the most comprehensive and flexible implementation:
+
+```python
+class CreateAH(VerbCall):
+    def __init__(self, pd_addr: str, ah_addr: str, ah_attr_params: Dict[str, str]):
+        self.pd_addr = pd_addr
+        self.ah_addr = ah_addr
+        self.ah_attr_params = ah_attr_params
+
+    @classmethod
+    def from_trace(cls, info: str, ctx: CodeGenContext):
+        kv = _parse_kv(info)
+        pd = kv.get("pd", "unknown")
+        ah = kv.get("ah", "unknown")
+        attr_keys = {"dlid", "sl", "src_path_bits", "static_rate", "is_global", "port_num",
+                     "dgid", "flow_label", "sgid_index", "hop_limit", "traffic_class"}
+        ah_attr_params = {k: kv[k] for k in attr_keys if k in kv}
+        ctx.use_pd(pd)
+        return cls(pd_addr=pd, ah_addr=ah, ah_attr_params=ah_attr_params)
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        pd_name = ctx.get_pd(self.pd_addr)
+        ah_name = f"{self.ah_addr}"
+        attr_name = f"ah_attr_{ah_name}"
+
+        grh_params = ""
+        if self.ah_attr_params.get("is_global") == "1":
+            grh_params = f"""
+        .grh = {{
+            .dgid = {{.raw = {{0}}}},
+            .flow_label = {self.ah_attr_params.get("flow_label", "0")},
+            .sgid_index = {self.ah_attr_params.get("sgid_index", "0")},
+            .hop_limit = {self.ah_attr_params.get("hop_limit", "0")},
+            .traffic_class = {self.ah_attr_params.get("traffic_class", "0")},
+        }},"""
+
+        return f"""
+    /* ibv_create_ah */
+    struct ibv_ah_attr {attr_name} = {{
+        {grh_params}
+        .dlid = {self.ah_attr_params.get("dlid", "0")},
+        .sl = {self.ah_attr_params.get("sl", "0")},
+        .src_path_bits = {self.ah_attr_params.get("src_path_bits", "0")},
+        .static_rate = {self.ah_attr_params.get("static_rate", "0")},
+        .is_global = {self.ah_attr_params.get("is_global", "0")},
+        .port_num = {self.ah_attr_params.get("port_num", "0")},
+    }};
+    struct ibv_ah *{ah_name} = ibv_create_ah({pd_name}, &{attr_name});
+    if (!{ah_name}) {{
+        fprintf(stderr, "Failed to create AH\\n");
+        return -1;
+    }}
+"""
+```
+
+This implementation provides a structured approach to handle address handles with attributes being passed and validated through a dictionary. It ensures compatibility with potential variations and uses Python's capabilities to keep the code clean and extensible.
