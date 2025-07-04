@@ -127,6 +127,7 @@ struct ibv_pd *pd[{{ max_QPs }}];
 struct ibv_cq *cq[{{ max_QPs }}];
 struct ibv_qp *qp[{{ max_QPs }}];
 struct ibv_mr *mr[{{ max_QPs }}];
+struct ibv_srq *srq[{{ max_QPs }}]; // SRQ 数组
 
 char bufs[{{ max_QPs }}][1024];
 struct pair_request req;

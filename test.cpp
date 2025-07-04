@@ -127,6 +127,7 @@ struct ibv_pd *pd[100];
 struct ibv_cq *cq[100];
 struct ibv_qp *qp[100];
 struct ibv_mr *mr[100];
+struct ibv_srq *srq[100]; // SRQ 数组
 
 char bufs[100][1024];
 struct pair_request req;
@@ -671,56 +672,136 @@ int main()
 {
     // --- VARIABLES BEGIN ---
 
-    struct ibv_qp_init_attr attr_init_0;
-    struct ibv_qp_attr qp_attr_0;
-    struct ibv_send_wr sr_0;
-    struct ibv_sge sge_send_0;
-    struct ibv_send_wr * bad_wr_send_0 = NULL;
-    struct ibv_qp_init_attr attr_init_1;
-    struct ibv_qp_attr qp_attr_1;
-    struct ibv_send_wr sr_1;
-    struct ibv_sge sge_send_1;
-    struct ibv_send_wr * bad_wr_send_1 = NULL;
-    struct ibv_qp_init_attr attr_init_2;
-    struct ibv_qp_attr qp_attr_2;
-    struct ibv_send_wr sr_2;
-    struct ibv_sge sge_send_2;
-    struct ibv_send_wr * bad_wr_send_2 = NULL;
-    struct ibv_qp_init_attr attr_init_3;
-    struct ibv_qp_attr qp_attr_3;
-    struct ibv_send_wr sr_3;
-    struct ibv_sge sge_send_3;
-    struct ibv_send_wr * bad_wr_send_3 = NULL;
-    struct ibv_qp_init_attr attr_init_4;
-    struct ibv_qp_attr qp_attr_4;
-    struct ibv_send_wr sr_4;
-    struct ibv_sge sge_send_4;
-    struct ibv_send_wr * bad_wr_send_4 = NULL;
-    struct ibv_qp_init_attr attr_init_5;
-    struct ibv_qp_attr qp_attr_5;
-    struct ibv_send_wr sr_5;
-    struct ibv_sge sge_send_5;
-    struct ibv_send_wr * bad_wr_send_5 = NULL;
-    struct ibv_qp_init_attr attr_init_6;
-    struct ibv_qp_attr qp_attr_6;
-    struct ibv_send_wr sr_6;
-    struct ibv_sge sge_send_6;
-    struct ibv_send_wr * bad_wr_send_6 = NULL;
-    struct ibv_qp_init_attr attr_init_7;
-    struct ibv_qp_attr qp_attr_7;
-    struct ibv_send_wr sr_7;
-    struct ibv_sge sge_send_7;
-    struct ibv_send_wr * bad_wr_send_7 = NULL;
-    struct ibv_qp_init_attr attr_init_8;
-    struct ibv_qp_attr qp_attr_8;
-    struct ibv_send_wr sr_8;
-    struct ibv_sge sge_send_8;
-    struct ibv_send_wr * bad_wr_send_8 = NULL;
-    struct ibv_qp_init_attr attr_init_9;
-    struct ibv_qp_attr qp_attr_9;
-    struct ibv_send_wr sr_9;
-    struct ibv_sge sge_send_9;
-    struct ibv_send_wr * bad_wr_send_9 = NULL;
+    struct ibv_qp_init_attr attr_init_QP0;
+    struct ibv_qp_cap attr_init_QP0_cap;
+    struct ibv_qp_attr qp_attr_QP0;
+    struct ibv_ah_attr qp_attr_QP0_ah;
+    struct ibv_global_route qp_attr_QP0_ah_grh;
+    union ibv_gid qp_attr_QP0_ah_grh_dgid;
+    struct ibv_send_wr wr_QP0;
+    struct ibv_sge wr_QP0_sge_0;
+    struct ibv_send_wr * bad_wr_QP0 = NULL;
+    struct ibv_qp_init_attr attr_init_QP1;
+    struct ibv_qp_cap attr_init_QP1_cap;
+    struct ibv_qp_attr qp_attr_QP1;
+    struct ibv_ah_attr qp_attr_QP1_ah;
+    struct ibv_global_route qp_attr_QP1_ah_grh;
+    union ibv_gid qp_attr_QP1_ah_grh_dgid;
+    struct ibv_send_wr wr_QP1;
+    struct ibv_sge wr_QP1_sge_0;
+    struct ibv_send_wr * bad_wr_QP1 = NULL;
+    struct ibv_qp_init_attr attr_init_QP2;
+    struct ibv_qp_cap attr_init_QP2_cap;
+    struct ibv_qp_attr qp_attr_QP2;
+    struct ibv_ah_attr qp_attr_QP2_ah;
+    struct ibv_global_route qp_attr_QP2_ah_grh;
+    union ibv_gid qp_attr_QP2_ah_grh_dgid;
+    struct ibv_send_wr wr_QP2;
+    struct ibv_sge wr_QP2_sge_0;
+    struct ibv_send_wr * bad_wr_QP2 = NULL;
+    struct ibv_qp_init_attr attr_init_QP3;
+    struct ibv_qp_cap attr_init_QP3_cap;
+    struct ibv_qp_attr qp_attr_QP3;
+    struct ibv_ah_attr qp_attr_QP3_ah;
+    struct ibv_global_route qp_attr_QP3_ah_grh;
+    union ibv_gid qp_attr_QP3_ah_grh_dgid;
+    struct ibv_send_wr wr_QP3;
+    struct ibv_sge wr_QP3_sge_0;
+    struct ibv_send_wr * bad_wr_QP3 = NULL;
+    struct ibv_qp_init_attr attr_init_QP4;
+    struct ibv_qp_cap attr_init_QP4_cap;
+    struct ibv_qp_attr qp_attr_QP4;
+    struct ibv_ah_attr qp_attr_QP4_ah;
+    struct ibv_global_route qp_attr_QP4_ah_grh;
+    union ibv_gid qp_attr_QP4_ah_grh_dgid;
+    struct ibv_send_wr wr_QP4;
+    struct ibv_sge wr_QP4_sge_0;
+    struct ibv_send_wr * bad_wr_QP4 = NULL;
+    struct ibv_qp_init_attr attr_init_QP5;
+    struct ibv_qp_cap attr_init_QP5_cap;
+    struct ibv_qp_attr qp_attr_QP5;
+    struct ibv_ah_attr qp_attr_QP5_ah;
+    struct ibv_global_route qp_attr_QP5_ah_grh;
+    union ibv_gid qp_attr_QP5_ah_grh_dgid;
+    struct ibv_send_wr wr_QP5;
+    struct ibv_sge wr_QP5_sge_0;
+    struct ibv_send_wr * bad_wr_QP5 = NULL;
+    struct ibv_qp_init_attr attr_init_QP6;
+    struct ibv_qp_cap attr_init_QP6_cap;
+    struct ibv_qp_attr qp_attr_QP6;
+    struct ibv_ah_attr qp_attr_QP6_ah;
+    struct ibv_global_route qp_attr_QP6_ah_grh;
+    union ibv_gid qp_attr_QP6_ah_grh_dgid;
+    struct ibv_send_wr wr_QP6;
+    struct ibv_sge wr_QP6_sge_0;
+    struct ibv_send_wr * bad_wr_QP6 = NULL;
+    struct ibv_qp_init_attr attr_init_QP7;
+    struct ibv_qp_cap attr_init_QP7_cap;
+    struct ibv_qp_attr qp_attr_QP7;
+    struct ibv_ah_attr qp_attr_QP7_ah;
+    struct ibv_global_route qp_attr_QP7_ah_grh;
+    union ibv_gid qp_attr_QP7_ah_grh_dgid;
+    struct ibv_send_wr wr_QP7;
+    struct ibv_sge wr_QP7_sge_0;
+    struct ibv_send_wr * bad_wr_QP7 = NULL;
+    struct ibv_qp_init_attr attr_init_QP8;
+    struct ibv_qp_cap attr_init_QP8_cap;
+    struct ibv_qp_attr qp_attr_QP8;
+    struct ibv_ah_attr qp_attr_QP8_ah;
+    struct ibv_global_route qp_attr_QP8_ah_grh;
+    union ibv_gid qp_attr_QP8_ah_grh_dgid;
+    struct ibv_send_wr wr_QP8;
+    struct ibv_sge wr_QP8_sge_0;
+    struct ibv_send_wr * bad_wr_QP8 = NULL;
+    struct ibv_qp_init_attr attr_init_QP9;
+    struct ibv_qp_cap attr_init_QP9_cap;
+    struct ibv_qp_attr qp_attr_QP9;
+    struct ibv_ah_attr qp_attr_QP9_ah;
+    struct ibv_global_route qp_attr_QP9_ah_grh;
+    union ibv_gid qp_attr_QP9_ah_grh_dgid;
+    struct ibv_send_wr wr_QP9;
+    struct ibv_sge wr_QP9_sge_0;
+    struct ibv_send_wr * bad_wr_QP9 = NULL;
+    struct ibv_pd* PD0;
+    struct ibv_pd* PD1;
+    struct ibv_pd* PD2;
+    struct ibv_pd* PD3;
+    struct ibv_pd* PD4;
+    struct ibv_pd* PD5;
+    struct ibv_pd* PD6;
+    struct ibv_pd* PD7;
+    struct ibv_pd* PD8;
+    struct ibv_pd* PD9;
+    struct ibv_cq* CQ0;
+    struct ibv_cq* CQ1;
+    struct ibv_cq* CQ2;
+    struct ibv_cq* CQ3;
+    struct ibv_cq* CQ4;
+    struct ibv_cq* CQ5;
+    struct ibv_cq* CQ6;
+    struct ibv_cq* CQ7;
+    struct ibv_cq* CQ8;
+    struct ibv_cq* CQ9;
+    struct ibv_qp* QP0;
+    struct ibv_qp* QP1;
+    struct ibv_qp* QP2;
+    struct ibv_qp* QP3;
+    struct ibv_qp* QP4;
+    struct ibv_qp* QP5;
+    struct ibv_qp* QP6;
+    struct ibv_qp* QP7;
+    struct ibv_qp* QP8;
+    struct ibv_qp* QP9;
+    struct ibv_mr* MR0;
+    struct ibv_mr* MR1;
+    struct ibv_mr* MR2;
+    struct ibv_mr* MR3;
+    struct ibv_mr* MR4;
+    struct ibv_mr* MR5;
+    struct ibv_mr* MR6;
+    struct ibv_mr* MR7;
+    struct ibv_mr* MR8;
+    struct ibv_mr* MR9;
 
     // ---- VARIABLES END ----
     int sockfd = create_socket();
@@ -785,104 +866,128 @@ int main()
     receive_metadata_from_controller(sockfd); // get remote MRs, and remote GID
 
     /* ibv_alloc_pd */
-    pd[0] = ibv_alloc_pd(ctx);
-    if (!pd[0]) {
+    PD0 = ibv_alloc_pd(ctx);
+    if (!PD0) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[0] = ibv_create_cq(ctx, 32, 
+    CQ0 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[0]) {
+    if (!CQ0) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[0] = ibv_reg_mr(pd[0], bufs[0], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[0]) {
+    MR0 = ibv_reg_mr(PD0, bufs[0], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR0) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_0.qp_type = IBV_QPT_RC;
-    attr_init_0.send_cq = cq[0];
-    attr_init_0.recv_cq = cq[0];
-    attr_init_0.cap.max_send_wr = 1;
-    attr_init_0.cap.max_recv_wr = 1;
-    attr_init_0.cap.max_send_sge = 1;
-    attr_init_0.cap.max_recv_sge = 1;
-    qp[0] = ibv_create_qp(pd[0], &attr_init_0);
-    if (!qp[0]) {
+    
+    memset(&attr_init_QP0, 0, sizeof(attr_init_QP0));
+    attr_init_QP0.send_cq = CQ0;
+    attr_init_QP0.recv_cq = CQ0;
+
+    memset(&attr_init_QP0_cap, 0, sizeof(attr_init_QP0_cap));
+    attr_init_QP0_cap.max_send_wr = 1;
+    attr_init_QP0_cap.max_recv_wr = 1;
+    attr_init_QP0_cap.max_send_sge = 1;
+    attr_init_QP0_cap.max_recv_sge = 1;
+    attr_init_QP0.cap = attr_init_QP0_cap;
+    attr_init_QP0.qp_type = IBV_QPT_RC;
+    attr_init_QP0.sq_sig_all = 1;
+
+    QP0 = ibv_create_qp(PD0, &attr_init_QP0);
+    if (!QP0) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[0]->qp_num;
+    req.local_qpn = QP0->qp_num;
     req.remote_qp_index = 0;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_0, 0, sizeof(qp_attr_0));
-    qp_attr_0.qp_state = IBV_QPS_INIT;
-    qp_attr_0.pkey_index = 0;
-    qp_attr_0.port_num = 1;
-    qp_attr_0.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP0, 0, sizeof(qp_attr_QP0));
     
-    ibv_modify_qp(qp[0], &qp_attr_0, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP0, 0, sizeof(qp_attr_QP0));
+    qp_attr_QP0.qp_state = IBV_QPS_INIT;
+    qp_attr_QP0.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP0.pkey_index = 0;
+    qp_attr_QP0.port_num = 1;
+
+    ibv_modify_qp(QP0, &qp_attr_QP0, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_0, 0, sizeof(qp_attr_0));
-    qp_attr_0.qp_state = IBV_QPS_RTR;
-    qp_attr_0.path_mtu = IBV_MTU_1024;
-    qp_attr_0.dest_qp_num = local_remote_qp_map[qp[0]->qp_num];
-    qp_attr_0.rq_psn = 0;
-    qp_attr_0.max_dest_rd_atomic = 1;
-    qp_attr_0.min_rnr_timer = 12;
-    qp_attr_0.ah_attr.is_global = 1;
-    qp_attr_0.ah_attr.dlid = remote_info.lid;
-    qp_attr_0.ah_attr.sl = 0;
-    qp_attr_0.ah_attr.src_path_bits = 0;
-    qp_attr_0.ah_attr.port_num = 1;
-    qp_attr_0.ah_attr.grh.sgid_index = 1;
-    qp_attr_0.ah_attr.grh.hop_limit = 1;
-    qp_attr_0.ah_attr.grh.traffic_class = 0;
-    qp_attr_0.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP0, 0, sizeof(qp_attr_QP0));
     
-    memcpy(&qp_attr_0.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[0], &qp_attr_0, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP0, 0, sizeof(qp_attr_QP0));
+    qp_attr_QP0.qp_state = IBV_QPS_RTR;
+    qp_attr_QP0.path_mtu = IBV_MTU_1024;
+    qp_attr_QP0.rq_psn = 0;
+    qp_attr_QP0.dest_qp_num = local_remote_qp_map[QP0->qp_num];
+
+    memset(&qp_attr_QP0_ah, 0, sizeof(qp_attr_QP0_ah));
+
+    memset(&qp_attr_QP0_ah_grh, 0, sizeof(qp_attr_QP0_ah_grh));
+
+    memset(&qp_attr_QP0_ah_grh_dgid, 0, sizeof(qp_attr_QP0_ah_grh_dgid));
+    memcpy(&qp_attr_QP0_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP0_ah_grh_dgid));
+    qp_attr_QP0_ah_grh.dgid = qp_attr_QP0_ah_grh_dgid;
+    qp_attr_QP0_ah_grh.flow_label = 0;
+    qp_attr_QP0_ah_grh.sgid_index = 1;
+    qp_attr_QP0_ah_grh.hop_limit = 1;
+    qp_attr_QP0_ah_grh.traffic_class = 0;
+    qp_attr_QP0_ah.grh = qp_attr_QP0_ah_grh;
+    qp_attr_QP0_ah.dlid = remote_info.lid;
+    qp_attr_QP0_ah.sl = 0;
+    qp_attr_QP0_ah.src_path_bits = 0;
+    qp_attr_QP0_ah.is_global = 1;
+    qp_attr_QP0_ah.port_num = 1;
+    qp_attr_QP0.ah_attr = qp_attr_QP0_ah;
+    qp_attr_QP0.max_dest_rd_atomic = 1;
+    qp_attr_QP0.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP0, &qp_attr_QP0, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_0, 0, sizeof(qp_attr_0));
-    qp_attr_0.qp_state = IBV_QPS_RTS;
-    qp_attr_0.timeout = 14;
-    qp_attr_0.retry_cnt = 7;
-    qp_attr_0.rnr_retry = 7;
-    qp_attr_0.sq_psn = 0;
-    qp_attr_0.max_rd_atomic = 1;
+    memset(&qp_attr_QP0, 0, sizeof(qp_attr_QP0));
     
-    ibv_modify_qp(qp[0], &qp_attr_0, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP0, 0, sizeof(qp_attr_QP0));
+    qp_attr_QP0.qp_state = IBV_QPS_RTS;
+    qp_attr_QP0.sq_psn = 0;
+    qp_attr_QP0.max_rd_atomic = 1;
+    qp_attr_QP0.timeout = 14;
+    qp_attr_QP0.retry_cnt = 7;
+    qp_attr_QP0.rnr_retry = 7;
+
+    ibv_modify_qp(QP0, &qp_attr_QP0, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP0, 0, sizeof(wr_QP0));
+    wr_QP0.wr_id = 1;
 
-    memset(&sge_send_0, 0, sizeof(sge_send_0));
-    sge_send_0.addr = (uintptr_t)bufs[0];
-    sge_send_0.length = MSG_SIZE;
-    sge_send_0.lkey = mr[0]->lkey;
+    memset(&wr_QP0_sge_0, 0, sizeof(wr_QP0_sge_0));
+    wr_QP0_sge_0.addr = (uintptr_t)bufs[0];
+    wr_QP0_sge_0.length = MSG_SIZE;
+    wr_QP0_sge_0.lkey = MR0->lkey;
+    wr_QP0.sg_list = &wr_QP0_sge_0;
+    wr_QP0.num_sge = 1;
+    wr_QP0.opcode = IBV_WR_SEND;
+    wr_QP0.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_0, 0, sizeof(sr_0));
-    sr_0.next = NULL;
-    sr_0.wr_id = 1;
-    sr_0.sg_list = &sge_send_0;
-    sr_0.num_sge = 1;
-    sr_0.opcode = IBV_WR_SEND;
-    sr_0.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[0], &sr_0, &bad_wr_send_0);
-
+    
+    if (ibv_post_send(QP0, &wr_QP0, &bad_wr_QP0) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -890,7 +995,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[0], 1, &wc);
+        poll_result = ibv_poll_cq(CQ0, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -922,104 +1027,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[1] = ibv_alloc_pd(ctx);
-    if (!pd[1]) {
+    PD1 = ibv_alloc_pd(ctx);
+    if (!PD1) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[1] = ibv_create_cq(ctx, 32, 
+    CQ1 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[1]) {
+    if (!CQ1) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[1] = ibv_reg_mr(pd[1], bufs[1], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[1]) {
+    MR1 = ibv_reg_mr(PD1, bufs[1], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR1) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_1.qp_type = IBV_QPT_RC;
-    attr_init_1.send_cq = cq[1];
-    attr_init_1.recv_cq = cq[1];
-    attr_init_1.cap.max_send_wr = 1;
-    attr_init_1.cap.max_recv_wr = 1;
-    attr_init_1.cap.max_send_sge = 1;
-    attr_init_1.cap.max_recv_sge = 1;
-    qp[1] = ibv_create_qp(pd[1], &attr_init_1);
-    if (!qp[1]) {
+    
+    memset(&attr_init_QP1, 0, sizeof(attr_init_QP1));
+    attr_init_QP1.send_cq = CQ1;
+    attr_init_QP1.recv_cq = CQ1;
+
+    memset(&attr_init_QP1_cap, 0, sizeof(attr_init_QP1_cap));
+    attr_init_QP1_cap.max_send_wr = 1;
+    attr_init_QP1_cap.max_recv_wr = 1;
+    attr_init_QP1_cap.max_send_sge = 1;
+    attr_init_QP1_cap.max_recv_sge = 1;
+    attr_init_QP1.cap = attr_init_QP1_cap;
+    attr_init_QP1.qp_type = IBV_QPT_RC;
+    attr_init_QP1.sq_sig_all = 1;
+
+    QP1 = ibv_create_qp(PD1, &attr_init_QP1);
+    if (!QP1) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[1]->qp_num;
+    req.local_qpn = QP1->qp_num;
     req.remote_qp_index = 1;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_1, 0, sizeof(qp_attr_1));
-    qp_attr_1.qp_state = IBV_QPS_INIT;
-    qp_attr_1.pkey_index = 0;
-    qp_attr_1.port_num = 1;
-    qp_attr_1.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP1, 0, sizeof(qp_attr_QP1));
     
-    ibv_modify_qp(qp[1], &qp_attr_1, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP1, 0, sizeof(qp_attr_QP1));
+    qp_attr_QP1.qp_state = IBV_QPS_INIT;
+    qp_attr_QP1.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP1.pkey_index = 0;
+    qp_attr_QP1.port_num = 1;
+
+    ibv_modify_qp(QP1, &qp_attr_QP1, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_1, 0, sizeof(qp_attr_1));
-    qp_attr_1.qp_state = IBV_QPS_RTR;
-    qp_attr_1.path_mtu = IBV_MTU_1024;
-    qp_attr_1.dest_qp_num = local_remote_qp_map[qp[1]->qp_num];
-    qp_attr_1.rq_psn = 0;
-    qp_attr_1.max_dest_rd_atomic = 1;
-    qp_attr_1.min_rnr_timer = 12;
-    qp_attr_1.ah_attr.is_global = 1;
-    qp_attr_1.ah_attr.dlid = remote_info.lid;
-    qp_attr_1.ah_attr.sl = 0;
-    qp_attr_1.ah_attr.src_path_bits = 0;
-    qp_attr_1.ah_attr.port_num = 1;
-    qp_attr_1.ah_attr.grh.sgid_index = 1;
-    qp_attr_1.ah_attr.grh.hop_limit = 1;
-    qp_attr_1.ah_attr.grh.traffic_class = 0;
-    qp_attr_1.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP1, 0, sizeof(qp_attr_QP1));
     
-    memcpy(&qp_attr_1.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[1], &qp_attr_1, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP1, 0, sizeof(qp_attr_QP1));
+    qp_attr_QP1.qp_state = IBV_QPS_RTR;
+    qp_attr_QP1.path_mtu = IBV_MTU_1024;
+    qp_attr_QP1.rq_psn = 0;
+    qp_attr_QP1.dest_qp_num = local_remote_qp_map[QP1->qp_num];
+
+    memset(&qp_attr_QP1_ah, 0, sizeof(qp_attr_QP1_ah));
+
+    memset(&qp_attr_QP1_ah_grh, 0, sizeof(qp_attr_QP1_ah_grh));
+
+    memset(&qp_attr_QP1_ah_grh_dgid, 0, sizeof(qp_attr_QP1_ah_grh_dgid));
+    memcpy(&qp_attr_QP1_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP1_ah_grh_dgid));
+    qp_attr_QP1_ah_grh.dgid = qp_attr_QP1_ah_grh_dgid;
+    qp_attr_QP1_ah_grh.flow_label = 0;
+    qp_attr_QP1_ah_grh.sgid_index = 1;
+    qp_attr_QP1_ah_grh.hop_limit = 1;
+    qp_attr_QP1_ah_grh.traffic_class = 0;
+    qp_attr_QP1_ah.grh = qp_attr_QP1_ah_grh;
+    qp_attr_QP1_ah.dlid = remote_info.lid;
+    qp_attr_QP1_ah.sl = 0;
+    qp_attr_QP1_ah.src_path_bits = 0;
+    qp_attr_QP1_ah.is_global = 1;
+    qp_attr_QP1_ah.port_num = 1;
+    qp_attr_QP1.ah_attr = qp_attr_QP1_ah;
+    qp_attr_QP1.max_dest_rd_atomic = 1;
+    qp_attr_QP1.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP1, &qp_attr_QP1, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_1, 0, sizeof(qp_attr_1));
-    qp_attr_1.qp_state = IBV_QPS_RTS;
-    qp_attr_1.timeout = 14;
-    qp_attr_1.retry_cnt = 7;
-    qp_attr_1.rnr_retry = 7;
-    qp_attr_1.sq_psn = 0;
-    qp_attr_1.max_rd_atomic = 1;
+    memset(&qp_attr_QP1, 0, sizeof(qp_attr_QP1));
     
-    ibv_modify_qp(qp[1], &qp_attr_1, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP1, 0, sizeof(qp_attr_QP1));
+    qp_attr_QP1.qp_state = IBV_QPS_RTS;
+    qp_attr_QP1.sq_psn = 0;
+    qp_attr_QP1.max_rd_atomic = 1;
+    qp_attr_QP1.timeout = 14;
+    qp_attr_QP1.retry_cnt = 7;
+    qp_attr_QP1.rnr_retry = 7;
+
+    ibv_modify_qp(QP1, &qp_attr_QP1, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP1, 0, sizeof(wr_QP1));
+    wr_QP1.wr_id = 1;
 
-    memset(&sge_send_1, 0, sizeof(sge_send_1));
-    sge_send_1.addr = (uintptr_t)bufs[1];
-    sge_send_1.length = MSG_SIZE;
-    sge_send_1.lkey = mr[1]->lkey;
+    memset(&wr_QP1_sge_0, 0, sizeof(wr_QP1_sge_0));
+    wr_QP1_sge_0.addr = (uintptr_t)bufs[1];
+    wr_QP1_sge_0.length = MSG_SIZE;
+    wr_QP1_sge_0.lkey = MR1->lkey;
+    wr_QP1.sg_list = &wr_QP1_sge_0;
+    wr_QP1.num_sge = 1;
+    wr_QP1.opcode = IBV_WR_SEND;
+    wr_QP1.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_1, 0, sizeof(sr_1));
-    sr_1.next = NULL;
-    sr_1.wr_id = 1;
-    sr_1.sg_list = &sge_send_1;
-    sr_1.num_sge = 1;
-    sr_1.opcode = IBV_WR_SEND;
-    sr_1.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[1], &sr_1, &bad_wr_send_1);
-
+    
+    if (ibv_post_send(QP1, &wr_QP1, &bad_wr_QP1) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -1027,7 +1156,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[1], 1, &wc);
+        poll_result = ibv_poll_cq(CQ1, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -1059,104 +1188,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[2] = ibv_alloc_pd(ctx);
-    if (!pd[2]) {
+    PD2 = ibv_alloc_pd(ctx);
+    if (!PD2) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[2] = ibv_create_cq(ctx, 32, 
+    CQ2 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[2]) {
+    if (!CQ2) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[2] = ibv_reg_mr(pd[2], bufs[2], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[2]) {
+    MR2 = ibv_reg_mr(PD2, bufs[2], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR2) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_2.qp_type = IBV_QPT_RC;
-    attr_init_2.send_cq = cq[2];
-    attr_init_2.recv_cq = cq[2];
-    attr_init_2.cap.max_send_wr = 1;
-    attr_init_2.cap.max_recv_wr = 1;
-    attr_init_2.cap.max_send_sge = 1;
-    attr_init_2.cap.max_recv_sge = 1;
-    qp[2] = ibv_create_qp(pd[2], &attr_init_2);
-    if (!qp[2]) {
+    
+    memset(&attr_init_QP2, 0, sizeof(attr_init_QP2));
+    attr_init_QP2.send_cq = CQ2;
+    attr_init_QP2.recv_cq = CQ2;
+
+    memset(&attr_init_QP2_cap, 0, sizeof(attr_init_QP2_cap));
+    attr_init_QP2_cap.max_send_wr = 1;
+    attr_init_QP2_cap.max_recv_wr = 1;
+    attr_init_QP2_cap.max_send_sge = 1;
+    attr_init_QP2_cap.max_recv_sge = 1;
+    attr_init_QP2.cap = attr_init_QP2_cap;
+    attr_init_QP2.qp_type = IBV_QPT_RC;
+    attr_init_QP2.sq_sig_all = 1;
+
+    QP2 = ibv_create_qp(PD2, &attr_init_QP2);
+    if (!QP2) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[2]->qp_num;
+    req.local_qpn = QP2->qp_num;
     req.remote_qp_index = 2;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_2, 0, sizeof(qp_attr_2));
-    qp_attr_2.qp_state = IBV_QPS_INIT;
-    qp_attr_2.pkey_index = 0;
-    qp_attr_2.port_num = 1;
-    qp_attr_2.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP2, 0, sizeof(qp_attr_QP2));
     
-    ibv_modify_qp(qp[2], &qp_attr_2, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP2, 0, sizeof(qp_attr_QP2));
+    qp_attr_QP2.qp_state = IBV_QPS_INIT;
+    qp_attr_QP2.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP2.pkey_index = 0;
+    qp_attr_QP2.port_num = 1;
+
+    ibv_modify_qp(QP2, &qp_attr_QP2, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_2, 0, sizeof(qp_attr_2));
-    qp_attr_2.qp_state = IBV_QPS_RTR;
-    qp_attr_2.path_mtu = IBV_MTU_1024;
-    qp_attr_2.dest_qp_num = local_remote_qp_map[qp[2]->qp_num];
-    qp_attr_2.rq_psn = 0;
-    qp_attr_2.max_dest_rd_atomic = 1;
-    qp_attr_2.min_rnr_timer = 12;
-    qp_attr_2.ah_attr.is_global = 1;
-    qp_attr_2.ah_attr.dlid = remote_info.lid;
-    qp_attr_2.ah_attr.sl = 0;
-    qp_attr_2.ah_attr.src_path_bits = 0;
-    qp_attr_2.ah_attr.port_num = 1;
-    qp_attr_2.ah_attr.grh.sgid_index = 1;
-    qp_attr_2.ah_attr.grh.hop_limit = 1;
-    qp_attr_2.ah_attr.grh.traffic_class = 0;
-    qp_attr_2.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP2, 0, sizeof(qp_attr_QP2));
     
-    memcpy(&qp_attr_2.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[2], &qp_attr_2, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP2, 0, sizeof(qp_attr_QP2));
+    qp_attr_QP2.qp_state = IBV_QPS_RTR;
+    qp_attr_QP2.path_mtu = IBV_MTU_1024;
+    qp_attr_QP2.rq_psn = 0;
+    qp_attr_QP2.dest_qp_num = local_remote_qp_map[QP2->qp_num];
+
+    memset(&qp_attr_QP2_ah, 0, sizeof(qp_attr_QP2_ah));
+
+    memset(&qp_attr_QP2_ah_grh, 0, sizeof(qp_attr_QP2_ah_grh));
+
+    memset(&qp_attr_QP2_ah_grh_dgid, 0, sizeof(qp_attr_QP2_ah_grh_dgid));
+    memcpy(&qp_attr_QP2_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP2_ah_grh_dgid));
+    qp_attr_QP2_ah_grh.dgid = qp_attr_QP2_ah_grh_dgid;
+    qp_attr_QP2_ah_grh.flow_label = 0;
+    qp_attr_QP2_ah_grh.sgid_index = 1;
+    qp_attr_QP2_ah_grh.hop_limit = 1;
+    qp_attr_QP2_ah_grh.traffic_class = 0;
+    qp_attr_QP2_ah.grh = qp_attr_QP2_ah_grh;
+    qp_attr_QP2_ah.dlid = remote_info.lid;
+    qp_attr_QP2_ah.sl = 0;
+    qp_attr_QP2_ah.src_path_bits = 0;
+    qp_attr_QP2_ah.is_global = 1;
+    qp_attr_QP2_ah.port_num = 1;
+    qp_attr_QP2.ah_attr = qp_attr_QP2_ah;
+    qp_attr_QP2.max_dest_rd_atomic = 1;
+    qp_attr_QP2.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP2, &qp_attr_QP2, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_2, 0, sizeof(qp_attr_2));
-    qp_attr_2.qp_state = IBV_QPS_RTS;
-    qp_attr_2.timeout = 14;
-    qp_attr_2.retry_cnt = 7;
-    qp_attr_2.rnr_retry = 7;
-    qp_attr_2.sq_psn = 0;
-    qp_attr_2.max_rd_atomic = 1;
+    memset(&qp_attr_QP2, 0, sizeof(qp_attr_QP2));
     
-    ibv_modify_qp(qp[2], &qp_attr_2, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP2, 0, sizeof(qp_attr_QP2));
+    qp_attr_QP2.qp_state = IBV_QPS_RTS;
+    qp_attr_QP2.sq_psn = 0;
+    qp_attr_QP2.max_rd_atomic = 1;
+    qp_attr_QP2.timeout = 14;
+    qp_attr_QP2.retry_cnt = 7;
+    qp_attr_QP2.rnr_retry = 7;
+
+    ibv_modify_qp(QP2, &qp_attr_QP2, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP2, 0, sizeof(wr_QP2));
+    wr_QP2.wr_id = 1;
 
-    memset(&sge_send_2, 0, sizeof(sge_send_2));
-    sge_send_2.addr = (uintptr_t)bufs[2];
-    sge_send_2.length = MSG_SIZE;
-    sge_send_2.lkey = mr[2]->lkey;
+    memset(&wr_QP2_sge_0, 0, sizeof(wr_QP2_sge_0));
+    wr_QP2_sge_0.addr = (uintptr_t)bufs[2];
+    wr_QP2_sge_0.length = MSG_SIZE;
+    wr_QP2_sge_0.lkey = MR2->lkey;
+    wr_QP2.sg_list = &wr_QP2_sge_0;
+    wr_QP2.num_sge = 1;
+    wr_QP2.opcode = IBV_WR_SEND;
+    wr_QP2.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_2, 0, sizeof(sr_2));
-    sr_2.next = NULL;
-    sr_2.wr_id = 1;
-    sr_2.sg_list = &sge_send_2;
-    sr_2.num_sge = 1;
-    sr_2.opcode = IBV_WR_SEND;
-    sr_2.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[2], &sr_2, &bad_wr_send_2);
-
+    
+    if (ibv_post_send(QP2, &wr_QP2, &bad_wr_QP2) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -1164,7 +1317,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[2], 1, &wc);
+        poll_result = ibv_poll_cq(CQ2, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -1196,104 +1349,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[3] = ibv_alloc_pd(ctx);
-    if (!pd[3]) {
+    PD3 = ibv_alloc_pd(ctx);
+    if (!PD3) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[3] = ibv_create_cq(ctx, 32, 
+    CQ3 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[3]) {
+    if (!CQ3) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[3] = ibv_reg_mr(pd[3], bufs[3], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[3]) {
+    MR3 = ibv_reg_mr(PD3, bufs[3], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR3) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_3.qp_type = IBV_QPT_RC;
-    attr_init_3.send_cq = cq[3];
-    attr_init_3.recv_cq = cq[3];
-    attr_init_3.cap.max_send_wr = 1;
-    attr_init_3.cap.max_recv_wr = 1;
-    attr_init_3.cap.max_send_sge = 1;
-    attr_init_3.cap.max_recv_sge = 1;
-    qp[3] = ibv_create_qp(pd[3], &attr_init_3);
-    if (!qp[3]) {
+    
+    memset(&attr_init_QP3, 0, sizeof(attr_init_QP3));
+    attr_init_QP3.send_cq = CQ3;
+    attr_init_QP3.recv_cq = CQ3;
+
+    memset(&attr_init_QP3_cap, 0, sizeof(attr_init_QP3_cap));
+    attr_init_QP3_cap.max_send_wr = 1;
+    attr_init_QP3_cap.max_recv_wr = 1;
+    attr_init_QP3_cap.max_send_sge = 1;
+    attr_init_QP3_cap.max_recv_sge = 1;
+    attr_init_QP3.cap = attr_init_QP3_cap;
+    attr_init_QP3.qp_type = IBV_QPT_RC;
+    attr_init_QP3.sq_sig_all = 1;
+
+    QP3 = ibv_create_qp(PD3, &attr_init_QP3);
+    if (!QP3) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[3]->qp_num;
+    req.local_qpn = QP3->qp_num;
     req.remote_qp_index = 3;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_3, 0, sizeof(qp_attr_3));
-    qp_attr_3.qp_state = IBV_QPS_INIT;
-    qp_attr_3.pkey_index = 0;
-    qp_attr_3.port_num = 1;
-    qp_attr_3.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP3, 0, sizeof(qp_attr_QP3));
     
-    ibv_modify_qp(qp[3], &qp_attr_3, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP3, 0, sizeof(qp_attr_QP3));
+    qp_attr_QP3.qp_state = IBV_QPS_INIT;
+    qp_attr_QP3.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP3.pkey_index = 0;
+    qp_attr_QP3.port_num = 1;
+
+    ibv_modify_qp(QP3, &qp_attr_QP3, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_3, 0, sizeof(qp_attr_3));
-    qp_attr_3.qp_state = IBV_QPS_RTR;
-    qp_attr_3.path_mtu = IBV_MTU_1024;
-    qp_attr_3.dest_qp_num = local_remote_qp_map[qp[3]->qp_num];
-    qp_attr_3.rq_psn = 0;
-    qp_attr_3.max_dest_rd_atomic = 1;
-    qp_attr_3.min_rnr_timer = 12;
-    qp_attr_3.ah_attr.is_global = 1;
-    qp_attr_3.ah_attr.dlid = remote_info.lid;
-    qp_attr_3.ah_attr.sl = 0;
-    qp_attr_3.ah_attr.src_path_bits = 0;
-    qp_attr_3.ah_attr.port_num = 1;
-    qp_attr_3.ah_attr.grh.sgid_index = 1;
-    qp_attr_3.ah_attr.grh.hop_limit = 1;
-    qp_attr_3.ah_attr.grh.traffic_class = 0;
-    qp_attr_3.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP3, 0, sizeof(qp_attr_QP3));
     
-    memcpy(&qp_attr_3.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[3], &qp_attr_3, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP3, 0, sizeof(qp_attr_QP3));
+    qp_attr_QP3.qp_state = IBV_QPS_RTR;
+    qp_attr_QP3.path_mtu = IBV_MTU_1024;
+    qp_attr_QP3.rq_psn = 0;
+    qp_attr_QP3.dest_qp_num = local_remote_qp_map[QP3->qp_num];
+
+    memset(&qp_attr_QP3_ah, 0, sizeof(qp_attr_QP3_ah));
+
+    memset(&qp_attr_QP3_ah_grh, 0, sizeof(qp_attr_QP3_ah_grh));
+
+    memset(&qp_attr_QP3_ah_grh_dgid, 0, sizeof(qp_attr_QP3_ah_grh_dgid));
+    memcpy(&qp_attr_QP3_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP3_ah_grh_dgid));
+    qp_attr_QP3_ah_grh.dgid = qp_attr_QP3_ah_grh_dgid;
+    qp_attr_QP3_ah_grh.flow_label = 0;
+    qp_attr_QP3_ah_grh.sgid_index = 1;
+    qp_attr_QP3_ah_grh.hop_limit = 1;
+    qp_attr_QP3_ah_grh.traffic_class = 0;
+    qp_attr_QP3_ah.grh = qp_attr_QP3_ah_grh;
+    qp_attr_QP3_ah.dlid = remote_info.lid;
+    qp_attr_QP3_ah.sl = 0;
+    qp_attr_QP3_ah.src_path_bits = 0;
+    qp_attr_QP3_ah.is_global = 1;
+    qp_attr_QP3_ah.port_num = 1;
+    qp_attr_QP3.ah_attr = qp_attr_QP3_ah;
+    qp_attr_QP3.max_dest_rd_atomic = 1;
+    qp_attr_QP3.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP3, &qp_attr_QP3, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_3, 0, sizeof(qp_attr_3));
-    qp_attr_3.qp_state = IBV_QPS_RTS;
-    qp_attr_3.timeout = 14;
-    qp_attr_3.retry_cnt = 7;
-    qp_attr_3.rnr_retry = 7;
-    qp_attr_3.sq_psn = 0;
-    qp_attr_3.max_rd_atomic = 1;
+    memset(&qp_attr_QP3, 0, sizeof(qp_attr_QP3));
     
-    ibv_modify_qp(qp[3], &qp_attr_3, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP3, 0, sizeof(qp_attr_QP3));
+    qp_attr_QP3.qp_state = IBV_QPS_RTS;
+    qp_attr_QP3.sq_psn = 0;
+    qp_attr_QP3.max_rd_atomic = 1;
+    qp_attr_QP3.timeout = 14;
+    qp_attr_QP3.retry_cnt = 7;
+    qp_attr_QP3.rnr_retry = 7;
+
+    ibv_modify_qp(QP3, &qp_attr_QP3, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP3, 0, sizeof(wr_QP3));
+    wr_QP3.wr_id = 1;
 
-    memset(&sge_send_3, 0, sizeof(sge_send_3));
-    sge_send_3.addr = (uintptr_t)bufs[3];
-    sge_send_3.length = MSG_SIZE;
-    sge_send_3.lkey = mr[3]->lkey;
+    memset(&wr_QP3_sge_0, 0, sizeof(wr_QP3_sge_0));
+    wr_QP3_sge_0.addr = (uintptr_t)bufs[3];
+    wr_QP3_sge_0.length = MSG_SIZE;
+    wr_QP3_sge_0.lkey = MR3->lkey;
+    wr_QP3.sg_list = &wr_QP3_sge_0;
+    wr_QP3.num_sge = 1;
+    wr_QP3.opcode = IBV_WR_SEND;
+    wr_QP3.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_3, 0, sizeof(sr_3));
-    sr_3.next = NULL;
-    sr_3.wr_id = 1;
-    sr_3.sg_list = &sge_send_3;
-    sr_3.num_sge = 1;
-    sr_3.opcode = IBV_WR_SEND;
-    sr_3.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[3], &sr_3, &bad_wr_send_3);
-
+    
+    if (ibv_post_send(QP3, &wr_QP3, &bad_wr_QP3) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -1301,7 +1478,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[3], 1, &wc);
+        poll_result = ibv_poll_cq(CQ3, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -1333,104 +1510,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[4] = ibv_alloc_pd(ctx);
-    if (!pd[4]) {
+    PD4 = ibv_alloc_pd(ctx);
+    if (!PD4) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[4] = ibv_create_cq(ctx, 32, 
+    CQ4 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[4]) {
+    if (!CQ4) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[4] = ibv_reg_mr(pd[4], bufs[4], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[4]) {
+    MR4 = ibv_reg_mr(PD4, bufs[4], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR4) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_4.qp_type = IBV_QPT_RC;
-    attr_init_4.send_cq = cq[4];
-    attr_init_4.recv_cq = cq[4];
-    attr_init_4.cap.max_send_wr = 1;
-    attr_init_4.cap.max_recv_wr = 1;
-    attr_init_4.cap.max_send_sge = 1;
-    attr_init_4.cap.max_recv_sge = 1;
-    qp[4] = ibv_create_qp(pd[4], &attr_init_4);
-    if (!qp[4]) {
+    
+    memset(&attr_init_QP4, 0, sizeof(attr_init_QP4));
+    attr_init_QP4.send_cq = CQ4;
+    attr_init_QP4.recv_cq = CQ4;
+
+    memset(&attr_init_QP4_cap, 0, sizeof(attr_init_QP4_cap));
+    attr_init_QP4_cap.max_send_wr = 1;
+    attr_init_QP4_cap.max_recv_wr = 1;
+    attr_init_QP4_cap.max_send_sge = 1;
+    attr_init_QP4_cap.max_recv_sge = 1;
+    attr_init_QP4.cap = attr_init_QP4_cap;
+    attr_init_QP4.qp_type = IBV_QPT_RC;
+    attr_init_QP4.sq_sig_all = 1;
+
+    QP4 = ibv_create_qp(PD4, &attr_init_QP4);
+    if (!QP4) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[4]->qp_num;
+    req.local_qpn = QP4->qp_num;
     req.remote_qp_index = 4;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_4, 0, sizeof(qp_attr_4));
-    qp_attr_4.qp_state = IBV_QPS_INIT;
-    qp_attr_4.pkey_index = 0;
-    qp_attr_4.port_num = 1;
-    qp_attr_4.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP4, 0, sizeof(qp_attr_QP4));
     
-    ibv_modify_qp(qp[4], &qp_attr_4, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP4, 0, sizeof(qp_attr_QP4));
+    qp_attr_QP4.qp_state = IBV_QPS_INIT;
+    qp_attr_QP4.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP4.pkey_index = 0;
+    qp_attr_QP4.port_num = 1;
+
+    ibv_modify_qp(QP4, &qp_attr_QP4, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_4, 0, sizeof(qp_attr_4));
-    qp_attr_4.qp_state = IBV_QPS_RTR;
-    qp_attr_4.path_mtu = IBV_MTU_1024;
-    qp_attr_4.dest_qp_num = local_remote_qp_map[qp[4]->qp_num];
-    qp_attr_4.rq_psn = 0;
-    qp_attr_4.max_dest_rd_atomic = 1;
-    qp_attr_4.min_rnr_timer = 12;
-    qp_attr_4.ah_attr.is_global = 1;
-    qp_attr_4.ah_attr.dlid = remote_info.lid;
-    qp_attr_4.ah_attr.sl = 0;
-    qp_attr_4.ah_attr.src_path_bits = 0;
-    qp_attr_4.ah_attr.port_num = 1;
-    qp_attr_4.ah_attr.grh.sgid_index = 1;
-    qp_attr_4.ah_attr.grh.hop_limit = 1;
-    qp_attr_4.ah_attr.grh.traffic_class = 0;
-    qp_attr_4.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP4, 0, sizeof(qp_attr_QP4));
     
-    memcpy(&qp_attr_4.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[4], &qp_attr_4, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP4, 0, sizeof(qp_attr_QP4));
+    qp_attr_QP4.qp_state = IBV_QPS_RTR;
+    qp_attr_QP4.path_mtu = IBV_MTU_1024;
+    qp_attr_QP4.rq_psn = 0;
+    qp_attr_QP4.dest_qp_num = local_remote_qp_map[QP4->qp_num];
+
+    memset(&qp_attr_QP4_ah, 0, sizeof(qp_attr_QP4_ah));
+
+    memset(&qp_attr_QP4_ah_grh, 0, sizeof(qp_attr_QP4_ah_grh));
+
+    memset(&qp_attr_QP4_ah_grh_dgid, 0, sizeof(qp_attr_QP4_ah_grh_dgid));
+    memcpy(&qp_attr_QP4_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP4_ah_grh_dgid));
+    qp_attr_QP4_ah_grh.dgid = qp_attr_QP4_ah_grh_dgid;
+    qp_attr_QP4_ah_grh.flow_label = 0;
+    qp_attr_QP4_ah_grh.sgid_index = 1;
+    qp_attr_QP4_ah_grh.hop_limit = 1;
+    qp_attr_QP4_ah_grh.traffic_class = 0;
+    qp_attr_QP4_ah.grh = qp_attr_QP4_ah_grh;
+    qp_attr_QP4_ah.dlid = remote_info.lid;
+    qp_attr_QP4_ah.sl = 0;
+    qp_attr_QP4_ah.src_path_bits = 0;
+    qp_attr_QP4_ah.is_global = 1;
+    qp_attr_QP4_ah.port_num = 1;
+    qp_attr_QP4.ah_attr = qp_attr_QP4_ah;
+    qp_attr_QP4.max_dest_rd_atomic = 1;
+    qp_attr_QP4.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP4, &qp_attr_QP4, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_4, 0, sizeof(qp_attr_4));
-    qp_attr_4.qp_state = IBV_QPS_RTS;
-    qp_attr_4.timeout = 14;
-    qp_attr_4.retry_cnt = 7;
-    qp_attr_4.rnr_retry = 7;
-    qp_attr_4.sq_psn = 0;
-    qp_attr_4.max_rd_atomic = 1;
+    memset(&qp_attr_QP4, 0, sizeof(qp_attr_QP4));
     
-    ibv_modify_qp(qp[4], &qp_attr_4, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP4, 0, sizeof(qp_attr_QP4));
+    qp_attr_QP4.qp_state = IBV_QPS_RTS;
+    qp_attr_QP4.sq_psn = 0;
+    qp_attr_QP4.max_rd_atomic = 1;
+    qp_attr_QP4.timeout = 14;
+    qp_attr_QP4.retry_cnt = 7;
+    qp_attr_QP4.rnr_retry = 7;
+
+    ibv_modify_qp(QP4, &qp_attr_QP4, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP4, 0, sizeof(wr_QP4));
+    wr_QP4.wr_id = 1;
 
-    memset(&sge_send_4, 0, sizeof(sge_send_4));
-    sge_send_4.addr = (uintptr_t)bufs[4];
-    sge_send_4.length = MSG_SIZE;
-    sge_send_4.lkey = mr[4]->lkey;
+    memset(&wr_QP4_sge_0, 0, sizeof(wr_QP4_sge_0));
+    wr_QP4_sge_0.addr = (uintptr_t)bufs[4];
+    wr_QP4_sge_0.length = MSG_SIZE;
+    wr_QP4_sge_0.lkey = MR4->lkey;
+    wr_QP4.sg_list = &wr_QP4_sge_0;
+    wr_QP4.num_sge = 1;
+    wr_QP4.opcode = IBV_WR_SEND;
+    wr_QP4.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_4, 0, sizeof(sr_4));
-    sr_4.next = NULL;
-    sr_4.wr_id = 1;
-    sr_4.sg_list = &sge_send_4;
-    sr_4.num_sge = 1;
-    sr_4.opcode = IBV_WR_SEND;
-    sr_4.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[4], &sr_4, &bad_wr_send_4);
-
+    
+    if (ibv_post_send(QP4, &wr_QP4, &bad_wr_QP4) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -1438,7 +1639,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[4], 1, &wc);
+        poll_result = ibv_poll_cq(CQ4, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -1470,104 +1671,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[5] = ibv_alloc_pd(ctx);
-    if (!pd[5]) {
+    PD5 = ibv_alloc_pd(ctx);
+    if (!PD5) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[5] = ibv_create_cq(ctx, 32, 
+    CQ5 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[5]) {
+    if (!CQ5) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[5] = ibv_reg_mr(pd[5], bufs[5], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[5]) {
+    MR5 = ibv_reg_mr(PD5, bufs[5], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR5) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_5.qp_type = IBV_QPT_RC;
-    attr_init_5.send_cq = cq[5];
-    attr_init_5.recv_cq = cq[5];
-    attr_init_5.cap.max_send_wr = 1;
-    attr_init_5.cap.max_recv_wr = 1;
-    attr_init_5.cap.max_send_sge = 1;
-    attr_init_5.cap.max_recv_sge = 1;
-    qp[5] = ibv_create_qp(pd[5], &attr_init_5);
-    if (!qp[5]) {
+    
+    memset(&attr_init_QP5, 0, sizeof(attr_init_QP5));
+    attr_init_QP5.send_cq = CQ5;
+    attr_init_QP5.recv_cq = CQ5;
+
+    memset(&attr_init_QP5_cap, 0, sizeof(attr_init_QP5_cap));
+    attr_init_QP5_cap.max_send_wr = 1;
+    attr_init_QP5_cap.max_recv_wr = 1;
+    attr_init_QP5_cap.max_send_sge = 1;
+    attr_init_QP5_cap.max_recv_sge = 1;
+    attr_init_QP5.cap = attr_init_QP5_cap;
+    attr_init_QP5.qp_type = IBV_QPT_RC;
+    attr_init_QP5.sq_sig_all = 1;
+
+    QP5 = ibv_create_qp(PD5, &attr_init_QP5);
+    if (!QP5) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[5]->qp_num;
+    req.local_qpn = QP5->qp_num;
     req.remote_qp_index = 5;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_5, 0, sizeof(qp_attr_5));
-    qp_attr_5.qp_state = IBV_QPS_INIT;
-    qp_attr_5.pkey_index = 0;
-    qp_attr_5.port_num = 1;
-    qp_attr_5.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP5, 0, sizeof(qp_attr_QP5));
     
-    ibv_modify_qp(qp[5], &qp_attr_5, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP5, 0, sizeof(qp_attr_QP5));
+    qp_attr_QP5.qp_state = IBV_QPS_INIT;
+    qp_attr_QP5.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP5.pkey_index = 0;
+    qp_attr_QP5.port_num = 1;
+
+    ibv_modify_qp(QP5, &qp_attr_QP5, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_5, 0, sizeof(qp_attr_5));
-    qp_attr_5.qp_state = IBV_QPS_RTR;
-    qp_attr_5.path_mtu = IBV_MTU_1024;
-    qp_attr_5.dest_qp_num = local_remote_qp_map[qp[5]->qp_num];
-    qp_attr_5.rq_psn = 0;
-    qp_attr_5.max_dest_rd_atomic = 1;
-    qp_attr_5.min_rnr_timer = 12;
-    qp_attr_5.ah_attr.is_global = 1;
-    qp_attr_5.ah_attr.dlid = remote_info.lid;
-    qp_attr_5.ah_attr.sl = 0;
-    qp_attr_5.ah_attr.src_path_bits = 0;
-    qp_attr_5.ah_attr.port_num = 1;
-    qp_attr_5.ah_attr.grh.sgid_index = 1;
-    qp_attr_5.ah_attr.grh.hop_limit = 1;
-    qp_attr_5.ah_attr.grh.traffic_class = 0;
-    qp_attr_5.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP5, 0, sizeof(qp_attr_QP5));
     
-    memcpy(&qp_attr_5.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[5], &qp_attr_5, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP5, 0, sizeof(qp_attr_QP5));
+    qp_attr_QP5.qp_state = IBV_QPS_RTR;
+    qp_attr_QP5.path_mtu = IBV_MTU_1024;
+    qp_attr_QP5.rq_psn = 0;
+    qp_attr_QP5.dest_qp_num = local_remote_qp_map[QP5->qp_num];
+
+    memset(&qp_attr_QP5_ah, 0, sizeof(qp_attr_QP5_ah));
+
+    memset(&qp_attr_QP5_ah_grh, 0, sizeof(qp_attr_QP5_ah_grh));
+
+    memset(&qp_attr_QP5_ah_grh_dgid, 0, sizeof(qp_attr_QP5_ah_grh_dgid));
+    memcpy(&qp_attr_QP5_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP5_ah_grh_dgid));
+    qp_attr_QP5_ah_grh.dgid = qp_attr_QP5_ah_grh_dgid;
+    qp_attr_QP5_ah_grh.flow_label = 0;
+    qp_attr_QP5_ah_grh.sgid_index = 1;
+    qp_attr_QP5_ah_grh.hop_limit = 1;
+    qp_attr_QP5_ah_grh.traffic_class = 0;
+    qp_attr_QP5_ah.grh = qp_attr_QP5_ah_grh;
+    qp_attr_QP5_ah.dlid = remote_info.lid;
+    qp_attr_QP5_ah.sl = 0;
+    qp_attr_QP5_ah.src_path_bits = 0;
+    qp_attr_QP5_ah.is_global = 1;
+    qp_attr_QP5_ah.port_num = 1;
+    qp_attr_QP5.ah_attr = qp_attr_QP5_ah;
+    qp_attr_QP5.max_dest_rd_atomic = 1;
+    qp_attr_QP5.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP5, &qp_attr_QP5, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_5, 0, sizeof(qp_attr_5));
-    qp_attr_5.qp_state = IBV_QPS_RTS;
-    qp_attr_5.timeout = 14;
-    qp_attr_5.retry_cnt = 7;
-    qp_attr_5.rnr_retry = 7;
-    qp_attr_5.sq_psn = 0;
-    qp_attr_5.max_rd_atomic = 1;
+    memset(&qp_attr_QP5, 0, sizeof(qp_attr_QP5));
     
-    ibv_modify_qp(qp[5], &qp_attr_5, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP5, 0, sizeof(qp_attr_QP5));
+    qp_attr_QP5.qp_state = IBV_QPS_RTS;
+    qp_attr_QP5.sq_psn = 0;
+    qp_attr_QP5.max_rd_atomic = 1;
+    qp_attr_QP5.timeout = 14;
+    qp_attr_QP5.retry_cnt = 7;
+    qp_attr_QP5.rnr_retry = 7;
+
+    ibv_modify_qp(QP5, &qp_attr_QP5, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP5, 0, sizeof(wr_QP5));
+    wr_QP5.wr_id = 1;
 
-    memset(&sge_send_5, 0, sizeof(sge_send_5));
-    sge_send_5.addr = (uintptr_t)bufs[5];
-    sge_send_5.length = MSG_SIZE;
-    sge_send_5.lkey = mr[5]->lkey;
+    memset(&wr_QP5_sge_0, 0, sizeof(wr_QP5_sge_0));
+    wr_QP5_sge_0.addr = (uintptr_t)bufs[5];
+    wr_QP5_sge_0.length = MSG_SIZE;
+    wr_QP5_sge_0.lkey = MR5->lkey;
+    wr_QP5.sg_list = &wr_QP5_sge_0;
+    wr_QP5.num_sge = 1;
+    wr_QP5.opcode = IBV_WR_SEND;
+    wr_QP5.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_5, 0, sizeof(sr_5));
-    sr_5.next = NULL;
-    sr_5.wr_id = 1;
-    sr_5.sg_list = &sge_send_5;
-    sr_5.num_sge = 1;
-    sr_5.opcode = IBV_WR_SEND;
-    sr_5.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[5], &sr_5, &bad_wr_send_5);
-
+    
+    if (ibv_post_send(QP5, &wr_QP5, &bad_wr_QP5) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -1575,7 +1800,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[5], 1, &wc);
+        poll_result = ibv_poll_cq(CQ5, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -1607,104 +1832,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[6] = ibv_alloc_pd(ctx);
-    if (!pd[6]) {
+    PD6 = ibv_alloc_pd(ctx);
+    if (!PD6) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[6] = ibv_create_cq(ctx, 32, 
+    CQ6 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[6]) {
+    if (!CQ6) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[6] = ibv_reg_mr(pd[6], bufs[6], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[6]) {
+    MR6 = ibv_reg_mr(PD6, bufs[6], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR6) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_6.qp_type = IBV_QPT_RC;
-    attr_init_6.send_cq = cq[6];
-    attr_init_6.recv_cq = cq[6];
-    attr_init_6.cap.max_send_wr = 1;
-    attr_init_6.cap.max_recv_wr = 1;
-    attr_init_6.cap.max_send_sge = 1;
-    attr_init_6.cap.max_recv_sge = 1;
-    qp[6] = ibv_create_qp(pd[6], &attr_init_6);
-    if (!qp[6]) {
+    
+    memset(&attr_init_QP6, 0, sizeof(attr_init_QP6));
+    attr_init_QP6.send_cq = CQ6;
+    attr_init_QP6.recv_cq = CQ6;
+
+    memset(&attr_init_QP6_cap, 0, sizeof(attr_init_QP6_cap));
+    attr_init_QP6_cap.max_send_wr = 1;
+    attr_init_QP6_cap.max_recv_wr = 1;
+    attr_init_QP6_cap.max_send_sge = 1;
+    attr_init_QP6_cap.max_recv_sge = 1;
+    attr_init_QP6.cap = attr_init_QP6_cap;
+    attr_init_QP6.qp_type = IBV_QPT_RC;
+    attr_init_QP6.sq_sig_all = 1;
+
+    QP6 = ibv_create_qp(PD6, &attr_init_QP6);
+    if (!QP6) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[6]->qp_num;
+    req.local_qpn = QP6->qp_num;
     req.remote_qp_index = 6;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_6, 0, sizeof(qp_attr_6));
-    qp_attr_6.qp_state = IBV_QPS_INIT;
-    qp_attr_6.pkey_index = 0;
-    qp_attr_6.port_num = 1;
-    qp_attr_6.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP6, 0, sizeof(qp_attr_QP6));
     
-    ibv_modify_qp(qp[6], &qp_attr_6, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP6, 0, sizeof(qp_attr_QP6));
+    qp_attr_QP6.qp_state = IBV_QPS_INIT;
+    qp_attr_QP6.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP6.pkey_index = 0;
+    qp_attr_QP6.port_num = 1;
+
+    ibv_modify_qp(QP6, &qp_attr_QP6, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_6, 0, sizeof(qp_attr_6));
-    qp_attr_6.qp_state = IBV_QPS_RTR;
-    qp_attr_6.path_mtu = IBV_MTU_1024;
-    qp_attr_6.dest_qp_num = local_remote_qp_map[qp[6]->qp_num];
-    qp_attr_6.rq_psn = 0;
-    qp_attr_6.max_dest_rd_atomic = 1;
-    qp_attr_6.min_rnr_timer = 12;
-    qp_attr_6.ah_attr.is_global = 1;
-    qp_attr_6.ah_attr.dlid = remote_info.lid;
-    qp_attr_6.ah_attr.sl = 0;
-    qp_attr_6.ah_attr.src_path_bits = 0;
-    qp_attr_6.ah_attr.port_num = 1;
-    qp_attr_6.ah_attr.grh.sgid_index = 1;
-    qp_attr_6.ah_attr.grh.hop_limit = 1;
-    qp_attr_6.ah_attr.grh.traffic_class = 0;
-    qp_attr_6.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP6, 0, sizeof(qp_attr_QP6));
     
-    memcpy(&qp_attr_6.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[6], &qp_attr_6, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP6, 0, sizeof(qp_attr_QP6));
+    qp_attr_QP6.qp_state = IBV_QPS_RTR;
+    qp_attr_QP6.path_mtu = IBV_MTU_1024;
+    qp_attr_QP6.rq_psn = 0;
+    qp_attr_QP6.dest_qp_num = local_remote_qp_map[QP6->qp_num];
+
+    memset(&qp_attr_QP6_ah, 0, sizeof(qp_attr_QP6_ah));
+
+    memset(&qp_attr_QP6_ah_grh, 0, sizeof(qp_attr_QP6_ah_grh));
+
+    memset(&qp_attr_QP6_ah_grh_dgid, 0, sizeof(qp_attr_QP6_ah_grh_dgid));
+    memcpy(&qp_attr_QP6_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP6_ah_grh_dgid));
+    qp_attr_QP6_ah_grh.dgid = qp_attr_QP6_ah_grh_dgid;
+    qp_attr_QP6_ah_grh.flow_label = 0;
+    qp_attr_QP6_ah_grh.sgid_index = 1;
+    qp_attr_QP6_ah_grh.hop_limit = 1;
+    qp_attr_QP6_ah_grh.traffic_class = 0;
+    qp_attr_QP6_ah.grh = qp_attr_QP6_ah_grh;
+    qp_attr_QP6_ah.dlid = remote_info.lid;
+    qp_attr_QP6_ah.sl = 0;
+    qp_attr_QP6_ah.src_path_bits = 0;
+    qp_attr_QP6_ah.is_global = 1;
+    qp_attr_QP6_ah.port_num = 1;
+    qp_attr_QP6.ah_attr = qp_attr_QP6_ah;
+    qp_attr_QP6.max_dest_rd_atomic = 1;
+    qp_attr_QP6.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP6, &qp_attr_QP6, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_6, 0, sizeof(qp_attr_6));
-    qp_attr_6.qp_state = IBV_QPS_RTS;
-    qp_attr_6.timeout = 14;
-    qp_attr_6.retry_cnt = 7;
-    qp_attr_6.rnr_retry = 7;
-    qp_attr_6.sq_psn = 0;
-    qp_attr_6.max_rd_atomic = 1;
+    memset(&qp_attr_QP6, 0, sizeof(qp_attr_QP6));
     
-    ibv_modify_qp(qp[6], &qp_attr_6, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP6, 0, sizeof(qp_attr_QP6));
+    qp_attr_QP6.qp_state = IBV_QPS_RTS;
+    qp_attr_QP6.sq_psn = 0;
+    qp_attr_QP6.max_rd_atomic = 1;
+    qp_attr_QP6.timeout = 14;
+    qp_attr_QP6.retry_cnt = 7;
+    qp_attr_QP6.rnr_retry = 7;
+
+    ibv_modify_qp(QP6, &qp_attr_QP6, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP6, 0, sizeof(wr_QP6));
+    wr_QP6.wr_id = 1;
 
-    memset(&sge_send_6, 0, sizeof(sge_send_6));
-    sge_send_6.addr = (uintptr_t)bufs[6];
-    sge_send_6.length = MSG_SIZE;
-    sge_send_6.lkey = mr[6]->lkey;
+    memset(&wr_QP6_sge_0, 0, sizeof(wr_QP6_sge_0));
+    wr_QP6_sge_0.addr = (uintptr_t)bufs[6];
+    wr_QP6_sge_0.length = MSG_SIZE;
+    wr_QP6_sge_0.lkey = MR6->lkey;
+    wr_QP6.sg_list = &wr_QP6_sge_0;
+    wr_QP6.num_sge = 1;
+    wr_QP6.opcode = IBV_WR_SEND;
+    wr_QP6.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_6, 0, sizeof(sr_6));
-    sr_6.next = NULL;
-    sr_6.wr_id = 1;
-    sr_6.sg_list = &sge_send_6;
-    sr_6.num_sge = 1;
-    sr_6.opcode = IBV_WR_SEND;
-    sr_6.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[6], &sr_6, &bad_wr_send_6);
-
+    
+    if (ibv_post_send(QP6, &wr_QP6, &bad_wr_QP6) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -1712,7 +1961,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[6], 1, &wc);
+        poll_result = ibv_poll_cq(CQ6, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -1744,104 +1993,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[7] = ibv_alloc_pd(ctx);
-    if (!pd[7]) {
+    PD7 = ibv_alloc_pd(ctx);
+    if (!PD7) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[7] = ibv_create_cq(ctx, 32, 
+    CQ7 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[7]) {
+    if (!CQ7) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[7] = ibv_reg_mr(pd[7], bufs[7], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[7]) {
+    MR7 = ibv_reg_mr(PD7, bufs[7], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR7) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_7.qp_type = IBV_QPT_RC;
-    attr_init_7.send_cq = cq[7];
-    attr_init_7.recv_cq = cq[7];
-    attr_init_7.cap.max_send_wr = 1;
-    attr_init_7.cap.max_recv_wr = 1;
-    attr_init_7.cap.max_send_sge = 1;
-    attr_init_7.cap.max_recv_sge = 1;
-    qp[7] = ibv_create_qp(pd[7], &attr_init_7);
-    if (!qp[7]) {
+    
+    memset(&attr_init_QP7, 0, sizeof(attr_init_QP7));
+    attr_init_QP7.send_cq = CQ7;
+    attr_init_QP7.recv_cq = CQ7;
+
+    memset(&attr_init_QP7_cap, 0, sizeof(attr_init_QP7_cap));
+    attr_init_QP7_cap.max_send_wr = 1;
+    attr_init_QP7_cap.max_recv_wr = 1;
+    attr_init_QP7_cap.max_send_sge = 1;
+    attr_init_QP7_cap.max_recv_sge = 1;
+    attr_init_QP7.cap = attr_init_QP7_cap;
+    attr_init_QP7.qp_type = IBV_QPT_RC;
+    attr_init_QP7.sq_sig_all = 1;
+
+    QP7 = ibv_create_qp(PD7, &attr_init_QP7);
+    if (!QP7) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[7]->qp_num;
+    req.local_qpn = QP7->qp_num;
     req.remote_qp_index = 7;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_7, 0, sizeof(qp_attr_7));
-    qp_attr_7.qp_state = IBV_QPS_INIT;
-    qp_attr_7.pkey_index = 0;
-    qp_attr_7.port_num = 1;
-    qp_attr_7.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP7, 0, sizeof(qp_attr_QP7));
     
-    ibv_modify_qp(qp[7], &qp_attr_7, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP7, 0, sizeof(qp_attr_QP7));
+    qp_attr_QP7.qp_state = IBV_QPS_INIT;
+    qp_attr_QP7.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP7.pkey_index = 0;
+    qp_attr_QP7.port_num = 1;
+
+    ibv_modify_qp(QP7, &qp_attr_QP7, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_7, 0, sizeof(qp_attr_7));
-    qp_attr_7.qp_state = IBV_QPS_RTR;
-    qp_attr_7.path_mtu = IBV_MTU_1024;
-    qp_attr_7.dest_qp_num = local_remote_qp_map[qp[7]->qp_num];
-    qp_attr_7.rq_psn = 0;
-    qp_attr_7.max_dest_rd_atomic = 1;
-    qp_attr_7.min_rnr_timer = 12;
-    qp_attr_7.ah_attr.is_global = 1;
-    qp_attr_7.ah_attr.dlid = remote_info.lid;
-    qp_attr_7.ah_attr.sl = 0;
-    qp_attr_7.ah_attr.src_path_bits = 0;
-    qp_attr_7.ah_attr.port_num = 1;
-    qp_attr_7.ah_attr.grh.sgid_index = 1;
-    qp_attr_7.ah_attr.grh.hop_limit = 1;
-    qp_attr_7.ah_attr.grh.traffic_class = 0;
-    qp_attr_7.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP7, 0, sizeof(qp_attr_QP7));
     
-    memcpy(&qp_attr_7.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[7], &qp_attr_7, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP7, 0, sizeof(qp_attr_QP7));
+    qp_attr_QP7.qp_state = IBV_QPS_RTR;
+    qp_attr_QP7.path_mtu = IBV_MTU_1024;
+    qp_attr_QP7.rq_psn = 0;
+    qp_attr_QP7.dest_qp_num = local_remote_qp_map[QP7->qp_num];
+
+    memset(&qp_attr_QP7_ah, 0, sizeof(qp_attr_QP7_ah));
+
+    memset(&qp_attr_QP7_ah_grh, 0, sizeof(qp_attr_QP7_ah_grh));
+
+    memset(&qp_attr_QP7_ah_grh_dgid, 0, sizeof(qp_attr_QP7_ah_grh_dgid));
+    memcpy(&qp_attr_QP7_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP7_ah_grh_dgid));
+    qp_attr_QP7_ah_grh.dgid = qp_attr_QP7_ah_grh_dgid;
+    qp_attr_QP7_ah_grh.flow_label = 0;
+    qp_attr_QP7_ah_grh.sgid_index = 1;
+    qp_attr_QP7_ah_grh.hop_limit = 1;
+    qp_attr_QP7_ah_grh.traffic_class = 0;
+    qp_attr_QP7_ah.grh = qp_attr_QP7_ah_grh;
+    qp_attr_QP7_ah.dlid = remote_info.lid;
+    qp_attr_QP7_ah.sl = 0;
+    qp_attr_QP7_ah.src_path_bits = 0;
+    qp_attr_QP7_ah.is_global = 1;
+    qp_attr_QP7_ah.port_num = 1;
+    qp_attr_QP7.ah_attr = qp_attr_QP7_ah;
+    qp_attr_QP7.max_dest_rd_atomic = 1;
+    qp_attr_QP7.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP7, &qp_attr_QP7, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_7, 0, sizeof(qp_attr_7));
-    qp_attr_7.qp_state = IBV_QPS_RTS;
-    qp_attr_7.timeout = 14;
-    qp_attr_7.retry_cnt = 7;
-    qp_attr_7.rnr_retry = 7;
-    qp_attr_7.sq_psn = 0;
-    qp_attr_7.max_rd_atomic = 1;
+    memset(&qp_attr_QP7, 0, sizeof(qp_attr_QP7));
     
-    ibv_modify_qp(qp[7], &qp_attr_7, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP7, 0, sizeof(qp_attr_QP7));
+    qp_attr_QP7.qp_state = IBV_QPS_RTS;
+    qp_attr_QP7.sq_psn = 0;
+    qp_attr_QP7.max_rd_atomic = 1;
+    qp_attr_QP7.timeout = 14;
+    qp_attr_QP7.retry_cnt = 7;
+    qp_attr_QP7.rnr_retry = 7;
+
+    ibv_modify_qp(QP7, &qp_attr_QP7, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP7, 0, sizeof(wr_QP7));
+    wr_QP7.wr_id = 1;
 
-    memset(&sge_send_7, 0, sizeof(sge_send_7));
-    sge_send_7.addr = (uintptr_t)bufs[7];
-    sge_send_7.length = MSG_SIZE;
-    sge_send_7.lkey = mr[7]->lkey;
+    memset(&wr_QP7_sge_0, 0, sizeof(wr_QP7_sge_0));
+    wr_QP7_sge_0.addr = (uintptr_t)bufs[7];
+    wr_QP7_sge_0.length = MSG_SIZE;
+    wr_QP7_sge_0.lkey = MR7->lkey;
+    wr_QP7.sg_list = &wr_QP7_sge_0;
+    wr_QP7.num_sge = 1;
+    wr_QP7.opcode = IBV_WR_SEND;
+    wr_QP7.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_7, 0, sizeof(sr_7));
-    sr_7.next = NULL;
-    sr_7.wr_id = 1;
-    sr_7.sg_list = &sge_send_7;
-    sr_7.num_sge = 1;
-    sr_7.opcode = IBV_WR_SEND;
-    sr_7.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[7], &sr_7, &bad_wr_send_7);
-
+    
+    if (ibv_post_send(QP7, &wr_QP7, &bad_wr_QP7) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -1849,7 +2122,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[7], 1, &wc);
+        poll_result = ibv_poll_cq(CQ7, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -1881,104 +2154,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[8] = ibv_alloc_pd(ctx);
-    if (!pd[8]) {
+    PD8 = ibv_alloc_pd(ctx);
+    if (!PD8) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[8] = ibv_create_cq(ctx, 32, 
+    CQ8 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[8]) {
+    if (!CQ8) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[8] = ibv_reg_mr(pd[8], bufs[8], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[8]) {
+    MR8 = ibv_reg_mr(PD8, bufs[8], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR8) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_8.qp_type = IBV_QPT_RC;
-    attr_init_8.send_cq = cq[8];
-    attr_init_8.recv_cq = cq[8];
-    attr_init_8.cap.max_send_wr = 1;
-    attr_init_8.cap.max_recv_wr = 1;
-    attr_init_8.cap.max_send_sge = 1;
-    attr_init_8.cap.max_recv_sge = 1;
-    qp[8] = ibv_create_qp(pd[8], &attr_init_8);
-    if (!qp[8]) {
+    
+    memset(&attr_init_QP8, 0, sizeof(attr_init_QP8));
+    attr_init_QP8.send_cq = CQ8;
+    attr_init_QP8.recv_cq = CQ8;
+
+    memset(&attr_init_QP8_cap, 0, sizeof(attr_init_QP8_cap));
+    attr_init_QP8_cap.max_send_wr = 1;
+    attr_init_QP8_cap.max_recv_wr = 1;
+    attr_init_QP8_cap.max_send_sge = 1;
+    attr_init_QP8_cap.max_recv_sge = 1;
+    attr_init_QP8.cap = attr_init_QP8_cap;
+    attr_init_QP8.qp_type = IBV_QPT_RC;
+    attr_init_QP8.sq_sig_all = 1;
+
+    QP8 = ibv_create_qp(PD8, &attr_init_QP8);
+    if (!QP8) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[8]->qp_num;
+    req.local_qpn = QP8->qp_num;
     req.remote_qp_index = 8;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_8, 0, sizeof(qp_attr_8));
-    qp_attr_8.qp_state = IBV_QPS_INIT;
-    qp_attr_8.pkey_index = 0;
-    qp_attr_8.port_num = 1;
-    qp_attr_8.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP8, 0, sizeof(qp_attr_QP8));
     
-    ibv_modify_qp(qp[8], &qp_attr_8, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP8, 0, sizeof(qp_attr_QP8));
+    qp_attr_QP8.qp_state = IBV_QPS_INIT;
+    qp_attr_QP8.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP8.pkey_index = 0;
+    qp_attr_QP8.port_num = 1;
+
+    ibv_modify_qp(QP8, &qp_attr_QP8, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_8, 0, sizeof(qp_attr_8));
-    qp_attr_8.qp_state = IBV_QPS_RTR;
-    qp_attr_8.path_mtu = IBV_MTU_1024;
-    qp_attr_8.dest_qp_num = local_remote_qp_map[qp[8]->qp_num];
-    qp_attr_8.rq_psn = 0;
-    qp_attr_8.max_dest_rd_atomic = 1;
-    qp_attr_8.min_rnr_timer = 12;
-    qp_attr_8.ah_attr.is_global = 1;
-    qp_attr_8.ah_attr.dlid = remote_info.lid;
-    qp_attr_8.ah_attr.sl = 0;
-    qp_attr_8.ah_attr.src_path_bits = 0;
-    qp_attr_8.ah_attr.port_num = 1;
-    qp_attr_8.ah_attr.grh.sgid_index = 1;
-    qp_attr_8.ah_attr.grh.hop_limit = 1;
-    qp_attr_8.ah_attr.grh.traffic_class = 0;
-    qp_attr_8.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP8, 0, sizeof(qp_attr_QP8));
     
-    memcpy(&qp_attr_8.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[8], &qp_attr_8, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP8, 0, sizeof(qp_attr_QP8));
+    qp_attr_QP8.qp_state = IBV_QPS_RTR;
+    qp_attr_QP8.path_mtu = IBV_MTU_1024;
+    qp_attr_QP8.rq_psn = 0;
+    qp_attr_QP8.dest_qp_num = local_remote_qp_map[QP8->qp_num];
+
+    memset(&qp_attr_QP8_ah, 0, sizeof(qp_attr_QP8_ah));
+
+    memset(&qp_attr_QP8_ah_grh, 0, sizeof(qp_attr_QP8_ah_grh));
+
+    memset(&qp_attr_QP8_ah_grh_dgid, 0, sizeof(qp_attr_QP8_ah_grh_dgid));
+    memcpy(&qp_attr_QP8_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP8_ah_grh_dgid));
+    qp_attr_QP8_ah_grh.dgid = qp_attr_QP8_ah_grh_dgid;
+    qp_attr_QP8_ah_grh.flow_label = 0;
+    qp_attr_QP8_ah_grh.sgid_index = 1;
+    qp_attr_QP8_ah_grh.hop_limit = 1;
+    qp_attr_QP8_ah_grh.traffic_class = 0;
+    qp_attr_QP8_ah.grh = qp_attr_QP8_ah_grh;
+    qp_attr_QP8_ah.dlid = remote_info.lid;
+    qp_attr_QP8_ah.sl = 0;
+    qp_attr_QP8_ah.src_path_bits = 0;
+    qp_attr_QP8_ah.is_global = 1;
+    qp_attr_QP8_ah.port_num = 1;
+    qp_attr_QP8.ah_attr = qp_attr_QP8_ah;
+    qp_attr_QP8.max_dest_rd_atomic = 1;
+    qp_attr_QP8.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP8, &qp_attr_QP8, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_8, 0, sizeof(qp_attr_8));
-    qp_attr_8.qp_state = IBV_QPS_RTS;
-    qp_attr_8.timeout = 14;
-    qp_attr_8.retry_cnt = 7;
-    qp_attr_8.rnr_retry = 7;
-    qp_attr_8.sq_psn = 0;
-    qp_attr_8.max_rd_atomic = 1;
+    memset(&qp_attr_QP8, 0, sizeof(qp_attr_QP8));
     
-    ibv_modify_qp(qp[8], &qp_attr_8, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP8, 0, sizeof(qp_attr_QP8));
+    qp_attr_QP8.qp_state = IBV_QPS_RTS;
+    qp_attr_QP8.sq_psn = 0;
+    qp_attr_QP8.max_rd_atomic = 1;
+    qp_attr_QP8.timeout = 14;
+    qp_attr_QP8.retry_cnt = 7;
+    qp_attr_QP8.rnr_retry = 7;
+
+    ibv_modify_qp(QP8, &qp_attr_QP8, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP8, 0, sizeof(wr_QP8));
+    wr_QP8.wr_id = 1;
 
-    memset(&sge_send_8, 0, sizeof(sge_send_8));
-    sge_send_8.addr = (uintptr_t)bufs[8];
-    sge_send_8.length = MSG_SIZE;
-    sge_send_8.lkey = mr[8]->lkey;
+    memset(&wr_QP8_sge_0, 0, sizeof(wr_QP8_sge_0));
+    wr_QP8_sge_0.addr = (uintptr_t)bufs[8];
+    wr_QP8_sge_0.length = MSG_SIZE;
+    wr_QP8_sge_0.lkey = MR8->lkey;
+    wr_QP8.sg_list = &wr_QP8_sge_0;
+    wr_QP8.num_sge = 1;
+    wr_QP8.opcode = IBV_WR_SEND;
+    wr_QP8.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_8, 0, sizeof(sr_8));
-    sr_8.next = NULL;
-    sr_8.wr_id = 1;
-    sr_8.sg_list = &sge_send_8;
-    sr_8.num_sge = 1;
-    sr_8.opcode = IBV_WR_SEND;
-    sr_8.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[8], &sr_8, &bad_wr_send_8);
-
+    
+    if (ibv_post_send(QP8, &wr_QP8, &bad_wr_QP8) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -1986,7 +2283,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[8], 1, &wc);
+        poll_result = ibv_poll_cq(CQ8, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -2018,104 +2315,128 @@ int main()
     }
 
     /* ibv_alloc_pd */
-    pd[9] = ibv_alloc_pd(ctx);
-    if (!pd[9]) {
+    PD9 = ibv_alloc_pd(ctx);
+    if (!PD9) {
         fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
 
     /* ibv_create_cq */
-    cq[9] = ibv_create_cq(ctx, 32, 
+    CQ9 = ibv_create_cq(ctx, 32, 
                               NULL, NULL, 
                               0);
-    if (!cq[9]) {
+    if (!CQ9) {
         fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
 
     /* ibv_reg_mr */
-    mr[9] = ibv_reg_mr(pd[9], bufs[9], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr[9]) {
+    MR9 = ibv_reg_mr(PD9, bufs[9], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!MR9) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
 
     /* ibv_create_qp */
-    attr_init_9.qp_type = IBV_QPT_RC;
-    attr_init_9.send_cq = cq[9];
-    attr_init_9.recv_cq = cq[9];
-    attr_init_9.cap.max_send_wr = 1;
-    attr_init_9.cap.max_recv_wr = 1;
-    attr_init_9.cap.max_send_sge = 1;
-    attr_init_9.cap.max_recv_sge = 1;
-    qp[9] = ibv_create_qp(pd[9], &attr_init_9);
-    if (!qp[9]) {
+    
+    memset(&attr_init_QP9, 0, sizeof(attr_init_QP9));
+    attr_init_QP9.send_cq = CQ9;
+    attr_init_QP9.recv_cq = CQ9;
+
+    memset(&attr_init_QP9_cap, 0, sizeof(attr_init_QP9_cap));
+    attr_init_QP9_cap.max_send_wr = 1;
+    attr_init_QP9_cap.max_recv_wr = 1;
+    attr_init_QP9_cap.max_send_sge = 1;
+    attr_init_QP9_cap.max_recv_sge = 1;
+    attr_init_QP9.cap = attr_init_QP9_cap;
+    attr_init_QP9.qp_type = IBV_QPT_RC;
+    attr_init_QP9.sq_sig_all = 1;
+
+    QP9 = ibv_create_qp(PD9, &attr_init_QP9);
+    if (!QP9) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
 
     /* Export connection data */
-    req.local_qpn = qp[9]->qp_num;
+    req.local_qpn = QP9->qp_num;
     req.remote_qp_index = 9;
     send_pair_request_to_controller(req, sockfd);
     receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
 
-    memset(&qp_attr_9, 0, sizeof(qp_attr_9));
-    qp_attr_9.qp_state = IBV_QPS_INIT;
-    qp_attr_9.pkey_index = 0;
-    qp_attr_9.port_num = 1;
-    qp_attr_9.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    memset(&qp_attr_QP9, 0, sizeof(qp_attr_QP9));
     
-    ibv_modify_qp(qp[9], &qp_attr_9, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    memset(&qp_attr_QP9, 0, sizeof(qp_attr_QP9));
+    qp_attr_QP9.qp_state = IBV_QPS_INIT;
+    qp_attr_QP9.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_QP9.pkey_index = 0;
+    qp_attr_QP9.port_num = 1;
+
+    ibv_modify_qp(QP9, &qp_attr_QP9, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
         
-    memset(&qp_attr_9, 0, sizeof(qp_attr_9));
-    qp_attr_9.qp_state = IBV_QPS_RTR;
-    qp_attr_9.path_mtu = IBV_MTU_1024;
-    qp_attr_9.dest_qp_num = local_remote_qp_map[qp[9]->qp_num];
-    qp_attr_9.rq_psn = 0;
-    qp_attr_9.max_dest_rd_atomic = 1;
-    qp_attr_9.min_rnr_timer = 12;
-    qp_attr_9.ah_attr.is_global = 1;
-    qp_attr_9.ah_attr.dlid = remote_info.lid;
-    qp_attr_9.ah_attr.sl = 0;
-    qp_attr_9.ah_attr.src_path_bits = 0;
-    qp_attr_9.ah_attr.port_num = 1;
-    qp_attr_9.ah_attr.grh.sgid_index = 1;
-    qp_attr_9.ah_attr.grh.hop_limit = 1;
-    qp_attr_9.ah_attr.grh.traffic_class = 0;
-    qp_attr_9.ah_attr.grh.flow_label = 0;
+    memset(&qp_attr_QP9, 0, sizeof(qp_attr_QP9));
     
-    memcpy(&qp_attr_9.ah_attr.grh.dgid, remote_info.gid, 16);
-            
-    ibv_modify_qp(qp[9], &qp_attr_9, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+    memset(&qp_attr_QP9, 0, sizeof(qp_attr_QP9));
+    qp_attr_QP9.qp_state = IBV_QPS_RTR;
+    qp_attr_QP9.path_mtu = IBV_MTU_1024;
+    qp_attr_QP9.rq_psn = 0;
+    qp_attr_QP9.dest_qp_num = local_remote_qp_map[QP9->qp_num];
+
+    memset(&qp_attr_QP9_ah, 0, sizeof(qp_attr_QP9_ah));
+
+    memset(&qp_attr_QP9_ah_grh, 0, sizeof(qp_attr_QP9_ah_grh));
+
+    memset(&qp_attr_QP9_ah_grh_dgid, 0, sizeof(qp_attr_QP9_ah_grh_dgid));
+    memcpy(&qp_attr_QP9_ah_grh_dgid, &remote_info.gid, sizeof(qp_attr_QP9_ah_grh_dgid));
+    qp_attr_QP9_ah_grh.dgid = qp_attr_QP9_ah_grh_dgid;
+    qp_attr_QP9_ah_grh.flow_label = 0;
+    qp_attr_QP9_ah_grh.sgid_index = 1;
+    qp_attr_QP9_ah_grh.hop_limit = 1;
+    qp_attr_QP9_ah_grh.traffic_class = 0;
+    qp_attr_QP9_ah.grh = qp_attr_QP9_ah_grh;
+    qp_attr_QP9_ah.dlid = remote_info.lid;
+    qp_attr_QP9_ah.sl = 0;
+    qp_attr_QP9_ah.src_path_bits = 0;
+    qp_attr_QP9_ah.is_global = 1;
+    qp_attr_QP9_ah.port_num = 1;
+    qp_attr_QP9.ah_attr = qp_attr_QP9_ah;
+    qp_attr_QP9.max_dest_rd_atomic = 1;
+    qp_attr_QP9.min_rnr_timer = 12;
+
+    ibv_modify_qp(QP9, &qp_attr_QP9, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         
-    memset(&qp_attr_9, 0, sizeof(qp_attr_9));
-    qp_attr_9.qp_state = IBV_QPS_RTS;
-    qp_attr_9.timeout = 14;
-    qp_attr_9.retry_cnt = 7;
-    qp_attr_9.rnr_retry = 7;
-    qp_attr_9.sq_psn = 0;
-    qp_attr_9.max_rd_atomic = 1;
+    memset(&qp_attr_QP9, 0, sizeof(qp_attr_QP9));
     
-    ibv_modify_qp(qp[9], &qp_attr_9, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    memset(&qp_attr_QP9, 0, sizeof(qp_attr_QP9));
+    qp_attr_QP9.qp_state = IBV_QPS_RTS;
+    qp_attr_QP9.sq_psn = 0;
+    qp_attr_QP9.max_rd_atomic = 1;
+    qp_attr_QP9.timeout = 14;
+    qp_attr_QP9.retry_cnt = 7;
+    qp_attr_QP9.rnr_retry = 7;
+
+    ibv_modify_qp(QP9, &qp_attr_QP9, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
         
     /* ibv_post_send */
+    
+    memset(&wr_QP9, 0, sizeof(wr_QP9));
+    wr_QP9.wr_id = 1;
 
-    memset(&sge_send_9, 0, sizeof(sge_send_9));
-    sge_send_9.addr = (uintptr_t)bufs[9];
-    sge_send_9.length = MSG_SIZE;
-    sge_send_9.lkey = mr[9]->lkey;
+    memset(&wr_QP9_sge_0, 0, sizeof(wr_QP9_sge_0));
+    wr_QP9_sge_0.addr = (uintptr_t)bufs[9];
+    wr_QP9_sge_0.length = MSG_SIZE;
+    wr_QP9_sge_0.lkey = MR9->lkey;
+    wr_QP9.sg_list = &wr_QP9_sge_0;
+    wr_QP9.num_sge = 1;
+    wr_QP9.opcode = IBV_WR_SEND;
+    wr_QP9.send_flags = IBV_SEND_SIGNALED;
 
-    memset(&sr_9, 0, sizeof(sr_9));
-    sr_9.next = NULL;
-    sr_9.wr_id = 1;
-    sr_9.sg_list = &sge_send_9;
-    sr_9.num_sge = 1;
-    sr_9.opcode = IBV_WR_SEND;
-    sr_9.send_flags = IBV_SEND_SIGNALED;
-
-    ibv_post_send(qp[9], &sr_9, &bad_wr_send_9);
-
+    
+    if (ibv_post_send(QP9, &wr_QP9, &bad_wr_QP9) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+    
     /* Poll completion queue */
 
     /* poll the completion for a while before giving up of doing it .. */
@@ -2123,7 +2444,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(cq[9], 1, &wc);
+        poll_result = ibv_poll_cq(CQ9, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -2155,241 +2476,241 @@ int main()
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[0])) {
+    if (ibv_destroy_qp(QP0)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[0])) {
+    if (ibv_dereg_mr(MR0)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[0])) {
+    if (ibv_destroy_cq(CQ0)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[0])) {
+    if (ibv_dealloc_pd(PD0)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[1])) {
+    if (ibv_destroy_qp(QP1)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[1])) {
+    if (ibv_dereg_mr(MR1)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[1])) {
+    if (ibv_destroy_cq(CQ1)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[1])) {
+    if (ibv_dealloc_pd(PD1)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[2])) {
+    if (ibv_destroy_qp(QP2)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[2])) {
+    if (ibv_dereg_mr(MR2)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[2])) {
+    if (ibv_destroy_cq(CQ2)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[2])) {
+    if (ibv_dealloc_pd(PD2)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[3])) {
+    if (ibv_destroy_qp(QP3)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[3])) {
+    if (ibv_dereg_mr(MR3)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[3])) {
+    if (ibv_destroy_cq(CQ3)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[3])) {
+    if (ibv_dealloc_pd(PD3)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[4])) {
+    if (ibv_destroy_qp(QP4)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[4])) {
+    if (ibv_dereg_mr(MR4)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[4])) {
+    if (ibv_destroy_cq(CQ4)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[4])) {
+    if (ibv_dealloc_pd(PD4)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[5])) {
+    if (ibv_destroy_qp(QP5)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[5])) {
+    if (ibv_dereg_mr(MR5)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[5])) {
+    if (ibv_destroy_cq(CQ5)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[5])) {
+    if (ibv_dealloc_pd(PD5)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[6])) {
+    if (ibv_destroy_qp(QP6)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[6])) {
+    if (ibv_dereg_mr(MR6)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[6])) {
+    if (ibv_destroy_cq(CQ6)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[6])) {
+    if (ibv_dealloc_pd(PD6)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[7])) {
+    if (ibv_destroy_qp(QP7)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[7])) {
+    if (ibv_dereg_mr(MR7)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[7])) {
+    if (ibv_destroy_cq(CQ7)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[7])) {
+    if (ibv_dealloc_pd(PD7)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[8])) {
+    if (ibv_destroy_qp(QP8)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[8])) {
+    if (ibv_dereg_mr(MR8)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[8])) {
+    if (ibv_destroy_cq(CQ8)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[8])) {
+    if (ibv_dealloc_pd(PD8)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
 
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp(qp[9])) {
+    if (ibv_destroy_qp(QP9)) {
         fprintf(stderr, "Failed to destroy QP\n");
         return -1;
     }
 
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr(mr[9])) {
+    if (ibv_dereg_mr(MR9)) {
         fprintf(stderr, "Failed to deregister MR\n");
         return -1;
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(cq[9])) {
+    if (ibv_destroy_cq(CQ9)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }
 
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd[9])) {
+    if (ibv_dealloc_pd(PD9)) {
         fprintf(stderr, "Failed to deallocate PD \n");
         return -1;
     }
