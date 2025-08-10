@@ -95,6 +95,14 @@ def _parse_kv(info: str) -> dict[str, str]:
 
 
 class VerbCall:
+    def __init__(self):
+        self.tracker = None
+        self.required_resources = []  # 记录所需资源
+        self.allocated_resources = []  # 记录已分配的资源
+
+    def _contract(self):
+        return None
+
     def generate_c(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError
 
@@ -182,6 +190,11 @@ class VerbCall:
 
 
 class UtilityCall:  # 生成verbs之外的函数
+    def __init__(self):
+        self.tracker = None
+        self.required_resources = []  # 记录所需资源
+        self.allocated_resources = []  # 记录已分配的资源
+
     def generate_c(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError
 
@@ -442,8 +455,9 @@ class AckCQEvents(VerbCall):
     """
 
     MUTABLE_FIELDS = ["cq", "nevents"]
+    CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
 
-    def __init__(self, cq: str = None, nevents: int = None):
+    def __init__(self, cq: str | None = None, nevents: int | None = None):
         self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
         self.nevents = IntValue(nevents or 0)
         # 是这样的，如果是None那么后面就不生成
@@ -458,6 +472,8 @@ class AckCQEvents(VerbCall):
         if self.tracker:
             self.tracker.use("cq", self.cq.value)  # 明确追踪这个CQ被使用了一次
             self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -465,7 +481,7 @@ class AckCQEvents(VerbCall):
         cq = kv.get("cq", "unknown")
         nevents = int(kv.get("nevents", 0))
         # 通过ctx或者参数获得tracker
-        return cls(cq=cq, nevents=nevents, ctx=ctx)
+        return cls(cq=cq, nevents=nevents)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         return f"""
@@ -486,6 +502,7 @@ class AdviseMR(VerbCall):
     """
 
     MUTABLE_FIELDS = ["pd", "advice", "flags", "sg_list", "num_sge", "sg_var"]
+    CONTRACT = Contract(requires=[RequireSpec("pd", State.ALLOCATED, "pd")], produces=[], transitions=[])
 
     # 这些参数都是必须的
     def __init__(
@@ -523,6 +540,8 @@ class AdviseMR(VerbCall):
         if self.tracker:
             self.tracker.use("pd", self.pd.value)
             self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -586,6 +605,11 @@ class AdviseMR(VerbCall):
 
 class AllocDM(VerbCall):
     MUTABLE_FIELDS = ["dm", "attr_obj", "attr_var"]
+    CONTRACT = Contract(
+        requires=[],  # 也可把 device ctx 建模为资源
+        produces=[ProduceSpec("dm", State.ALLOCATED, "dm")],
+        transitions=[],
+    )
 
     def __init__(self, dm: str = None, attr_obj: IbvAllocDmAttr = None):
         self.dm = ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
@@ -605,6 +629,8 @@ class AllocDM(VerbCall):
             self.tracker.create("dm", self.dm.value)
 
             self.allocated_resources.append(("dm", self.dm.value))  # 记录已分配的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -633,6 +659,11 @@ class AllocDM(VerbCall):
 
 class AllocMW(VerbCall):
     MUTABLE_FIELDS = ["pd", "mw", "mw_type"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("mw", State.ALLOCATED, "mw")],
+        transitions=[],
+    )
 
     def __init__(self, pd: str = None, mw: str = None, mw_type: str = None):
         self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
@@ -657,6 +688,8 @@ class AllocMW(VerbCall):
 
             self.allocated_resources.append(("mw", self.mw.value))  # 记录已分配的资源
             self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -684,6 +717,11 @@ class AllocNullMR(VerbCall):
     """Allocate a null memory region (MR) associated with a protection domain."""
 
     MUTABLE_FIELDS = ["pd", "mr"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
+        transitions=[],
+    )
 
     def __init__(self, pd: str = None, mr: str = None):
         self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
@@ -703,6 +741,8 @@ class AllocNullMR(VerbCall):
 
             self.allocated_resources.append(("mr", self.mr.value))
             self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -736,6 +776,11 @@ class AllocParentDomain(VerbCall):
     """
 
     MUTABLE_FIELDS = ["context", "pd", "parent_pd", "attr_var", "attr_obj"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("parent_pd", State.ALLOCATED, "parent_pd")],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -767,6 +812,8 @@ class AllocParentDomain(VerbCall):
 
             self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
             self.allocated_resources.append(("parent_pd", self.parent_pd.value))  # 记录已分配的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -835,7 +882,7 @@ class AllocPD(VerbCall):
             self.allocated_resources.append(("pd", self.pd.value))  # 记录已分配的资源
 
         if hasattr(ctx, "contracts"):
-            ctx.contracts.apply_contract(self, self.CONTRACT)
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     """Initialize a new protection domain (PD) for the RDMA device context."""
 
@@ -863,6 +910,11 @@ class AllocTD(VerbCall):
     """
 
     MUTABLE_FIELDS = ["td", "attr_var", "attr_obj"]
+    CONTRACT = Contract(  # TODO: 改为动态
+        requires=[],  # 也可把 device ctx 建模为资源
+        produces=[ProduceSpec("td", State.ALLOCATED, "td")],
+        transitions=[],
+    )
 
     def __init__(self, td: str = None, attr_var: str = None, attr_obj: IbvTdInitAttr = None):
         self.td = ResourceValue(resource_type="td", value=td) if td else ResourceValue(resource_type="td", value="td")
@@ -881,6 +933,8 @@ class AllocTD(VerbCall):
             self.tracker.create("td", self.td.value)
 
             self.allocated_resources.append(("td", self.td.value))
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -910,6 +964,7 @@ class AllocTD(VerbCall):
 
 class AttachMcast(VerbCall):
     MUTABLE_FIELDS = ["qp", "gid", "lid"]
+    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
 
     def __init__(self, qp: str = None, gid: str = None, lid: int = None):
         # 注意gid需要是变量，不然无法传参 # TODO: gid这种类型如何处理
@@ -929,6 +984,9 @@ class AttachMcast(VerbCall):
             self.tracker.use("qp", self.qp.value)
 
             self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})
+
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -952,6 +1010,11 @@ class AttachMcast(VerbCall):
 
 class BindMW(VerbCall):
     MUTABLE_FIELDS = ["qp", "mw", "mw_bind_var", "mw_bind_obj"]
+    CONTRACT = Contract(  # TODO: 改为动态（其实有办法筛选）
+        requires=[RequireSpec("qp", None, "qp"), RequireSpec("mr", None, "mw_bind_obj.bind_info.mr")],
+        produces=[ProduceSpec("mw", State.ALLOCATED, "mw")],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -982,6 +1045,8 @@ class BindMW(VerbCall):
             self.allocated_resources.append(("mw", self.mw.value))  # 记录已分配的资源
             if self.mw_bind_obj is not None:
                 self.mw_bind_obj.apply(ctx)  # 确保结构体对象被追踪
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     def get_required_resources_recursively(self) -> list[dict[str, str]]:
         """Get all required resources recursively."""
@@ -1053,6 +1118,11 @@ class CloseXRCD(VerbCall):
     """Close an XRC domain."""
 
     MUTABLE_FIELDS = ["xrcd"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("xrcd", State.ALLOCATED, "xrcd")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, xrcd: str = None):
         self.xrcd = (
@@ -1071,6 +1141,8 @@ class CloseXRCD(VerbCall):
             # Register the XRCD address in the tracker
             self.tracker.use("xrcd", self.xrcd.value)
             self.required_resources.append({"type": "xrcd", "name": self.xrcd.value, "position": "xrcd"})
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1100,6 +1172,11 @@ class CreateAH(VerbCall):
     """
 
     MUTABLE_FIELDS = ["pd", "attr_var", "ah", "attr_obj"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("ah", State.ALLOCATED, "ah")],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -1132,6 +1209,8 @@ class CreateAH(VerbCall):
 
             self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})
             self.allocated_resources.append(("ah", self.ah.value))
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1160,6 +1239,15 @@ class CreateAH(VerbCall):
 
 class CreateAHFromWC(VerbCall):
     MUTABLE_FIELDS = ["pd", "wc", "grh", "port_num", "ah"]
+    CONTRACT = Contract(
+        requires=[
+            RequireSpec("pd", State.ALLOCATED, "pd"),
+            RequireSpec("wc", State.ALLOCATED, "wc"),
+            RequireSpec("grh", State.ALLOCATED, "grh"),
+        ],
+        produces=[ProduceSpec("ah", State.ALLOCATED, "ah")],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -1203,6 +1291,8 @@ class CreateAHFromWC(VerbCall):
             self.required_resources.append({"type": "wc", "name": self.wc.value, "position": "wc"})
             self.required_resources.append({"type": "grh", "name": self.grh.value, "position": "grh"})  # 记录需要的资源
             self.allocated_resources.append(("ah", self.ah.value))
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1231,6 +1321,7 @@ class CreateAHFromWC(VerbCall):
 
 class CreateCompChannel(VerbCall):
     MUTABLE_FIELDS = ["channel"]
+    CONTRACT = Contract(requires=[], produces=[ProduceSpec("channel", State.ALLOCATED, "channel")], transitions=[])
 
     def __init__(self, channel: str = None):
         self.channel = (
@@ -1250,6 +1341,8 @@ class CreateCompChannel(VerbCall):
             self.tracker.create("channel", self.channel.value)
 
             self.allocated_resources.append(("channel", self.channel.value))
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1308,7 +1401,7 @@ class CreateCQ(VerbCall):
             self.allocated_resources.append(("cq", self.cq.value))
 
         if hasattr(ctx, "contracts"):
-            ctx.contracts.apply_contract(self, self.CONTRACT)
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1358,6 +1451,11 @@ class CreateCQEx(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_name", "cq_ex", "cq_attr_var", "cq_attr_obj"]
+    CONTRACT = Contract(
+        requires=[],  # 也可以把 ctx（device context）建模为资源；先省略
+        produces=[ProduceSpec("cq", State.ALLOCATED, "cq_ex")],  # 归一到 'cq' 类型
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -1396,6 +1494,8 @@ class CreateCQEx(VerbCall):
             # # 记录需要的资源 # to be recursive 标记
             # # Register the CQ_EX attribute variable
             # self.tracker.create('cq_attr', self.cq_attr_var, cq_ex=cq_ex)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     def get_required_resources_recursively(self) -> list[dict[str, str]]:
         """Get all required resources recursively."""
@@ -1445,6 +1545,11 @@ class CreateFlow(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "flow", "flow_attr_var", "flow_attr_obj"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp")],
+        produces=[ProduceSpec("flow", State.ALLOCATED, "flow")],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -1482,6 +1587,8 @@ class CreateFlow(VerbCall):
             # Register the flow attribute variable
             # self.tracker.create('flow_attr', self.flow_attr_var, flow=flow)
             self.allocated_resources.append(("flow", self.flow.value))  # 记录已分配的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1552,7 +1659,7 @@ class CreateQP(VerbCall):
                 # if self.init_attr_obj.srq:
                 #     self.tracker.use('srq', self.init_attr_obj.srq)
         if hasattr(ctx, "contracts"):
-            ctx.contracts.apply_contract(self, self.CONTRACT)
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     def get_required_resources_recursively(self) -> list[dict[str, str]]:
         """Get all required resources recursively."""
@@ -1610,6 +1717,15 @@ class CreateQPEx(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_name", "qp", "qp_attr_var", "qp_attr_obj"]
+    CONTRACT = Contract(
+        requires=[
+            RequireSpec("pd", State.ALLOCATED, "qp_attr_obj.pd"),
+            RequireSpec("cq", None, "qp_attr_obj.send_cq"),
+            RequireSpec("cq", None, "qp_attr_obj.recv_cq"),
+        ],
+        produces=[ProduceSpec("qp", State.RESET, "qp")],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -1644,6 +1760,8 @@ class CreateQPEx(VerbCall):
             self.allocated_resources.append(("qp_ex", self.qp.value))  # 记录已分配的资源
             if self.qp_attr_obj:
                 self.qp_attr_obj.apply(ctx)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     def get_required_resources_recursively(self) -> list[dict[str, str]]:
         """Get all required resources recursively."""
@@ -1728,6 +1846,11 @@ class CreateSRQ(VerbCall):
     """Create a shared receive queue (SRQ)"""
 
     MUTABLE_FIELDS = ["pd", "srq", "srq_init_obj"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("srq", State.ALLOCATED, "srq")],
+        transitions=[],
+    )
 
     def __init__(self, pd: str = None, srq: str = None, srq_init_obj: IbvSrqInitAttr = None):
         self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
@@ -1752,6 +1875,8 @@ class CreateSRQ(VerbCall):
             self.tracker.create("srq", self.srq.value, pd=self.pd.value)
             self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
             self.allocated_resources.append(("srq", self.srq.value))
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1793,6 +1918,11 @@ class CreateSRQEx(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_name", "srq", "srq_attr_var", "srq_attr_obj"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "srq_attr_obj.pd")],
+        produces=[ProduceSpec("srq", State.ALLOCATED, "srq")],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -1825,6 +1955,8 @@ class CreateSRQEx(VerbCall):
             self.allocated_resources.append(("srq_ex", self.srq.value))
             if self.srq_attr_obj is not None:
                 self.srq_attr_obj.apply(ctx)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     def get_required_resources_recursively(self) -> list[dict[str, str]]:
         """Get all required resources recursively."""
@@ -1877,11 +2009,18 @@ class CreateWQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_name", "wq", "wq_attr_var", "wq_attr_obj"]
-    CONTRACT = Contract(
-        requires=[],
-        produces=[ProduceSpec("wq", state=State.ALLOCATED, name_attr="wq")],
-        transitions=[],
-    )
+    # CONTRACT = Contract(
+    #     requires=[],
+    #     produces=[ProduceSpec("wq", state=State.ALLOCATED, name_attr="wq")],
+    #     transitions=[],
+    # )
+
+    def _contract(self):
+        reqs = [
+            RequireSpec("pd", State.ALLOCATED, "wq_attr_obj.pd"),
+            RequireSpec("cq", State.ALLOCATED, "wq_attr_obj.cq"),
+        ]
+        return Contract(requires=reqs, produces=[ProduceSpec("wq", State.ALLOCATED, "wq")], transitions=[])
 
     def __init__(
         self,
@@ -1912,9 +2051,9 @@ class CreateWQ(VerbCall):
             self.allocated_resources.append(("wq", self.wq.value))
             if self.wq_attr_obj is not None:
                 self.wq_attr_obj.apply(ctx)
-            
+
         if hasattr(ctx, "contracts"):
-            ctx.contracts.apply_contract(self, self.CONTRACT)
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     def get_required_resources_recursively(self) -> list[dict[str, str]]:
         """Get all required resources recursively."""
@@ -1960,6 +2099,11 @@ class DeallocMW(VerbCall):
     """Deallocate a Memory Window (MW)."""
 
     MUTABLE_FIELDS = ["mw"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("mw", None, "mw")],
+        produces=[],
+        transitions=[TransitionSpec("mw", None, State.DESTROYED, "mw")],
+    )
 
     def __init__(self, mw: str = None):
         self.mw = ResourceValue(resource_type="mw", value=mw) if mw else ResourceValue(resource_type="mw", value="mw")
@@ -1973,6 +2117,8 @@ class DeallocMW(VerbCall):
             self.tracker.use("mw", self.mw.value)
             self.tracker.destroy("mw", self.mw.value)
             self.required_resources.append({"type": "mw", "name": self.mw.value, "position": "mw"})
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2016,9 +2162,8 @@ class DeallocPD(VerbCall):
             self.tracker.use("pd", self.pd.value)
             self.tracker.destroy("pd", self.pd.value)
             self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
-
         if hasattr(ctx, "contracts"):
-            ctx.contracts.apply_contract(self, self.CONTRACT)
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2041,6 +2186,11 @@ class DeallocTD(VerbCall):
     """Deallocate an RDMA thread domain (TD) object."""
 
     MUTABLE_FIELDS = ["td"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("td", None, "td")],
+        produces=[],
+        transitions=[TransitionSpec("td", None, State.DESTROYED, "td")],
+    )
 
     def __init__(self, td: str = None):
         self.td = (
@@ -2057,6 +2207,8 @@ class DeallocTD(VerbCall):
             self.tracker.use("td", self.td.value)
             self.tracker.destroy("td", self.td.value)
             self.required_resources.append({"type": "td", "name": self.td.value, "position": "td"})
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2079,6 +2231,11 @@ class DeregMR(VerbCall):
     """Deregister a Memory Region."""
 
     MUTABLE_FIELDS = ["mr"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("mr", None, "mr")],
+        produces=[],
+        transitions=[TransitionSpec("mr", None, State.DESTROYED, "mr")],
+    )
 
     def __init__(self, mr: str = None):
         self.mr = (
@@ -2095,6 +2252,8 @@ class DeregMR(VerbCall):
             self.tracker.use("mr", self.mr.value)
             self.tracker.destroy("mr", self.mr.value)
             self.required_resources.append({"type": "mr", "name": self.mr.value, "position": "mr"})
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2117,6 +2276,11 @@ class DestroyAH(VerbCall):
     """Destroy an Address Handle (AH)."""
 
     MUTABLE_FIELDS = ["ah"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("ah", State.ALLOCATED, "ah")],
+        transitions=[],
+    )
 
     def __init__(self, ah: str = None):
         self.ah = (
@@ -2133,6 +2297,8 @@ class DestroyAH(VerbCall):
             self.tracker.use("ah", self.ah.value)
             self.tracker.destroy("ah", self.ah.value)
             self.required_resources.append({"type": "ah", "name": self.ah.value, "position": "ah"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2155,6 +2321,11 @@ class DestroyCompChannel(VerbCall):
     """Destroy a completion event channel."""
 
     MUTABLE_FIELDS = ["channel"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("channel", None, "channel")],
+        produces=[],
+        transitions=[TransitionSpec("channel", None, State.DESTROYED, "channel")],
+    )
 
     def __init__(self, channel: str = None):
         self.channel = (
@@ -2179,6 +2350,8 @@ class DestroyCompChannel(VerbCall):
                     "position": "channel",
                 }
             )  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2201,6 +2374,11 @@ class DestroyCQ(VerbCall):
     """Destroy a Completion Queue."""
 
     MUTABLE_FIELDS = ["cq"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("cq", None, "cq")],
+        produces=[],
+        transitions=[TransitionSpec("cq", None, State.DESTROYED, "cq")],
+    )
 
     def __init__(self, cq: str = None):
         self.cq = (
@@ -2217,6 +2395,8 @@ class DestroyCQ(VerbCall):
             self.tracker.use("cq", self.cq.value)
             self.tracker.destroy("cq", self.cq.value)
             self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2239,6 +2419,11 @@ class DestroyFlow(VerbCall):
     """Destroy a flow steering rule."""
 
     MUTABLE_FIELDS = ["flow"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("flow", None, "flow")],
+        produces=[],
+        transitions=[TransitionSpec("flow", None, State.DESTROYED, "flow")],
+    )
 
     def __init__(self, flow: str = None):
         self.flow = (
@@ -2259,6 +2444,8 @@ class DestroyFlow(VerbCall):
             self.required_resources.append(
                 {"type": "flow", "name": self.flow.value, "position": "flow"}
             )  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2281,6 +2468,11 @@ class DestroyQP(VerbCall):
     """Destroy a Queue Pair (QP)."""
 
     MUTABLE_FIELDS = ["qp"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp")],
+        produces=[],
+        transitions=[TransitionSpec("qp", None, State.DESTROYED, "qp")],
+    )
 
     def __init__(self, qp: str = None):
         self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
@@ -2295,6 +2487,8 @@ class DestroyQP(VerbCall):
             self.tracker.use("qp", self.qp.value)
             self.tracker.destroy("qp", self.qp.value)
             self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2342,6 +2536,11 @@ class DestroySRQ(VerbCall):
     """Destroy a Shared Receive Queue (SRQ)."""
 
     MUTABLE_FIELDS = ["srq"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("srq", None, "srq")],
+        produces=[],
+        transitions=[TransitionSpec("srq", None, State.DESTROYED, "srq")],
+    )
 
     def __init__(self, srq: str = None):
         self.srq = (
@@ -2358,6 +2557,8 @@ class DestroySRQ(VerbCall):
             self.tracker.use("srq", self.srq.value)
             self.tracker.destroy("srq", self.srq.value)
             self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2402,7 +2603,7 @@ class DestroyWQ(VerbCall):
             self.tracker.destroy("wq", self.wq.value)
             self.required_resources.append({"type": "wq", "name": self.wq.value, "position": "wq"})  # 记录需要的资源
         if hasattr(ctx, "contracts"):
-            ctx.contracts.apply_contract(self, self.CONTRACT)
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2425,6 +2626,7 @@ class DetachMcast(VerbCall):  # TODO: gid 需要是变量名
     """Detach a QP from a multicast group."""
 
     MUTABLE_FIELDS = ["qp", "gid", "lid"]
+    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
 
     def __init__(self, qp: str = None, gid: str = None, lid: int = None):
         self.qp = (
@@ -2447,6 +2649,8 @@ class DetachMcast(VerbCall):  # TODO: gid 需要是变量名
             # Register the multicast group address
             # self.tracker.use('gid', gid)
             # self.tracker.use('lid', str(lid))
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2573,6 +2777,11 @@ class FreeDM(VerbCall):
     """Release a device memory buffer (DM)."""
 
     MUTABLE_FIELDS = ["dm"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("dm", None, "dm")],
+        produces=[],
+        transitions=[TransitionSpec("dm", None, State.DESTROYED, "dm")],
+    )
 
     def __init__(self, dm: str = None):
         self.dm = (
@@ -2589,6 +2798,8 @@ class FreeDM(VerbCall):
             self.tracker.use("dm", self.dm.value)
             self.tracker.destroy("dm", self.dm.value)
             self.required_resources.append({"type": "dm", "name": self.dm.value, "position": "dm"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2898,6 +3109,11 @@ class GetPKeyIndex(VerbCall):
 
 class GetSRQNum(VerbCall):
     MUTABLE_FIELDS = ["srq", "srq_num_var"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("srq", None, "srq")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, srq: str = None, srq_num_var: str = None):
         # self.srq = srq  # Shared Receive Queue address
@@ -2921,6 +3137,8 @@ class GetSRQNum(VerbCall):
             self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})
         if ctx:
             ctx.alloc_variable(self.srq_num_var, "uint32_t")
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2967,10 +3185,12 @@ class GetSRQNum(VerbCall):
 
 
 class ImportDM(VerbCall):
-    # def __init__(self, dm_handle: int, dm_var: str = "dm"):
-    #     self.dm_handle = dm_handle
-    #     self.dm_var = dm_var  # Variable name for the imported device memory
     MUTABLE_FIELDS = ["dm_handle", "dm"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("dm", None, "dm")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, dm_handle: int = None, dm: str = None):
         # Default to 0 if not provided
@@ -2991,6 +3211,8 @@ class ImportDM(VerbCall):
             # Register the DM address in the tracker
             self.tracker.create("dm", self.dm.value)
             self.allocated_resources.append(("dm", self.dm.value))  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3015,6 +3237,11 @@ class ImportDM(VerbCall):
 
 class ImportMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr_handle", "mr"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", None, "pd")],
+        produces=[ProduceSpec("mr", None, "mr")],
+        transitions=[],
+    )
 
     def __init__(self, pd: str = None, mr_handle: int = None, mr: str = None):
         self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
@@ -3040,6 +3267,8 @@ class ImportMR(VerbCall):
             self.tracker.create("mr", self.mr.value)
             self.allocated_resources.append(("mr", self.mr.value))  # 记录需要的资源
             self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3064,6 +3293,11 @@ class ImportMR(VerbCall):
 
 class ImportPD(VerbCall):
     MUTABLE_FIELDS = ["pd", "pd_handle"]
+    CONTRACT = Contract(
+        requires=[],
+        produces=[ProduceSpec("pd", None, "pd")],
+        transitions=[TransitionSpec("pd", from_state=None, to_state=State.IMPORTED, name_attr="pd")],
+    )
 
     def __init__(self, pd: str = None, pd_handle: int = None):
         self.pd = (
@@ -3084,6 +3318,8 @@ class ImportPD(VerbCall):
             # Register the PD address in the tracker
             self.tracker.create("pd", self.pd.value)
             self.allocated_resources.append(("pd", self.pd.value))  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3196,6 +3432,11 @@ class ImportPD(VerbCall):
 
 class MemcpyFromDM(VerbCall):
     MUTABLE_FIELDS = ["host", "dm", "dm_offset", "length"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("dm", None, "dm")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -3222,6 +3463,8 @@ class MemcpyFromDM(VerbCall):
             self.tracker.use("dm", self.dm.value)
             # self.tracker.use('host', host)
             self.required_resources.append({"type": "dm", "name": self.dm.value, "position": "dm"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3245,6 +3488,11 @@ class MemcpyFromDM(VerbCall):
 
 class MemcpyToDM(VerbCall):
     MUTABLE_FIELDS = ["dm", "dm_offset", "host", "length"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("dm", None, "dm")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -3270,6 +3518,8 @@ class MemcpyToDM(VerbCall):
             # Register the device memory and host addresses in the tracker
             self.tracker.use("dm", self.dm.value)
             self.required_resources.append({"type": "dm", "name": self.dm.value, "position": "dm"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
             # self.tracker.use('host', host)
 
     @classmethod
@@ -3304,6 +3554,7 @@ class ModifyCQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["cq", "attr_obj", "attr_var"]
+    CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None, attr_obj: IbvModifyCQAttr = None, attr_var: str = None):
         self.cq = (
@@ -3326,6 +3577,8 @@ class ModifyCQ(VerbCall):
             self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
             # # Register the CQ attributes variable in the tracker
             # self.tracker.create('attr_var', self.attr_var)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3383,8 +3636,7 @@ class ModifyQP(VerbCall):
             # # Register the attribute variable in the tracker
             # self.tracker.create('attr_modify_qp', f"qp_attr_{qp}")
         if hasattr(ctx, "contracts"):
-            # 如果目标状态由 self.attr_obj.qp_state 决定，也可以在这里动态构造 Contract
-            ctx.contracts.apply_contract(self, self.CONTRACT)
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3450,6 +3702,7 @@ class ModifyQPRateLimit(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "attr_var", "attr_obj"]
+    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -3477,6 +3730,8 @@ class ModifyQPRateLimit(VerbCall):
             self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the rate limit attributes variable in the tracker
             # self.tracker.create('attr_var', self.attr_var)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3514,6 +3769,7 @@ class ModifySRQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["srq", "attr_var", "attr_obj", "attr_mask"]
+    CONTRACT = Contract(requires=[RequireSpec("srq", None, "srq")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -3543,6 +3799,8 @@ class ModifySRQ(VerbCall):
             self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})
             # # Register the SRQ attributes variable in the tracker
             # self.tracker.create('attr_var', self.attr_var)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3579,6 +3837,11 @@ class ModifyWQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["wq", "attr_var", "attr_obj"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("wq", None, "wq")],
+        produces=[],
+        transitions=[],  # 若你有 WQ 状态机，可加 transitions
+    )
 
     def __init__(self, wq: str = None, attr_var: str = None, attr_obj: "IbvWQAttr" = None):
         self.wq = (
@@ -3600,6 +3863,8 @@ class ModifyWQ(VerbCall):
             self.required_resources.append({"type": "wq", "name": self.wq.value, "position": "wq"})  # 记录需要的资源
             # # Register the WQ attributes variable in the tracker
             # self.tracker.create('attr_var', self.attr_var)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3665,6 +3930,7 @@ class OpenQP(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_var", "qp", "attr_var", "attr_obj"]
+    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -3705,6 +3971,8 @@ class OpenQP(VerbCall):
             if self.attr_obj is not None:
                 # Register the attribute object in the tracker
                 self.attr_obj.apply(ctx)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3743,6 +4011,7 @@ class OpenXRCD(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_var", "xrcd", "attr_var", "attr_obj"]
+    CONTRACT = Contract(requires=[RequireSpec("xrcd", None, "xrcd")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -3778,6 +4047,8 @@ class OpenXRCD(VerbCall):
             )  # 记录需要的资源
             # # Register the XRC Domain attributes variable in the tracker
             # self.tracker.create('attr_var', self.attr_var)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3807,6 +4078,7 @@ class OpenXRCD(VerbCall):
 
 class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数，待改
     MUTABLE_FIELDS = ["cq"]
+    CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None):
         self.cq = (
@@ -3824,6 +4096,8 @@ class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数
             self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
             # # Register the CQ variable in the tracker
             # self.tracker.create('cq_var', cq)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3885,6 +4159,7 @@ class PostRecv(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "wr_obj", "wr_var", "bad_wr_var"]
+    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -3916,6 +4191,8 @@ class PostRecv(VerbCall):
             # self.tracker.create('wr_var', self.wr_var)
             # # Register the bad WR variable in the tracker
             # self.tracker.create('bad_wr_var', self.bad_wr_var)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3955,6 +4232,7 @@ class PostRecv(VerbCall):
 
 class PostSend(VerbCall):  # TODO: 修改varname
     MUTABLE_FIELDS = ["qp", "wr_obj"]
+    ONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
 
     def __init__(self, qp: str = None, wr_obj: IbvSendWR = None, wr_var=None, bad_wr_var=None):
         self.qp = ResourceValue(resource_type="qp", value=qp)  # qp对象变量名或trace地址
@@ -3972,6 +4250,8 @@ class PostSend(VerbCall):  # TODO: 修改varname
             # # # Register the WR object in the tracker if it exists
             # if wr_obj:
             #     self.tracker.use('wr_obj', wr_obj)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info, ctx):
@@ -4053,6 +4333,7 @@ class PostSRQRecv(VerbCall):
     """
 
     MUTABLE_FIELDS = ["srq", "wr_obj", "wr_var", "bad_wr_var"]
+    CONTRACT = Contract(requires=[RequireSpec("srq", None, "srq")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -4082,6 +4363,8 @@ class PostSRQRecv(VerbCall):
             # self.tracker.create('wr_var', self.wr_var)
             # # Register the bad WR variable in the tracker
             # self.tracker.create('bad_wr_var', self.bad_wr_var)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4155,6 +4438,11 @@ class QueryDeviceEx(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_var", "attr_var", "comp_mask", "input_var"]
+    # CONTRACT = Contract(
+    #     requires=[RequireSpec("ctx", None, "ctx")],
+    #     produces=[RequireSpec("attr", None, "attr")],
+    #     transitions=[],
+    # )
 
     def __init__(
         self,
@@ -4204,6 +4492,13 @@ class QueryDeviceEx(VerbCall):
 
 class QueryECE(VerbCall):
     MUTABLE_FIELDS = ["qp", "output"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp")],
+        produces=[RequireSpec("ece_options", None, "ece_options")],
+        transitions=[],
+    )
+
+    """Query the ECE options of a QP (Queue Pair) using its address."""
 
     def __init__(self, qp: str = None, output: str = None):
         self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
@@ -4221,6 +4516,8 @@ class QueryECE(VerbCall):
             self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the ECE options variable in the tracker
             # self.tracker.create('ece_var', self.output)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4406,6 +4703,11 @@ class QueryQP(VerbCall):
     """Query the attributes of a specified Queue Pair (QP) in an RDMA context."""
 
     MUTABLE_FIELDS = ["qp", "attr_mask"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, qp: str = None, attr_mask: str = None):
         self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
@@ -4425,6 +4727,8 @@ class QueryQP(VerbCall):
             self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the attribute mask in the tracker
             # self.tracker.create('attr_mask', attr_mask)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4504,6 +4808,11 @@ class QuerySRQ(VerbCall):
     """Query a Shared Receive Queue (SRQ) for its attributes."""
 
     MUTABLE_FIELDS = ["srq"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("srq", None, "srq")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, srq: str = None):
         self.srq = (
@@ -4522,6 +4831,8 @@ class QuerySRQ(VerbCall):
             self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})  # 记录需要的资源
             # # Register the SRQ variable in the tracker
             # self.tracker.create('srq_var', srq)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4592,6 +4903,12 @@ class QuerySRQ(VerbCall):
 
 class RegDmaBufMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr", "offset", "length", "iova", "fd", "access"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
+        transitions=[],
+    )
+    """Register a DMA buffer memory region (MR) with the specified protection domain (PD)."""
 
     def __init__(
         self,
@@ -4631,6 +4948,8 @@ class RegDmaBufMR(VerbCall):
             self.allocated_resources.append(("mr", self.mr.value))  # 记录需要的资源
             # # Register the MR variable in the tracker
             # self.tracker.create('mr_var', mr)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4668,6 +4987,11 @@ class RegDmaBufMR(VerbCall):
 
 class RegMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr", "buf", "length", "flags"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
+        transitions=[],
+    )
     """Register a memory region (MR) with the specified protection domain (PD)."""
 
     def __init__(
@@ -4699,6 +5023,8 @@ class RegMR(VerbCall):
             self.allocated_resources.append(("mr", self.mr.value))  # 记录需要的资源
             # # Register the MR variable in the tracker
             # self.tracker.create('mr_var', mr)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4726,6 +5052,11 @@ class RegMR(VerbCall):
 
 class RegMRIova(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr", "buf", "length", "iova", "access"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
+        transitions=[],
+    )
 
     def __init__(
         self,
@@ -4758,6 +5089,8 @@ class RegMRIova(VerbCall):
             self.allocated_resources.append(("mr", self.mr.value))  # 记录需要的资源
             # # Register the MR variable in the tracker
             # self.tracker.create('mr_var', mr)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4791,6 +5124,7 @@ class ReqNotifyCQ(VerbCall):
     """Request completion notification on a completion queue (CQ)."""
 
     MUTABLE_FIELDS = ["cq", "solicited_only"]
+    CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None, solicited_only: int = None):
         self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
@@ -4808,6 +5142,8 @@ class ReqNotifyCQ(VerbCall):
             self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
             # # Register the CQ variable in the tracker
             # self.tracker.create('cq_var', cq)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4829,6 +5165,12 @@ class ReqNotifyCQ(VerbCall):
 
 class ReRegMR(VerbCall):
     MUTABLE_FIELDS = ["mr", "flags", "pd", "addr", "length", "access"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("mr", State.ALLOCATED, "mr"), RequireSpec("pd", State.ALLOCATED, "pd")],
+        # produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
+        produces=[],
+        transitions=[],
+    )
     """Re-register a memory region (MR) with the specified protection domain (PD)."""
 
     def __init__(
@@ -4866,6 +5208,8 @@ class ReRegMR(VerbCall):
                 )  # 记录需要的资源
             # # Register the MR variable in the tracker
             # self.tracker.create('mr_var', mr)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4893,6 +5237,12 @@ class ReRegMR(VerbCall):
 
 class ResizeCQ(VerbCall):
     MUTABLE_FIELDS = ["cq", "cqe"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("cq", State.ALLOCATED, "cq")],
+        produces=[],
+        transitions=[],
+    )
+
     """Resize a completion queue (CQ) to a new size."""
 
     def __init__(self, cq: str = None, cqe: int = None):
@@ -4911,6 +5261,8 @@ class ResizeCQ(VerbCall):
             self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
             # # Register the CQ variable in the tracker
             # self.tracker.create('cq_var', cq)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4940,6 +5292,11 @@ class SetECE(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "ece_obj", "ece_var"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", State.ALLOCATED, "qp")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, qp: str = None, ece_obj: "IbvECE" = None, ece_var: str = None):
         self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
@@ -4961,6 +5318,8 @@ class SetECE(VerbCall):
             self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the ECE options variable in the tracker
             # self.tracker.create('ece_var', ece_var)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4991,6 +5350,11 @@ class AbortWR(VerbCall):
     """Abort all prepared work requests since wr_start."""
 
     MUTABLE_FIELDS = ["qp_ex"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp_ex", State.ALLOCATED, "qp_ex")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, qp_ex: str = None):
         self.qp_ex = (
@@ -5012,6 +5376,8 @@ class AbortWR(VerbCall):
             )  # 记录需要的资源
             # # Register the QP extension variable in the tracker
             # self.tracker.create('qp_ex_var', qp_ex)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -5030,6 +5396,11 @@ class AbortWR(VerbCall):
 
 class WRComplete(VerbCall):
     MUTABLE_FIELDS = ["qp_ex"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp_ex", State.ALLOCATED, "qp_ex")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, qp_ex: str):
         self.qp_ex = (
@@ -5051,6 +5422,8 @@ class WRComplete(VerbCall):
             )  # 记录需要的资源
             # # Register the QP extension variable in the tracker
             # self.tracker.create('qp_ex_var', qp_ex)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -5071,6 +5444,11 @@ class WRComplete(VerbCall):
 
 class WrStart(VerbCall):
     MUTABLE_FIELDS = ["qp_ex"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp_ex", State.ALLOCATED, "qp_ex")],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, qp_ex: str = None):
         self.qp_ex = (
@@ -5092,6 +5470,8 @@ class WrStart(VerbCall):
             )  # 记录需要的资源
             # # Register the QP extension variable in the tracker
             # self.tracker.create('qp_ex_var', qp_ex)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
