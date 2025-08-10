@@ -1,4 +1,10 @@
 import random
+
+try:
+    from .attr import Attr
+except ImportError:
+    from attr import Attr
+
 try:
     from .IbvQPCap import IbvQPCap  # for package import
 except ImportError:
@@ -18,34 +24,41 @@ try:
     from .utils import emit_assign  # for package import
 except ImportError:
     from utils import emit_assign  # for direct script debugging
-    
+
+try:
+    from .value import ConstantValue, EnumValue, FlagValue, IntValue, ListValue, OptionalValue, ResourceValue
+except ImportError:
+    from value import ConstantValue, EnumValue, FlagValue, IntValue, ListValue, OptionalValue, ResourceValue
+
 IBV_WR_OPCODE_ENUM = {
-    0: 'IBV_WR_RDMA_WRITE',
-    1: 'IBV_WR_RDMA_WRITE_WITH_IMM',
-    2: 'IBV_WR_SEND',
-    3: 'IBV_WR_SEND_WITH_IMM',
-    4: 'IBV_WR_RDMA_READ',
-    5: 'IBV_WR_ATOMIC_CMP_AND_SWP',
-    6: 'IBV_WR_ATOMIC_FETCH_AND_ADD',
-    7: 'IBV_WR_LOCAL_INV',
-    8: 'IBV_WR_BIND_MW',
-    9: 'IBV_WR_SEND_WITH_INV',
-    10: 'IBV_WR_TSO',
-    11: 'IBV_WR_DRIVER1',
-    14: 'IBV_WR_FLUSH',
-    15: 'IBV_WR_ATOMIC_WRITE'
+    0: "IBV_WR_RDMA_WRITE",
+    1: "IBV_WR_RDMA_WRITE_WITH_IMM",
+    2: "IBV_WR_SEND",
+    3: "IBV_WR_SEND_WITH_IMM",
+    4: "IBV_WR_RDMA_READ",
+    5: "IBV_WR_ATOMIC_CMP_AND_SWP",
+    6: "IBV_WR_ATOMIC_FETCH_AND_ADD",
+    7: "IBV_WR_LOCAL_INV",
+    8: "IBV_WR_BIND_MW",
+    9: "IBV_WR_SEND_WITH_INV",
+    10: "IBV_WR_TSO",
+    11: "IBV_WR_DRIVER1",
+    14: "IBV_WR_FLUSH",
+    15: "IBV_WR_ATOMIC_WRITE",
 }
 
-    
-class IbvRdmaInfo:
+
+class IbvRdmaInfo(Attr):
     FIELD_LIST = ["remote_addr", "rkey"]
+    MUTABLE_FIELDS = FIELD_LIST
+
     def __init__(self, remote_addr=None, rkey=None):
-        self.remote_addr = remote_addr
-        self.rkey = rkey
+        self.remote_addr = IntValue(remote_addr, 2**64 - 1) if remote_addr is not None else None
+        self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
 
     @classmethod
     def random_mutation(cls):
-        return cls(remote_addr=random.randint(0, 2**64-1), rkey=random.randint(0, 0xffffffff))
+        return cls(remote_addr=random.randint(0, 2**64 - 1), rkey=random.randint(0, 0xFFFFFFFF))
 
     def to_cxx(self, varname, ctx=None):
         if ctx:
@@ -53,50 +66,58 @@ class IbvRdmaInfo:
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
         for f in self.FIELD_LIST:
             v = getattr(self, f)
-            if v is not None:
+            if v:
                 s += emit_assign(varname, f, v)
         return s
 
-class IbvAtomicInfo:
+
+class IbvAtomicInfo(Attr):
     FIELD_LIST = ["remote_addr", "compare_add", "swap", "rkey"]
+    MUTABLE_FIELDS = FIELD_LIST
+
     def __init__(self, remote_addr=None, compare_add=None, swap=None, rkey=None):
-        self.remote_addr = remote_addr
-        self.compare_add = compare_add
-        self.swap = swap
-        self.rkey = rkey
+        self.remote_addr = IntValue(remote_addr, 2**64 - 1) if remote_addr is not None else None
+        self.compare_add = IntValue(compare_add, 2**64 - 1) if compare_add is not None else None
+        self.swap = IntValue(swap, 2**64 - 1) if swap is not None else None
+        self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
 
     @classmethod
     def random_mutation(cls):
         return cls(
-            remote_addr=random.randint(0, 2**64-1),
-            compare_add=random.randint(0, 2**64-1),
-            swap=random.randint(0, 2**64-1),
-            rkey=random.randint(0, 0xffffffff)
+            remote_addr=random.randint(0, 2**64 - 1),
+            compare_add=random.randint(0, 2**64 - 1),
+            swap=random.randint(0, 2**64 - 1),
+            rkey=random.randint(0, 0xFFFFFFFF),
         )
 
     def to_cxx(self, varname, ctx=None):
         if ctx:
-            ctx.alloc_variable(varname, "struct { uint64_t remote_addr; uint64_t compare_add; uint64_t swap; uint32_t rkey; }")
+            ctx.alloc_variable(
+                varname, "struct { uint64_t remote_addr; uint64_t compare_add; uint64_t swap; uint32_t rkey; }"
+            )
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
         for f in self.FIELD_LIST:
             v = getattr(self, f)
-            if v is not None:
+            if v:
                 s += emit_assign(varname, f, v)
         return s
 
-class IbvUdInfo:
+
+class IbvUdInfo(Attr):
     FIELD_LIST = ["ah", "remote_qpn", "remote_qkey"]
+    MUTABLE_FIELDS = FIELD_LIST
+
     def __init__(self, ah=None, remote_qpn=None, remote_qkey=None):
-        self.ah = ah
-        self.remote_qpn = remote_qpn
-        self.remote_qkey = remote_qkey
+        self.ah = ResourceValue(ah, "ah") if ah is not None else None  # 可适配为现有ah变量
+        self.remote_qpn = IntValue(remote_qpn, 2**24 - 1) if remote_qpn is not None else None
+        self.remote_qkey = IntValue(remote_qkey, 2**32 - 1) if remote_qkey is not None else None
 
     @classmethod
     def random_mutation(cls):
         return cls(
             ah=None,  # 可适配为现有ah变量
-            remote_qpn=random.randint(0, 2**24-1),
-            remote_qkey=random.randint(0, 2**32-1)
+            remote_qpn=random.randint(0, 2**24 - 1),
+            remote_qkey=random.randint(0, 2**32 - 1),
         )
 
     def to_cxx(self, varname, ctx=None):
@@ -109,29 +130,34 @@ class IbvUdInfo:
                 s += emit_assign(varname, f, v)
         return s
 
-class IbvBindMwInfo:
+
+class IbvBindMwInfo(Attr):
     FIELD_LIST = ["mw", "rkey", "bind_info"]
+    MUTABLE_FIELDS = FIELD_LIST
+
     def __init__(self, mw=None, rkey=None, bind_info=None):
-        self.mw = mw          # C++已有变量名或者None
-        self.rkey = rkey
+        self.mw = ResourceValue(mw, "struct ibv_mw") if mw is not None else None  # 可适配为现有mw变量
+        self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
         self.bind_info = bind_info  # 可进一步建模成IbvMwBindInfo
 
     @classmethod
     def random_mutation(cls):
         return cls(
             mw=None,  # 或者 f"mw_{random.randint(0,100)}"
-            rkey=random.randint(0, 0xffffffff),
-            bind_info=None
+            rkey=random.randint(0, 0xFFFFFFFF),
+            bind_info=None,
         )
 
     def to_cxx(self, varname, ctx=None):
         if ctx:
-            ctx.alloc_variable(varname, "struct { struct ibv_mw* mw; uint32_t rkey; struct ibv_mw_bind_info bind_info; }")
+            ctx.alloc_variable(
+                varname, "struct { struct ibv_mw* mw; uint32_t rkey; struct ibv_mw_bind_info bind_info; }"
+            )
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
         for f in self.FIELD_LIST:
             v = getattr(self, f)
-            if v is not None:
-                if f == "bind_info" and v is not None:
+            if v:
+                if f == "bind_info":
                     bind_info_var = varname + "_bind_info"
                     s += v.to_cxx(bind_info_var, ctx)
                     s += f"    {varname}.bind_info = {bind_info_var};\n"
@@ -139,20 +165,25 @@ class IbvBindMwInfo:
                     s += emit_assign(varname, f, v)
         return s
 
+
 # 进一步建模struct ibv_mw_bind_info:
-class IbvMwBindInfo:
+class IbvMwBindInfo(Attr):
     FIELD_LIST = ["addr", "length", "mw_access_flags"]
+    MUTABLE_FIELDS = FIELD_LIST
+
     def __init__(self, addr=None, length=None, mw_access_flags=None):
-        self.addr = addr
-        self.length = length
-        self.mw_access_flags = mw_access_flags
+        self.addr = IntValue(addr, 2**64 - 1) if addr is not None else None
+        self.length = IntValue(length, 2**32 - 1) if length is not None else None
+        self.mw_access_flags = (
+            FlagValue(mw_access_flags, "IBV_ACCESS_FLAGS_ENUM") if mw_access_flags is not None else None
+        )
 
     @classmethod
     def random_mutation(cls):
         return cls(
-            addr=random.randint(0, 2**64-1),
-            length=random.randint(0, 2**32-1),
-            mw_access_flags=random.randint(0, 0xffff)
+            addr=random.randint(0, 2**64 - 1),
+            length=random.randint(0, 2**32 - 1),
+            mw_access_flags=random.randint(0, 0xFFFF),
         )
 
     def to_cxx(self, varname, ctx=None):
@@ -165,19 +196,22 @@ class IbvMwBindInfo:
                 s += emit_assign(varname, f, v)
         return s
 
-class IbvTsoInfo:
+
+class IbvTsoInfo(Attr):
     FIELD_LIST = ["hdr", "hdr_sz", "mss"]
+    MUTABLE_FIELDS = FIELD_LIST
+
     def __init__(self, hdr=None, hdr_sz=None, mss=None):
-        self.hdr = hdr       # 通常是C++已有变量指针名
-        self.hdr_sz = hdr_sz
-        self.mss = mss
+        self.hdr = ResourceValue(hdr, "void*") if hdr is not None else None  # 可适配为现有hdr变量
+        self.hdr_sz = IntValue(hdr_sz, 4096) if hdr_sz is not None else None
+        self.mss = IntValue(mss, 0xFFFF) if mss is not None else None
 
     @classmethod
     def random_mutation(cls):
         return cls(
             hdr=None,  # 或 f"tso_hdr_{random.randint(0,100)}"
             hdr_sz=random.randint(0, 4096),
-            mss=random.choice([1460, 9000, 4096, 512])
+            mss=random.choice([1460, 9000, 4096, 512]),
         )
 
     def to_cxx(self, varname, ctx=None):
@@ -190,14 +224,17 @@ class IbvTsoInfo:
                 s += emit_assign(varname, f, v)
         return s
 
-class IbvXrcInfo:
+
+class IbvXrcInfo(Attr):
     FIELD_LIST = ["remote_srqn"]
+    MUTABLE_FIELDS = FIELD_LIST
+
     def __init__(self, remote_srqn=None):
-        self.remote_srqn = remote_srqn
+        self.remote_srqn = IntValue(remote_srqn, 2**32 - 1) if remote_srqn is not None else None
 
     @classmethod
     def random_mutation(cls):
-        return cls(remote_srqn=random.randint(0, 2**32-1))
+        return cls(remote_srqn=random.randint(0, 2**32 - 1))
 
     def to_cxx(self, varname, ctx=None):
         if ctx:
@@ -208,75 +245,146 @@ class IbvXrcInfo:
             if v is not None:
                 s += emit_assign(varname, f, v)
         return s
-    
-class IbvSendWR:
+
+
+class IbvSendWR(Attr):
     FIELD_LIST = [
-        "wr_id", "next", "sg_list", "num_sge", "opcode", "send_flags",
-        "imm_data", "invalidate_rkey", "rdma", "atomic", "ud",
-        "xrc", "bind_mw", "tso"
+        "wr_id",
+        "next",
+        "sg_list",
+        "num_sge",
+        "opcode",
+        "send_flags",
+        "imm_data",
+        "invalidate_rkey",
+        "rdma",
+        "atomic",
+        "ud",
+        "xrc",
+        "bind_mw",
+        "tso",
     ]
+    MUTABLE_FIELDS = FIELD_LIST
 
     def __init__(
-        self, wr_id=None, next=None, sg_list=None, num_sge=None, opcode=None, send_flags=None,
-        imm_data=None, invalidate_rkey=None, rdma=None, atomic=None, ud=None, xrc=None,
-        bind_mw=None, tso=None
+        self,
+        wr_id=None,
+        next_wr=None,
+        sg_list=None,
+        num_sge=None,
+        opcode=None,
+        send_flags=None,
+        imm_data=None,
+        invalidate_rkey=None,
+        rdma=None,
+        atomic=None,
+        ud=None,
+        xrc=None,
+        bind_mw=None,
+        tso=None,
     ):
-        self.wr_id = wr_id
-        self.next = next              # 下一个IbvSendWR变量名或None
-        self.sg_list = sg_list        # list of IbvSge 或 None
-        self.num_sge = num_sge
-        self.opcode = opcode
-        self.send_flags = send_flags
-        # union
-        self.imm_data = imm_data
-        self.invalidate_rkey = invalidate_rkey
-        self.rdma = rdma              # IbvRdmaInfo
-        self.atomic = atomic          # IbvAtomicInfo
-        self.ud = ud                  # IbvUdInfo
-        self.xrc = xrc                # IbvXrcInfo
-        self.bind_mw = bind_mw        # IbvBindMwInfo
-        self.tso = tso                # IbvTsoInfo
-    @classmethod
-    def random_mutation(cls):
-        sg_list = [IbvSge.random_mutation() for _ in range(random.choice([0, 1, 2, 4]))]
-        opcode_val = random.choice(list(IBV_WR_OPCODE_ENUM.keys()))
-        fields = {}
-        # 1. opcode驱动的union分支
-        if opcode_val in (1, 3):  # *_WITH_IMM
-            fields['imm_data'] = random.randint(0, 0xffffffff)
-        if opcode_val == 7:  # *_INV
-            fields['invalidate_rkey'] = random.randint(0, 0xffffffff)
-        if opcode_val in (0, 1, 4):  # RDMA相关
-            fields['rdma'] = IbvRdmaInfo.random_mutation()
-        if opcode_val in (5, 6, 15):  # ATOMIC
-            fields['atomic'] = IbvAtomicInfo.random_mutation()
-        if opcode_val == 2:  # UD
-            fields['ud'] = IbvUdInfo.random_mutation()
-        # XRC通常是QP类型相关，但也可混淆
-        if random.random() < 0.2:
-            fields['xrc'] = IbvXrcInfo.random_mutation()
-        # bind_mw
-        if opcode_val == 8 or random.random() < 0.1:
-            fields['bind_mw'] = IbvBindMwInfo.random_mutation()
-        # TSO
-        if opcode_val == 10 or random.random() < 0.05:
-            fields['tso'] = IbvTsoInfo.random_mutation()
-
-        # 支持链表式WR
-        next_wr = None
-        # if random.random() < 0.15:
-        #     next_wr = f"wr_{random.randint(1,9999)}"  # 这里给变量名占位，真正链表拼接时可递归生成
-
-        return cls(
-            wr_id=random.randint(0, 2**64-1),
-            next=next_wr,
-            sg_list=sg_list,
-            num_sge=len(sg_list),
-            opcode=opcode_val,
-            send_flags=random.randint(0, 0xffff),
-            **fields
+        self.wr_id = OptionalValue(IntValue(wr_id, 0xFFFFFFFF) if wr_id is not None else None)
+        self.next = OptionalValue(next_wr, factory=lambda: IbvSendWR.random_mutation())  # 另一个IbvSendWR对象或None
+        self.sg_list = OptionalValue(
+            ListValue(value=sg_list, factory=lambda: IbvSge.random_mutation()) if sg_list is not None else None
+        )  # list[IbvSge]
+        self.num_sge = OptionalValue(
+            IntValue(num_sge, 0) if num_sge is not None else (len(self.sg_list) if self.sg_list else 0)
         )
-    
+        self.opcode = OptionalValue(EnumValue(opcode, "IBV_WR_OPCODE_ENUM") if opcode is not None else None)
+        self.send_flags = OptionalValue(
+            FlagValue(send_flags, "IBV_SEND_FLAGS_ENUM") if send_flags is not None else None
+        )
+        # union
+        self.imm_data = OptionalValue(IntValue(imm_data, 0xFFFFFFFF) if imm_data is not None else None)
+        self.invalidate_rkey = OptionalValue(
+            IntValue(invalidate_rkey, 0xFFFFFFFF) if invalidate_rkey is not None else None
+        )
+        self.rdma = OptionalValue(rdma, factory=lambda: IbvRdmaInfo.random_mutation())
+        self.atomic = OptionalValue(atomic, factory=lambda: IbvAtomicInfo.random_mutation())
+        self.ud = OptionalValue(ud, factory=lambda: IbvUdInfo.random_mutation())
+        self.xrc = OptionalValue(xrc, factory=lambda: IbvXrcInfo.random_mutation())
+        self.bind_mw = OptionalValue(bind_mw, factory=lambda: IbvBindMwInfo.random_mutation())
+        self.tso = OptionalValue(tso, factory=lambda: IbvTsoInfo.random_mutation())
+
+    @classmethod
+    def random_mutation(cls, chain_length=1):
+        if chain_length <= 1:
+            sg_list = [IbvSge.random_mutation() for _ in range(random.choice([0, 1, 2, 4]))]
+            opcode_val = random.choice(list(IBV_WR_OPCODE_ENUM.values()))
+            fields = {}
+            # 1. opcode驱动的union分支
+            if opcode_val in (1, 3):  # *_WITH_IMM
+                fields["imm_data"] = random.randint(0, 0xFFFFFFFF)
+            if opcode_val == 7:  # *_INV
+                fields["invalidate_rkey"] = random.randint(0, 0xFFFFFFFF)
+            if opcode_val in (0, 1, 4):  # RDMA相关
+                fields["rdma"] = IbvRdmaInfo.random_mutation()
+            if opcode_val in (5, 6, 15):  # ATOMIC
+                fields["atomic"] = IbvAtomicInfo.random_mutation()
+            if opcode_val == 2:  # UD
+                fields["ud"] = IbvUdInfo.random_mutation()
+            # XRC通常是QP类型相关，但也可混淆
+            if random.random() < 0.2:
+                fields["xrc"] = IbvXrcInfo.random_mutation()
+            # bind_mw
+            if opcode_val == 8 or random.random() < 0.1:
+                fields["bind_mw"] = IbvBindMwInfo.random_mutation()
+            # TSO
+            if opcode_val == 10 or random.random() < 0.05:
+                fields["tso"] = IbvTsoInfo.random_mutation()
+
+            # 支持链表式WR
+            next_wr = None
+            # if random.random() < 0.15:
+            #     next_wr = f"wr_{random.randint(1,9999)}"  # 这里给变量名占位，真正链表拼接时可递归生成
+
+            return cls(
+                wr_id=random.randint(0, 2**64 - 1),
+                next_wr=next_wr,
+                sg_list=sg_list,
+                num_sge=len(sg_list),
+                opcode=opcode_val,
+                send_flags=random.randint(0, 0xFFFF),
+                **fields,
+            )
+        else:
+            head = None
+            for _ in range(chain_length):
+                sg_list = [IbvSge.random_mutation() for _ in range(random.choice([0, 1, 2, 4]))]
+                opcode_val = random.choice(list(IBV_WR_OPCODE_ENUM.values()))
+                fields = {}
+                # 1. opcode驱动的union分支
+                if opcode_val in (1, 3):  # *_WITH_IMM
+                    fields["imm_data"] = random.randint(0, 0xFFFFFFFF)
+                if opcode_val == 7:  # *_INV
+                    fields["invalidate_rkey"] = random.randint(0, 0xFFFFFFFF)
+                if opcode_val in (0, 1, 4):  # RDMA相关
+                    fields["rdma"] = IbvRdmaInfo.random_mutation()
+                if opcode_val in (5, 6, 15):  # ATOMIC
+                    fields["atomic"] = IbvAtomicInfo.random_mutation()
+                if opcode_val == 2:  # UD
+                    fields["ud"] = IbvUdInfo.random_mutation()
+                # XRC通常是QP类型相关，但也可混淆
+                if random.random() < 0.2:
+                    fields["xrc"] = IbvXrcInfo.random_mutation()
+                # bind_mw
+                if opcode_val == 8 or random.random() < 0.1:
+                    fields["bind_mw"] = IbvBindMwInfo.random_mutation()
+                # TSO
+                if opcode_val == 10 or random.random() < 0.05:
+                    fields["tso"] = IbvTsoInfo.random_mutation()
+                head = cls(
+                    wr_id=random.randint(0, 2**64 - 1),
+                    next_wr=head,
+                    sg_list=sg_list,
+                    num_sge=1,
+                    opcode=opcode_val,
+                    send_flags=random.randint(0, 0xFFFF),
+                    **fields,
+                )
+            return head
+
     # @classmethod
     # def random_mutation(cls):
     #     sg_list = [IbvSge.random_mutation() for _ in range(random.choice([0, 1, 2, 4]))]
@@ -310,7 +418,7 @@ class IbvSendWR:
         enum_fields = {"opcode": IBV_WR_OPCODE_ENUM}
         for field in self.FIELD_LIST:
             val = getattr(self, field)
-            if val is None:
+            if not val:
                 continue
             if field == "sg_list":
                 if isinstance(val, list) and len(val) > 0:
@@ -354,13 +462,19 @@ class IbvSendWR:
             elif field in ["imm_data", "invalidate_rkey"]:
                 # union: 直接赋值即可，假定调用方保证只有一个有效
                 s += emit_assign(varname, field, val)
-            elif field == "next":
+            elif field == "next_wr":
                 # 假设 next 是下一个wr的变量名
                 s += f"    {varname}.next = {val};\n"
             else:
                 s += emit_assign(varname, field, val, enum_fields)
         return s
 
+
 if __name__ == "__main__":
-    wr = IbvSendWR.random_mutation()
-    print(wr.to_cxx("send_wr"))
+    wr = IbvSendWR.random_mutation(chain_length=random.randint(1, 5))
+    print(wr.to_cxx("recv_wr", ctx=None))
+    for i in range(1000):
+        wr.mutate()
+        print(wr.to_cxx(f"recv_wr_{i}", ctx=None))
+        print("-----")
+    # wr.mutate()

@@ -16,7 +16,7 @@
 
 using namespace std;
 
-#define QP_POOL_SIZE 4
+#define QP_POOL_SIZE 10
 #define RECV_POOL_SIZE 16
 #define MSG_SIZE 128
 #define CTRL_PORT 12345
@@ -107,11 +107,8 @@ struct pair_request
     uint32_t local_qpn;
 };
 
-// struct pair_response {
-//     uint32_t remote_qpn;
-//     uint32_t local_qpn;
-// };
 
+// ----- GLOBAL VARIABLES -----
 struct metadata_mr MRPool[MR_POOL_SIZE];
 int mr_pool_size = 0;
 
@@ -121,6 +118,30 @@ map<int, int> local_remote_qp_map; // 用于存储本地 QP 和远程 QP 的映�
 map<int, int> qpn_to_index_map;    // 用于存储 QPN 到索引的映射
 
 QPWithBufferPool qp_pool[QP_POOL_SIZE];
+
+struct ibv_context *;
+struct ibv_device **;
+struct ibv_device_attr ;
+struct ibv_port_attr ;
+struct ibv_pd *pd[];
+struct ibv_cq *cq[];
+struct ibv_qp *qp[];
+struct ibv_mr *mr[];
+struct ibv_srq *srq[]; // SRQ 数组
+
+char bufs[][1024];
+struct pair_request req;
+
+struct ibv_qp_attr qp_attr;
+
+struct ibv_wc wc;
+unsigned long start_time_msec;
+unsigned long cur_time_msec;
+struct timeval cur_time;
+int poll_result;
+int rc = 0;
+
+// ----- FUNCTION DECLARATIONS -----
 
 char *serialize_metadata_global(struct metadata_global *meta)
 {
@@ -649,6 +670,11 @@ static int post_send(RecvBufferPool *pool, struct ibv_qp *qp, enum ibv_wr_opcode
 
 int main()
 {
+    // --- VARIABLES BEGIN ---
+
+    
+
+    // ---- VARIABLES END ----
     int sockfd = create_socket();
     if (sockfd < 0)
     {
@@ -656,9 +682,9 @@ int main()
         return 1;
     }
 
-    // ---- Body starts ----
+    // ---- BODY BEGIN ----
     hello world
-    // ---- Body ends ----
-    
+    // ---- BODY END ----
+
     return 0;
 }

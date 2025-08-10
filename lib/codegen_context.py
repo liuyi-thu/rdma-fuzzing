@@ -1,5 +1,8 @@
 from typing import Dict
-from .objtracker import ObjectTracker
+try:
+    from .objtracker import ObjectTracker
+except ImportError:
+    from objtracker import ObjectTracker
 
 predefined_variables = { # 全局变量，写在template里面的
     "ibv_qp": "struct ibv_qp",
@@ -60,7 +63,7 @@ class CodeGenContext:
 
     # ---- alloc helpers ----
     def alloc_variable(self, name, value, init_value=None):
-        print('alloc_variable', name, value, init_value)
+        # print('alloc_variable', name, value, init_value)
         if name in self.variables and value != self.variables[name][0]:
             raise ValueError(f"Variable '{name}' already allocated, but with a different type {self.variables[name]}.")
         else:

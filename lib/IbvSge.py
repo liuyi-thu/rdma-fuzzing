@@ -1,6 +1,11 @@
 import random
 
 try:
+    from .attr import Attr
+except ImportError:
+    from attr import Attr
+
+try:
     from .codegen_context import CodeGenContext  # for package import
 except ImportError:
     from codegen_context import CodeGenContext  # for direct script debugging
@@ -10,19 +15,25 @@ try:
 except ImportError:
     from utils import emit_assign  # for direct script debugging
 
-class IbvSge:
+try:
+    from .value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+except ImportError:
+    from value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+
+
+class IbvSge(Attr):
     FIELD_LIST = ["addr", "length", "lkey"]
+    MUTABLE_FIELDS = FIELD_LIST
+
     def __init__(self, addr=None, length=None, lkey=None):
-        self.addr = addr
-        self.length = length
-        self.lkey = lkey
+        self.addr = OptionalValue(IntValue(addr) if addr is not None else None, factory=lambda: IntValue(0))
+        self.length = OptionalValue(IntValue(length) if length is not None else None, factory=lambda: IntValue(0))
+        self.lkey = OptionalValue(IntValue(lkey) if lkey is not None else None, factory=lambda: IntValue(0))
 
     @classmethod
     def random_mutation(cls):
         return cls(
-            addr=random.randint(0, 2**48),
-            length=random.choice([0, 1, 1024, 4096]),
-            lkey=random.randint(0, 0xffffffff)
+            addr=random.randint(0, 2**48), length=random.choice([0, 1, 1024, 4096]), lkey=random.randint(0, 0xFFFFFFFF)
         )
 
     def to_cxx(self, varname, ctx=None):
@@ -31,6 +42,15 @@ class IbvSge:
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
         for field in self.FIELD_LIST:
             val = getattr(self, field)
-            if val is not None:
+            if val:
                 s += emit_assign(varname, field, val)
         return s
+
+
+if __name__ == "__main__":
+    # For debugging purposes, you can run this file directly to see the output
+    sge = IbvSge.random_mutation()
+    print(sge.to_cxx("sge_instance", ctx=None))
+    for i in range(1000):
+        sge.mutate()
+        print(sge.to_cxx(f"sge_instance_{i}", ctx=None))

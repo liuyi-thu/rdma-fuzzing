@@ -1535,8 +1535,8 @@ int main()
     /* ibv_create_qp */
     
     memset(&attr_init_QP4, 0, sizeof(attr_init_QP4));
-    attr_init_QP4.send_cq = CQ4;
-    attr_init_QP4.recv_cq = CQ4;
+    attr_init_QP4.send_cq = CQ2;
+    attr_init_QP4.recv_cq = CQ2;
 
     memset(&attr_init_QP4_cap, 0, sizeof(attr_init_QP4_cap));
     attr_init_QP4_cap.max_send_wr = 1;
@@ -1639,7 +1639,7 @@ int main()
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     do
     {
-        poll_result = ibv_poll_cq(CQ4, 1, &wc);
+        poll_result = ibv_poll_cq(CQ2, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     }
@@ -2584,7 +2584,7 @@ int main()
     }
 
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq(CQ4)) {
+    if (ibv_destroy_cq(CQ5)) {
         fprintf(stderr, "Failed to destroy CQ\n");
         return -1;
     }

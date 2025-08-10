@@ -1,50 +1,62 @@
 from .codegen_context import CodeGenContext
-from .IbvQPAttr import *
-from .IbvCQInitAttrEx import *
-from .IbvFlowAttr import *
-from .IbvQPInitAttrEx import *
-from .IbvSrqInitAttrEx import *
-from .IbvWQInitAttr import *
-from .IbvQPRateLimitAttr import IbvQPRateLimitAttr
-from .IbvWQAttr import *
+from .IbvAHAttr import IbvAHAttr
+from .IbvAllocDmAttr import IbvAllocDmAttr
+from .IbvCQInitAttrEx import IbvCQInitAttrEx
 from .IbvECE import IbvECE
+from .IbvFlowAttr import IbvFlowAttr
+from .IbvModifyCQAttr import IbvModifyCQAttr
+from .IbvMwBind import IbvMwBind
+from .IbvParentDomainInitAttr import IbvParentDomainInitAttr
+from .IbvQPAttr import IbvQPAttr
+from .IbvQPInitAttr import IbvQPInitAttr
+from .IbvQPInitAttrEx import IbvQPInitAttrEx
+from .IbvQPOpenAttr import IbvQPOpenAttr
+from .IbvQPRateLimitAttr import IbvQPRateLimitAttr
+from .IbvRecvWR import IbvRecvWR
+from .IbvSendWR import IbvSendWR
 from .IbvSge import IbvSge
+from .IbvSrqAttr import IbvSrqAttr
+from .IbvSrqInitAttr import IbvSrqInitAttr
+from .IbvSrqInitAttrEx import IbvSrqInitAttrEx
+from .IbvTdInitAttr import IbvTdInitAttr
+from .IbvWQAttr import IbvWQAttr
+from .IbvWQInitAttr import IbvWQInitAttr
+from .IbvXRCDInitAttr import IbvXRCDInitAttr
+from .value import (
+    ConstantValue,
+    EnumValue,
+    FlagValue,
+    IntValue,
+    ListValue,
+    ResourceValue,
+)
 
-from .objtracker import ObjectTracker
+# verbs.py 顶部新增
+try:
+    from ._codegen_utils import (
+        coerce_bool,
+        coerce_int,
+        coerce_list,
+        coerce_seq_of,
+        coerce_str,
+        ensure_identifier,
+        unwrap,
+        unwrap_all,
+    )
+except Exception:
+    # 允许作为独立脚本运行时的相对导入退化
+    from _codegen_utils import (
+        coerce_bool,
+        coerce_int,
+        coerce_list,
+        coerce_seq_of,
+        coerce_str,
+        ensure_identifier,
+        unwrap,
+        unwrap_all,
+    )
 
-from typing import Dict, Optional, List, Union
-from jinja2 import Template
-
-IB_UVERBS_ADVISE_MR_ADVICE_ENUM = {
-    0: "IB_UVERBS_ADVISE_MR_ADVICE_PREFETCH",
-    1: "IB_UVERBS_ADVISE_MR_ADVICE_PREFETCH_WRITE",
-    2: "IB_UVERBS_ADVISE_MR_ADVICE_PREFETCH_NO_FAULT",
-}
-
-IBV_QP_ATTR_MASK_ENUM = {
-    "IBV_QP_STATE":              1 << 0,
-    "IBV_QP_CUR_STATE":          1 << 1,
-    "IBV_QP_EN_SQD_ASYNC_NOTIFY": 1 << 2,
-    "IBV_QP_ACCESS_FLAGS":       1 << 3,
-    "IBV_QP_PKEY_INDEX":         1 << 4,
-    "IBV_QP_PORT":               1 << 5,
-    "IBV_QP_QKEY":               1 << 6,
-    "IBV_QP_AV":                 1 << 7,
-    "IBV_QP_PATH_MTU":           1 << 8,
-    "IBV_QP_TIMEOUT":            1 << 9,
-    "IBV_QP_RETRY_CNT":          1 << 10,
-    "IBV_QP_RNR_RETRY":          1 << 11,
-    "IBV_QP_RQ_PSN":             1 << 12,
-    "IBV_QP_MAX_QP_RD_ATOMIC":   1 << 13,
-    "IBV_QP_ALT_PATH":           1 << 14,
-    "IBV_QP_MIN_RNR_TIMER":      1 << 15,
-    "IBV_QP_SQ_PSN":             1 << 16,
-    "IBV_QP_MAX_DEST_RD_ATOMIC": 1 << 17,
-    "IBV_QP_PATH_MIG_STATE":     1 << 18,
-    "IBV_QP_CAP":                1 << 19,
-    "IBV_QP_DEST_QPN":           1 << 20,
-    "IBV_QP_RATE_LIMIT":         1 << 25,
-}
+from .contracts import Contract, ProduceSpec, RequireSpec, State, TransitionSpec
 
 
 def mask_fields_to_c(mask):
@@ -69,14 +81,15 @@ def mask_fields_to_c(mask):
         raise ValueError(f"Unknown mask type: {mask}")
 
 
-def _parse_kv(info: str) -> Dict[str, str]:
+def _parse_kv(info: str) -> dict[str, str]:
     """Parse "k=v k2=v2" style string into dict."""
     out = {}
-    for tok in info.replace(',', ' ').split():
-        if '=' in tok:
-            k, v = tok.split('=', 1)
+    for tok in info.replace(",", " ").split():
+        if "=" in tok:
+            k, v = tok.split("=", 1)
             out[k.strip()] = v.strip()
     return out
+
 
 # ---------- Verb call base ----------------------------------------------------
 
@@ -85,10 +98,109 @@ class VerbCall:
     def generate_c(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError
 
+    def set_resource(self, res_type: str, old_res_name: str, new_res_name: str):
+        """Set a resource for this verb call, used for replacing resources."""
+        # # for res in self.required_resources:
+        # pass
+        # for res in self.get_required_resources_recursively():
+        # #     print(res)
+        # # print(len(self.get_required_resources_recursively()))
+        # # print()
+        #     # if res.get('type') == res_type and res.get('name') == old_res_name:
+        #     #     res['name'] = new_res_name
+        #     #     return
+        #     if res.get('type') == res_type and res.get('name') == old_res_name:
+        #         position = res.get('position', 'unknown')  # 位置可能是 'cq', 'pd', 'qp' 等
+        #         print("Position:", position)
+        #         if position == 'unknown':
+        #             # 如果位置未知，可能是因为这个资源没有被追踪
+        #             # 这时我们可以选择忽略这个资源，或者抛出异常
+        #             raise ValueError(f"Resource {old_res_name} of type {res_type} has unknown position.")
+        #         else:
+        #             setattr(self, position, new_res_name)  # 更新对应位置的资源名
+        #     # 这么做没有意义，本末倒置了
+        #     pass
+        # pass # 有问题
+        # # if hasattr(self, 'tracker') and self.tracker:
+        # #     self.tracker.set_attr(res_type, old_res_name, 'name', new_res_name)
+        # #     # 更新已分配资源列表
+        # #     if hasattr(self, 'allocated_resources'):
+        # #         self.allocated_resources.append((res_type, new_res_name))
+        for res in self.get_required_resources():
+            if res.get("type") == res_type and res.get("name") == old_res_name:
+                # 位置可能是 'cq', 'pd', 'qp' 等
+                position = res.get("position", "unknown")
+                print("Position:", position)
+                if position == "unknown":
+                    # 如果位置未知，可能是因为这个资源没有被追踪
+                    # 这时我们可以选择忽略这个资源，或者抛出异常
+                    raise ValueError(f"Resource {old_res_name} of type {res_type} has unknown position.")
+                else:
+                    setattr(self, position, new_res_name)  # 更新对应位置的资源名
+
+    def set_resource_recursively(self, res_type: str, old_res_name: str, new_res_name: str):
+        """Set a resource for this verb call, used for replacing resources."""
+        self.set_resource(res_type, old_res_name, new_res_name)
+
+    def get_required_resources(self) -> list[dict[str, str]]:
+        """Get the list of required resources for this verb call."""
+        if hasattr(self, "required_resources"):
+            return self.required_resources
+        return []
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.get_required_resources()
+        # if hasattr(self, 'tracker') and self.tracker:
+        #     for res in resources:
+        #         # 如果资源是一个对象，递归获取其所需资源
+        #         if hasattr(res, 'get_required_resources_recursively'):
+        #             resources.extend(res.get_required_resources_recursively())
+        return resources
+
+    def mutable_fields(self):
+        return getattr(self, "MUTABLE_FIELDS", [])
+
+    def get_mutable_params(self):
+        """返回{参数名: 参数对象}的dict"""
+        return {k: getattr(self, k) for k in self.mutable_fields()}
+
+    def apply(self, ctx: CodeGenContext):
+        """Apply the context to this verb call, used for setting up resources."""
+        # self.required_resources = []
+        # self.allocated_resources = []
+        # self.tracker = ctx.tracker if ctx else None
+        # if self.tracker:
+        #     # Register the resources in the tracker
+        #     for res_type, res_name in self.get_mutable_params().items():
+        #         if isinstance(res_name, ResourceValue):
+        #             self.tracker.create(res_type, res_name.value)
+        #             self.required_resources.append(
+        #                 {'type': res_type, 'name': res_name.value, 'position': res_type})
+        #             self.allocated_resources.append((res_type, res_name.value))
+        return
+
 
 class UtilityCall:  # 生成verbs之外的函数
     def generate_c(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError
+
+    def get_required_resources(self) -> list[dict[str, str]]:
+        """Get the list of required resources for this verb call."""
+        if hasattr(self, "required_resources"):
+            return self.required_resources
+        return []
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.get_required_resources()
+        # if hasattr(self, 'tracker') and self.tracker:
+        #     for res in resources:
+        #         # 如果资源是一个对象，递归获取其所需资源
+        #         if hasattr(res, 'get_required_resources_recursively'):
+        #             resources.extend(res.get_required_resources_recursively())
+        return resources
+
 
 # Utility functions for the generated code
 
@@ -121,7 +233,7 @@ class SockConnect(UtilityCall):
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         if self.server_name:
-            server_arg = f"\"{self.server_name}\""
+            server_arg = f'"{self.server_name}"'
             fail_msg = f"Failed to connect to {self.server_name}:{self.port}"
         else:
             server_arg = "NULL"
@@ -135,6 +247,7 @@ class SockConnect(UtilityCall):
         return -1;
     }}
 """
+
 
 # class SockSyncData(UtilityCall):
 #     def __init__(self, xfer_size: int = 4096):
@@ -212,7 +325,7 @@ class ReceiveMR(UtilityCall):
         return cls()
 
     def generate_c(self, ctx):
-        return f"""
+        return """
     receive_metadata_from_controller(sockfd); // get remote MRs, and remote GID
 """
 
@@ -237,6 +350,7 @@ class ImportQPInfo(UtilityCall):
     memcpy(remote_con_datas[{qp_num}].gid, tmp_con_data.gid, 16);
 """
 
+
 #         return f"""
 #     /* Import connection data */
 #     remote_con_data.addr = ntohll(tmp_con_data.addr);
@@ -256,13 +370,12 @@ class SockSyncData(UtilityCall):
         return cls()
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-
-        return f"""
+        return """
     if(sock_sync_data(sock, sizeof(struct cm_con_data_t), (char *) &local_con_data, (char *) &tmp_con_data) < 0)
-    {{
+    {
         fprintf(stderr, "failed to exchange connection data between sides\\n");
         return 1;
-    }}
+    }
 
 """
 
@@ -272,6 +385,7 @@ class SockSyncDummy(UtilityCall):
         # This is a dummy synchronization character, not used in the actual data transfer.
         self.char = char
         pass
+
     """Dummy synchronization, used when no actual data transfer is needed."""
 
     def generate_c(self, ctx: CodeGenContext) -> str:
@@ -296,24 +410,25 @@ class SocketClose(UtilityCall):
     }}
 """
 
+
 # ---------- Specific verb implementations ------------------------------------
 
 
-class AckAsyncEvent(VerbCall):
-    def __init__(self, event: str):
-        self.event = event
+# class AckAsyncEvent(VerbCall):
+#     def __init__(self, event: str):
+#         self.event = event
 
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext):
-        kv = _parse_kv(info)
-        event = kv.get("event", "unknown")
-        return cls(event=event)
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext):
+#         kv = _parse_kv(info)
+#         event = kv.get("event", "unknown")
+#         return cls(event=event)
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        return f"""
-    /* ibv_ack_async_event */
-    ibv_ack_async_event(&{self.event});
-"""
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         return f"""
+#     /* ibv_ack_async_event */
+#     ibv_ack_async_event(&{self.event});
+# """
 
 
 class AckCQEvents(VerbCall):
@@ -326,12 +441,23 @@ class AckCQEvents(VerbCall):
         tracker (ObjectTracker): The object tracker instance.
     """
 
-    def __init__(self, cq: str, nevents: int, ctx: CodeGenContext):
-        self.cq = cq
-        self.nevents = nevents
+    MUTABLE_FIELDS = ["cq", "nevents"]
+
+    def __init__(self, cq: str = None, nevents: int = None):
+        self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        self.nevents = IntValue(nevents or 0)
+        # 是这样的，如果是None那么后面就不生成
+        # 但是本函数并非如此
+
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            self.tracker.use('cq', cq)   # 明确追踪这个CQ被使用了一次
+            self.tracker.use("cq", self.cq.value)  # 明确追踪这个CQ被使用了一次
+            self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -359,16 +485,44 @@ class AdviseMR(VerbCall):
         num_sge   -- SGE个数（int）
     """
 
-    def __init__(self, pd: str, advice: int, flags: int, sg_list: list, num_sge: int = None, sg_var: str = "sg_list", ctx: CodeGenContext = None):
-        self.pd = pd
-        self.advice = advice
-        self.flags = flags
-        self.sg_list = sg_list or []
-        self.num_sge = num_sge if num_sge is not None else len(self.sg_list)
-        self.sg_var = sg_var
+    MUTABLE_FIELDS = ["pd", "advice", "flags", "sg_list", "num_sge", "sg_var"]
+
+    # 这些参数都是必须的
+    def __init__(
+        self,
+        pd: str = None,
+        advice: int = None,
+        flags: int = None,
+        sg_list: list[IbvSge] = [],
+        num_sge: int = None,
+        sg_var: str = None,
+    ):
+        # sg_var 没有mutate的必要
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.advice = (
+            EnumValue(advice, enum_type="IB_UVERBS_ADVISE_MR_ADVICE_ENUM")
+            if advice is not None
+            else EnumValue(
+                "IB_UVERBS_ADVISE_MR_ADVICE_PREFETCH",
+                enum_type="IB_UVERBS_ADVISE_MR_ADVICE_ENUM",
+            )
+        )
+        self.flags = IntValue(flags or 0)  # TODO: 这个 flag 没搞清楚
+        # self.sg_list = sg_list or []  # list的变异比较麻烦，得针对处理，待定
+        self.sg_list = ListValue(sg_list, factory=lambda: IbvSge.random_mutation())
+        self.num_sge = num_sge if num_sge is not None else len(self.sg_list)  # TODO: num_sge 是否需要和 sg_list 关联？
+        # SGE数组变量名，默认为 sg_list_pd
+        self.sg_var = ConstantValue(sg_var or f"sg_list_{self.pd.value}")
+
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            self.tracker.use('pd', pd)
+            self.tracker.use("pd", self.pd.value)
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -378,24 +532,30 @@ class AdviseMR(VerbCall):
         flags = int(kv.get("flags", 0))
         num_sge = int(kv.get("num_sge", 1))
         # 假定 trace 传递的是已建好的 sg_list 对象列表
-        sg_list = kv.get("sg_list", [IbvSge.random_mutation()
-                         for _ in range(num_sge)])
+        sg_list = kv.get("sg_list", [IbvSge.random_mutation() for _ in range(num_sge)])
         return cls(pd, int(advice), flags, sg_list, num_sge, ctx=ctx)
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        pd_name = self.pd
-        # SGE数组生成
-        sg_var = self.sg_var
-        s = ""
+    def generate_c(self, ctx):
+        pd_name = coerce_str(self.pd)
+        sg_var = ensure_identifier(self.sg_var)  # 标识符
+        num_sge = coerce_int(self.num_sge)
+        sg_list = unwrap_all(self.sg_list)  # SGE 列表的元素做一次 unwrap
+        advice_macro = coerce_str(self.advice)  # 枚举值转换为字符串
+        flags = coerce_int(self.flags)  # flags 转换为整数
+
+        # 如果列表与 num_sge 不一致，用列表长度兜底，避免拼接崩溃
+        if len(sg_list) != num_sge:
+            num_sge = len(sg_list)
+
         if ctx:
-            ctx.alloc_variable(sg_var + f"[{self.num_sge}]", "struct ibv_sge")
-        for idx, sge in enumerate(self.sg_list):
+            ctx.alloc_variable(f"{sg_var}[{num_sge}]", "struct ibv_sge")
+
+        s = ""
+        for idx, sge in enumerate(sg_list):
             s += sge.to_cxx(f"{sg_var}[{idx}]", ctx)
-        # Advice宏
-        advice_macro = IB_UVERBS_ADVISE_MR_ADVICE_ENUM.get(
-            self.advice, str(self.advice))
+
         s += f"""
-    if (ibv_advise_mr({pd_name}, {advice_macro}, {self.flags}, {sg_var}, {self.num_sge}) != 0) {{
+    if (ibv_advise_mr({pd_name}, {advice_macro}, {flags}, {sg_var}, {num_sge}) != 0) {{
         fprintf(stderr, "ibv_advise_mr failed\\n");
         return -1;
     }}
@@ -403,14 +563,48 @@ class AdviseMR(VerbCall):
         return s
 
 
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         pd_name = self.pd
+#         # SGE数组生成
+#         # sg_var = str(self.sg_var)
+#         sg_var = self.sg_var
+#         s = ""
+#         if ctx:
+#             ctx.alloc_variable(f"{sg_var}[{self.num_sge}]", "struct ibv_sge")
+#         for idx, sge in enumerate(self.sg_list):
+#             s += sge.to_cxx(f"{sg_var}[{idx}]", ctx)
+#         # Advice宏
+#         advice_macro = self.advice.value
+#         s += f"""
+#     if (ibv_advise_mr({pd_name}, {advice_macro}, {self.flags}, {sg_var}, {self.num_sge}) != 0) {{
+#         fprintf(stderr, "ibv_advise_mr failed\\n");
+#         return -1;
+#     }}
+# """
+#         return s
+
+
 class AllocDM(VerbCall):
-    def __init__(self, dm: str, attr_obj=None, ctx: CodeGenContext = None):
-        self.dm = dm
+    MUTABLE_FIELDS = ["dm", "attr_obj", "attr_var"]
+
+    def __init__(self, dm: str = None, attr_obj: IbvAllocDmAttr = None):
+        self.dm = ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
         self.attr_obj = attr_obj
+        self.attr_var = ConstantValue("dm_attr_" + self.dm.value) if dm else ConstantValue("dm_attr_dm")
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []  # 记录已分配的资源
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the DM address in the tracker
-            self.tracker.create('dm', dm)
+            self.tracker.create("dm", self.dm.value)
+
+            self.allocated_resources.append(("dm", self.dm.value))  # 记录已分配的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -438,21 +632,38 @@ class AllocDM(VerbCall):
 
 
 class AllocMW(VerbCall):
-    def __init__(self, pd, mw, mw_type='IBV_MW_TYPE_1', ctx: CodeGenContext = None):
-        self.pd = pd
-        self.mw = mw
-        self.mw_type = mw_type
+    MUTABLE_FIELDS = ["pd", "mw", "mw_type"]
+
+    def __init__(self, pd: str = None, mw: str = None, mw_type: str = None):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.mw = ResourceValue(resource_type="mw", value=mw) if mw else ResourceValue(resource_type="mw", value="mw")
+        self.mw_type = (
+            EnumValue(mw_type, enum_type="IBV_MW_TYPE_ENUM")
+            if mw_type
+            else EnumValue("IBV_MW_TYPE_1", enum_type="IBV_MW_TYPE_ENUM")
+        )
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            self.tracker.use('pd', pd)
-            self.tracker.create('mw', mw, pd = pd)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.create("mw", self.mw.value, pd=self.pd.value)
+
+            self.allocated_resources.append(("mw", self.mw.value))  # 记录已分配的资源
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
         kv = _parse_kv(info)
-        pd = kv.get('pd', 'unknown')
-        mw = kv.get('mw', 'unknown')
-        mw_type = kv.get('type', 'IBV_MW_TYPE_1')
+        pd = kv.get("pd", "unknown")
+        mw = kv.get("mw", "unknown")
+        mw_type = kv.get("type", "IBV_MW_TYPE_1")
         return cls(pd=pd, mw=mw, mw_type=mw_type, ctx=ctx)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
@@ -472,14 +683,26 @@ class AllocMW(VerbCall):
 class AllocNullMR(VerbCall):
     """Allocate a null memory region (MR) associated with a protection domain."""
 
-    def __init__(self, pd, mr, ctx: CodeGenContext):
-        self.pd = pd
-        self.mr = mr
+    MUTABLE_FIELDS = ["pd", "mr"]
+
+    def __init__(self, pd: str = None, mr: str = None):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            self.tracker.use('pd', pd)
-            # Register the MR address in the tracker
-            self.tracker.create('mr', mr, pd = pd)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.create("mr", self.mr.value, pd=self.pd.value)
+
+            self.allocated_resources.append(("mr", self.mr.value))
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -512,17 +735,38 @@ class AllocParentDomain(VerbCall):
         attr_obj (IbvParentDomainInitAttr): Optional, struct fields.
     """
 
-    def __init__(self, context, pd: str = None, parent_pd: str = None, attr_var: str = None, attr_obj=None, ctx: CodeGenContext = None):
-        self.context = context or ctx.ib_ctx
-        self.pd = pd
-        self.parent_pd = parent_pd  # 新PD变量名
-        self.attr_var = attr_var or f"pd_attr_{parent_pd}"
-        self.attr_obj = attr_obj             # 可为 None，trace replay 下只传变量名
+    MUTABLE_FIELDS = ["context", "pd", "parent_pd", "attr_var", "attr_obj"]
+
+    def __init__(
+        self,
+        context=None,
+        pd: str = None,
+        parent_pd: str = None,
+        attr_var: str = None,
+        attr_obj: IbvParentDomainInitAttr = None,
+    ):
+        self.context = context  # IBV context, e.g., ib_ctx
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.parent_pd = ResourceValue(resource_type="parent_pd", value=parent_pd)  # 新PD变量名
+        self.attr_var = ConstantValue(attr_var or f"parent_pd_attr_{self.parent_pd.value}")  # 结构体变量名
+        self.attr_obj = attr_obj  # 可为 None，trace replay 下只传变量名
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []  # 记录已分配的资源
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        self.context = self.context or ctx.ib_ctx
         if self.tracker:
             # Register the parent domain address in the tracker
-            self.tracker.use('pd', pd)  # 确保父域的PD被使用
-            self.tracker.create('parent_pd', parent_pd, pd=self.pd)
+            self.tracker.use("pd", self.pd.value)  # 确保父域的PD被使用
+            self.tracker.create("parent_pd", self.parent_pd.value, pd=self.pd.value)
+
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
+            self.allocated_resources.append(("parent_pd", self.parent_pd.value))  # 记录已分配的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -531,26 +775,31 @@ class AllocParentDomain(VerbCall):
         pd_new = kv.get("parent_pd", "unknown")
         attr_var = kv.get("attr_var", f"pd_attr_{pd_new}")
         attr_obj = kv.get("attr_obj")  # 可选，trace/fuzz模式灵活
-        return cls(context=ctx.ib_ctx, pd=pd, parent_pd=pd_new, attr_var=attr_var, attr_obj=attr_obj)
+        return cls(
+            context=ctx.ib_ctx,
+            pd=pd,
+            parent_pd=pd_new,
+            attr_var=attr_var,
+            attr_obj=attr_obj,
+        )
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         if self.pd is None and self.attr_obj is None:
-            raise ValueError(
-                "Either pd or attr_obj must be provided for AllocParentDomain")
-        if self.pd is not None:
-            pd_name = self.pd
+            raise ValueError("Either pd or attr_obj must be provided for AllocParentDomain")
+        # if self.pd is not None:
+        #     pd_name = self.pd
         parent_pd_name = self.parent_pd
         code = ""
         # 生成 struct ibv_parent_domain_init_attr 内容
         if self.attr_obj is not None:
             code += self.attr_obj.to_cxx(self.attr_var, ctx)
-        else:
-            # fallback: 最简明手写（兼容旧trace）
-            code += f"\n    struct ibv_parent_domain_init_attr {self.attr_var} = {{0}};\n"
-            code += f"    {self.attr_var}.pd = {pd_name};\n"
-            code += f"    {self.attr_var}.td = NULL;\n"
-            code += f"    {self.attr_var}.comp_mask = 0;\n"
-            code += f"    {self.attr_var}.pd_context = NULL;\n"
+        # else:
+        #     # fallback: 最简明手写（兼容旧trace）
+        #     code += f"\n    struct ibv_parent_domain_init_attr {self.attr_var} = {{0}};\n"
+        #     code += f"    {self.attr_var}.pd = {pd_name};\n"
+        #     code += f"    {self.attr_var}.td = NULL;\n"
+        #     code += f"    {self.attr_var}.comp_mask = 0;\n"
+        #     code += f"    {self.attr_var}.pd_context = NULL;\n"
         code += f"""
     {parent_pd_name} = ibv_alloc_parent_domain({self.context}, &{self.attr_var});
     if (!{parent_pd_name}) {{
@@ -564,13 +813,31 @@ class AllocParentDomain(VerbCall):
 class AllocPD(VerbCall):
     """Allocate a protection domain (PD) for the RDMA device context."""
 
-    def __init__(self, pd, ctx: CodeGenContext):
-        self.pd = pd
-        self.ctx = ctx  # Store context for code generation
+    MUTABLE_FIELDS = ["pd"]
+    CONTRACT = Contract(
+        requires=[], produces=[ProduceSpec(rtype="pd", state=State.ALLOCATED, name_attr="pd")], transitions=[]
+    )
+
+    def __init__(self, pd: str = None):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []  # 记录已分配的资源
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the PD address in the tracker
-            self.tracker.create('pd', pd)
+            self.tracker.create("pd", self.pd.value)
+
+            self.allocated_resources.append(("pd", self.pd.value))  # 记录已分配的资源
+
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT)
+
+    """Initialize a new protection domain (PD) for the RDMA device context."""
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -595,14 +862,25 @@ class AllocTD(VerbCall):
     Represents ibv_alloc_td() verb call to allocate a thread domain object.
     """
 
-    def __init__(self, td: str, attr_var: str = None, attr_obj=None, ctx: CodeGenContext = None):
-        self.td = td         # 目标变量名
-        self.attr_var = attr_var or f"td_init_attr_{td}"         # 结构体变量名
-        self.attr_obj = attr_obj          # IbvTdInitAttr对象，若有则生成内容
+    MUTABLE_FIELDS = ["td", "attr_var", "attr_obj"]
+
+    def __init__(self, td: str = None, attr_var: str = None, attr_obj: IbvTdInitAttr = None):
+        self.td = ResourceValue(resource_type="td", value=td) if td else ResourceValue(resource_type="td", value="td")
+        self.attr_var = ConstantValue(attr_var or f"td_init_attr_{self.td.value}")  # 结构体变量名
+        self.attr_obj = attr_obj  # IbvTdInitAttr对象，若有则生成内容
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the thread domain address in the tracker
-            self.tracker.create('td', td)
+            self.tracker.create("td", self.td.value)
+
+            self.allocated_resources.append(("td", self.td.value))
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -631,15 +909,27 @@ class AllocTD(VerbCall):
 
 
 class AttachMcast(VerbCall):
-    def __init__(self, qp: str, gid: str, lid: int, ctx: CodeGenContext = None):  # 注意gid需要是变量，不然无法传参
-        self.qp = qp
-        self.gid = gid
-        self.lid = lid
+    MUTABLE_FIELDS = ["qp", "gid", "lid"]
+
+    def __init__(self, qp: str = None, gid: str = None, lid: int = None):
+        # 注意gid需要是变量，不然无法传参 # TODO: gid这种类型如何处理
+        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.gid = ConstantValue(gid or "gid")  # GID变量名，默认为"gid"
+        self.lid = IntValue(lid or 0)  # LID值，默认为0
+
+        self.tracker = None
+        self.required_resources = []
+
+    """Attach a multicast group to a queue pair (QP) using the specified GID and LID."""
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
-    
+            self.tracker.use("qp", self.qp.value)
+
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})
+
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
         kv = _parse_kv(info)
@@ -649,7 +939,7 @@ class AttachMcast(VerbCall):
         return cls(qp=qp, gid=gid, lid=lid)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = self.qp
+        qp_name = str(self.qp)
         gid_value = f"{self.gid}"
         return f"""
     /* ibv_attach_mcast */
@@ -661,26 +951,52 @@ class AttachMcast(VerbCall):
 
 
 class BindMW(VerbCall):
-    def __init__(self, qp: str, mw: str, mw_bind_var: str = None, mw_bind_obj=None, ctx: CodeGenContext = None):
-        """
-        qp: QP变量名
-        mw: MW变量名
-        mw_bind_var: mw_bind结构体变量名
-        mw_bind_obj: IbvMwBind对象（可选，若有则自动生成结构体内容）
-        """
-        self.qp = qp
-        self.mw = mw
+    MUTABLE_FIELDS = ["qp", "mw", "mw_bind_var", "mw_bind_obj"]
+
+    def __init__(
+        self,
+        qp: str = None,
+        mw: str = None,
+        mw_bind_var: str = None,
+        mw_bind_obj: IbvMwBind = None,
+    ):
+        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.mw = ResourceValue(resource_type="mw", value=mw) if mw else ResourceValue(resource_type="mw", value="mw")
         # 默认生成 mw_bind_<mw>
-        self.mw_bind_var = mw_bind_var or f"mw_bind_{mw}"
+        self.mw_bind_var = ConstantValue(mw_bind_var or f"mw_bind_{self.mw.value}")  # MW bind variable name
         self.mw_bind_obj = mw_bind_obj
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the QP and MW addresses in the tracker
-            self.tracker.use('qp', qp)
-            self.tracker.create('mw', mw, qp = qp)
-            self.tracker.use('mr', self.mw_bind_obj.mr)
-            # Register the MW bind variable
-            # self.tracker.create('mw_bind', self.mw_bind_var, mw=mw)
+            self.tracker.use("qp", self.qp.value)
+            self.tracker.create("mw", self.mw.value, qp=self.qp.value)
+
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})
+            self.allocated_resources.append(("mw", self.mw.value))  # 记录已分配的资源
+            if self.mw_bind_obj is not None:
+                self.mw_bind_obj.apply(ctx)  # 确保结构体对象被追踪
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.get_required_resources()
+        resources.extend(self.mw_bind_obj.get_required_resources_recursively() if self.mw_bind_obj else [])
+        return resources
+
+    def set_resource_recursively(self, res_type: str, old_res_name: str, new_res_name: str):
+        """Set the resource name recursively in the MW bind object."""
+        self.set_resource(res_type, old_res_name, new_res_name)
+        if self.mw_bind_obj is not None:
+            self.mw_bind_obj.set_resource_recursively(res_type, old_res_name, new_res_name)
+        # Update the MW bind variable name
+        # if res_type == 'mw_bind' and self.mw_bind_var == old_res_name:
+        #     self.mw_bind_var = new_res_name
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -692,23 +1008,13 @@ class BindMW(VerbCall):
         return cls(qp=qp, mw=mw, mw_bind_var=mw_bind_var, mw_bind_obj=mw_bind_obj)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = self.qp
+        qp_name = str(self.qp)
         mw_name = self.mw
-        mw_bind_var = self.mw_bind_var
+        mw_bind_var = str(self.mw_bind_var)
         code = ""
-        # 支持自动生成结构体内容
         if self.mw_bind_obj is not None:
             code += self.mw_bind_obj.to_cxx(mw_bind_var, ctx)
-        else:
-            # 兼容 trace replay，手动逐字段赋值
-            code += f"""
-    struct ibv_mw_bind {mw_bind_var} = {{0}};
-    // TODO: Assign fields as needed for trace replay.
-    // e.g. {mw_bind_var}.wr_id = ...;
-    //      {mw_bind_var}.send_flags = ...;
-    //      {mw_bind_var}.bind_info.mr = ...;
-    //      ...
-"""
+
         code += f"""
     if (ibv_bind_mw({qp_name}, {mw_name}, &{mw_bind_var}) != 0) {{
         fprintf(stderr, "Failed to bind MW\\n");
@@ -721,6 +1027,8 @@ class BindMW(VerbCall):
 class CloseDevice(VerbCall):
     """Close the RDMA device context. This does not release all resources allocated using the context.
     Make sure to release all associated resources before closing."""
+
+    MUTABLE_FIELDS = []
 
     def __init__(self):
         pass
@@ -744,12 +1052,25 @@ class CloseDevice(VerbCall):
 class CloseXRCD(VerbCall):
     """Close an XRC domain."""
 
-    def __init__(self, xrcd: str, ctx: CodeGenContext = None):
-        self.xrcd = xrcd
+    MUTABLE_FIELDS = ["xrcd"]
+
+    def __init__(self, xrcd: str = None):
+        self.xrcd = (
+            ResourceValue(resource_type="xrcd", value=xrcd)
+            if xrcd
+            else ResourceValue(resource_type="xrcd", value="xrcd")
+        )
+
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the XRCD address in the tracker
-            self.tracker.use('xrcd', xrcd)
+            self.tracker.use("xrcd", self.xrcd.value)
+            self.required_resources.append({"type": "xrcd", "name": self.xrcd.value, "position": "xrcd"})
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -778,18 +1099,39 @@ class CreateAH(VerbCall):
         ret_var    -- 返回的 ibv_ah* 变量名（如"ah1"）
     """
 
-    def __init__(self, pd: str, attr_var: str = None, ah: str = "ah", attr_obj: 'IbvAHAttr' = None, ctx: CodeGenContext = None):
-        self.pd = pd
+    MUTABLE_FIELDS = ["pd", "attr_var", "ah", "attr_obj"]
+
+    def __init__(
+        self,
+        pd: str = None,
+        attr_var: str = None,
+        ah: str = None,
+        attr_obj: IbvAHAttr = None,
+    ):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
         # 默认生成 ah_attr_<pd>
-        self.attr_var = attr_var or f"ah_attr_{pd}"
-        self.ah = ah
-        self.attr_obj = attr_obj  # 若为 None 则仅引用变量名
+        self.attr_var = ConstantValue(attr_var or f"ah_attr_{self.pd.value}")
+        self.ah = (
+            ResourceValue(resource_type="ah", value=ah)
+            if ah
+            else ResourceValue(resource_type="ah", value=f"ah_{self.pd.value}")
+        )
+        self.attr_obj = attr_obj
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the PD address in the tracker
-            self.tracker.use('pd', pd)
-            # Register the AH address in the tracker
-            self.tracker.create('ah', ah, pd=pd)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.create("ah", self.ah.value, pd=self.pd.value)
+
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})
+            self.allocated_resources.append(("ah", self.ah.value))
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -804,11 +1146,8 @@ class CreateAH(VerbCall):
         pd_name = self.pd
         ah_var = self.ah
         code = ""
-        # 自动生成结构体内容
         if self.attr_obj is not None:
             code += self.attr_obj.to_cxx(self.attr_var, ctx)
-        else:
-            code += f"\n    struct ibv_ah_attr {self.attr_var} = {{0}};\n"
         code += f"""
     {ah_var} = ibv_create_ah({pd_name}, &{self.attr_var});
     if (!{ah_var}) {{
@@ -818,20 +1157,52 @@ class CreateAH(VerbCall):
 """
         return code
 
+
 class CreateAHFromWC(VerbCall):
-    def __init__(self, pd: str, wc: str, grh: str, port_num: int, ah: str = "ah", ctx: CodeGenContext = None):
-        self.pd = pd
-        self.wc = wc
-        self.grh = grh
-        self.port_num = port_num
-        self.ah = ah  # Variable name for the created AH 
+    MUTABLE_FIELDS = ["pd", "wc", "grh", "port_num", "ah"]
+
+    def __init__(
+        self,
+        pd: str = None,
+        wc: str = None,
+        grh: str = None,
+        port_num: int = None,
+        ah: str = None,
+    ):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.wc = ResourceValue(resource_type="wc", value=wc) if wc else ResourceValue(resource_type="wc", value="wc")
+        self.grh = (
+            ResourceValue(resource_type="grh", value=grh) if grh else ResourceValue(resource_type="grh", value="grh")
+        )
+        self.port_num = IntValue(port_num or 1)  # 默认端口号为1
+        self.ah = (
+            ResourceValue(resource_type="ah", value=ah)
+            if ah
+            else ResourceValue(
+                resource_type="ah",
+                value=f"ah_from_wc_{self.pd.value}_{self.wc.value}_{self.grh.value}_{self.port_num.value}",
+            )
+        )  # Variable name for the created AH
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD, WC, and AH addresses in the tracker
-            self.tracker.use('pd', pd)
-            self.tracker.use('wc', wc)
-            self.tracker.use('grh', grh)
-            self.tracker.create('ah', ah, pd=pd)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.use("wc", self.wc.value)
+            self.tracker.use("grh", self.grh.value)
+            self.tracker.create("ah", self.ah.value, pd=self.pd.value)
+
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
+            self.required_resources.append({"type": "wc", "name": self.wc.value, "position": "wc"})
+            self.required_resources.append({"type": "grh", "name": self.grh.value, "position": "grh"})  # 记录需要的资源
+            self.allocated_resources.append(("ah", self.ah.value))
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -859,12 +1230,26 @@ class CreateAHFromWC(VerbCall):
 
 
 class CreateCompChannel(VerbCall):
-    def __init__(self, channel: str, ctx: CodeGenContext = None):
-        self.channel = channel
+    MUTABLE_FIELDS = ["channel"]
+
+    def __init__(self, channel: str = None):
+        self.channel = (
+            ResourceValue(resource_type="channel", value=channel)
+            if channel
+            else ResourceValue(resource_type="channel", value="channel")
+        )
+
+        self.tracker = None
+        # self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the completion channel address in the tracker
-            self.tracker.create('comp_channel', channel)
+            self.tracker.create("channel", self.channel.value)
+
+            self.allocated_resources.append(("channel", self.channel.value))
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -876,8 +1261,8 @@ class CreateCompChannel(VerbCall):
         channel_name = self.channel
         ib_ctx = ctx.ib_ctx
         return f"""
-    /* ibv_create_comp_channel */
-    {channel_name} = ibv_create_comp_channel({ib_ctx});
+    /* ibv_create_channel */
+    {channel_name} = ibv_create_channel({ib_ctx});
     if (!{channel_name}) {{
         fprintf(stderr, "Failed to create completion channel\\n");
         return -1;
@@ -886,19 +1271,44 @@ class CreateCompChannel(VerbCall):
 
 
 class CreateCQ(VerbCall):
-    def __init__(self, cqe: int = 32, cq_context: str = "NULL",
-                 channel: str = "NULL", comp_vector: int = 0, cq: str = "unknown", ctx: CodeGenContext = None):
-        self.cqe = cqe
-        self.cq_context = cq_context
-        self.channel = channel
-        self.comp_vector = comp_vector
-        self.cq = cq
+    MUTABLE_FIELDS = ["cqe", "cq_context", "channel", "comp_vector", "cq"]
+    CONTRACT = Contract(requires=[], produces=[ProduceSpec("cq", State.ALLOCATED, "cq")], transitions=[])
+
+    def __init__(
+        self,
+        cqe: int = 32,
+        cq_context: str = "NULL",
+        channel: str = "NULL",
+        comp_vector: int = 0,
+        cq: str = None,
+    ):
+        # TODO: 存疑，channel 是否需要关联
+        self.cqe = IntValue(cqe)
+        self.cq_context = ConstantValue(cq_context)
+        self.channel = ConstantValue(channel)
+        self.comp_vector = IntValue(comp_vector)
+        self.cq = (
+            ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        )  # CQ variable name, default is "unknown"
+
+        self.tracker = None
+        self.context = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
-        self.context = ctx # TEMP
+        self.context = ctx  # TEMP
         if self.tracker:
-            # Register the CQ address in the tracker
             # self.tracker.create('cq', cq, context=ctx)
-            self.tracker.create('cq', cq)
+            self.tracker.create("cq", self.cq.value)
+
+            self.allocated_resources.append(("cq", self.cq.value))
+
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -910,16 +1320,26 @@ class CreateCQ(VerbCall):
         comp_vector = int(kv.get("comp_vector", 0))
         cq = kv.get("cq", "unknown")
         # ctx.alloc_cq(cq)
-        return cls(context=context, cqe=cqe, cq_context=cq_context,
-                   channel=channel, comp_vector=comp_vector, cq=cq)
+        return cls(
+            context=context,
+            cqe=cqe,
+            cq_context=cq_context,
+            channel=channel,
+            comp_vector=comp_vector,
+            cq=cq,
+        )
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        cq_name = self.cq
+        cq_name = coerce_str(self.cq)
+        cqe = coerce_int(self.cqe)
+        comp_vector = coerce_int(self.comp_vector)
+        channel = coerce_str(self.channel)
+        cq_context = coerce_str(self.cq_context)
         return f"""
     /* ibv_create_cq */
-    {cq_name} = ibv_create_cq({self.context.ib_ctx}, {self.cqe}, 
-                              {self.cq_context}, {self.channel}, 
-                              {self.comp_vector});
+    {cq_name} = ibv_create_cq({self.context.ib_ctx}, {cqe}, 
+                              {cq_context}, {channel}, 
+                              {comp_vector});
     if (!{cq_name}) {{
         fprintf(stderr, "Failed to create completion queue\\n");
         return -1;
@@ -937,21 +1357,58 @@ class CreateCQEx(VerbCall):
         cq_attr_obj   -- IbvCQInitAttrEx对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, ctx_name: str, cq_ex: str, cq_attr_var: str = None, cq_attr_obj: 'IbvCQInitAttrEx' = None, ctx: CodeGenContext = None):
-        self.ctx_name = ctx_name or ctx.ib_ctx  # IBV context 变量名
-        self.cq_ex = cq_ex  # CQ_EX变量名
+    MUTABLE_FIELDS = ["ctx_name", "cq_ex", "cq_attr_var", "cq_attr_obj"]
+
+    def __init__(
+        self,
+        ctx_name: str = None,
+        cq_ex: str = None,
+        cq_attr_var: str = None,
+        cq_attr_obj: IbvCQInitAttrEx = None,
+    ):
+        # IBV context variable name, default is "ctx"
+        self.ctx_name = ConstantValue(ctx_name or "ctx")
+        self.cq_ex = ResourceValue(resource_type="cq_ex", value=cq_ex)
         # 默认生成 cq_attr_<cq_var>
-        self.cq_attr_var = cq_attr_var or f"cq_ex_attr_{cq_ex}"
-        self.cq_attr_obj = cq_attr_obj  # 若为None仅生成结构体声明
+        self.cq_attr_var = ConstantValue(cq_attr_var or f"cq_attr_{self.cq_ex.value}")
+        self.cq_attr_obj = cq_attr_obj
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        self.ctx_name = self.ctx_name or ctx.ib_ctx
         if self.tracker:
             # Register the CQ_EX address in the tracker
-            self.tracker.create('cq_ex', cq_ex)
-            if self.cq_attr_obj.parent_domain:
-                # Register the parent domain address in the tracker
-                self.tracker.use('pd', self.cq_attr_obj.parent_domain)
+            self.tracker.create("cq_ex", self.cq_ex.value)
+            self.allocated_resources.append(("cq_ex", self.cq_ex.value))
+            if self.cq_attr_obj is not None:
+                # Register the CQ_EX attribute object in the tracker
+                self.cq_attr_obj.apply(ctx)
+            # if self.cq_attr_obj.parent_domain:
+            #     # Register the parent domain address in the tracker
+            #     self.tracker.use('pd', self.cq_attr_obj.parent_domain)
+            #     self.required_resources.append(('pd', self.cq_attr_obj.parent_domain))
+            # # 记录需要的资源 # to be recursive 标记
             # # Register the CQ_EX attribute variable
             # self.tracker.create('cq_attr', self.cq_attr_var, cq_ex=cq_ex)
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.get_required_resources()
+        if self.cq_attr_obj is not None:
+            resources.extend(self.cq_attr_obj.get_required_resources_recursively())
+        return resources
+
+    def set_resource_recursively(self, res_type: str, old_res_name: str, new_res_name: str):
+        """Set the resource name recursively in the MW bind object."""
+        self.set_resource(res_type, old_res_name, new_res_name)
+        if self.cq_attr_obj is not None:
+            self.cq_attr_obj.set_resource_recursively(res_type, old_res_name, new_res_name)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -967,8 +1424,6 @@ class CreateCQEx(VerbCall):
         # 自动生成结构体内容
         if self.cq_attr_obj is not None:
             code += self.cq_attr_obj.to_cxx(self.cq_attr_var, ctx)
-        else:
-            code += f"\n    struct ibv_cq_init_attr_ex {self.cq_attr_var} = {{0}};\n"
         code += f"""
     {self.cq_ex} = ibv_create_cq_ex({self.ctx_name}, &{self.cq_attr_var});
     if (!{self.cq_ex}) {{
@@ -989,20 +1444,44 @@ class CreateFlow(VerbCall):
         flow_attr_obj-- IbvFlowAttr对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, qp: str, flow: str = None, flow_attr_var: str = None, flow_attr_obj: 'IbvFlowAttr' = None, ctx: CodeGenContext = None):
-        self.qp = qp
-        self.flow = flow
+    MUTABLE_FIELDS = ["qp", "flow", "flow_attr_var", "flow_attr_obj"]
+
+    def __init__(
+        self,
+        qp: str = None,
+        flow: str = None,
+        flow_attr_var: str = None,
+        flow_attr_obj: IbvFlowAttr = None,
+    ):
+        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.flow = (
+            ResourceValue(resource_type="flow", value=flow)
+            if flow
+            else ResourceValue(resource_type="flow", value="flow")
+        )
         # 默认生成 flow_attr_<qp>
-        self.flow_attr_var = flow_attr_var or f"flow_attr_{qp}"
+        self.flow_attr_var = ConstantValue(
+            flow_attr_var or f"flow_attr_{self.qp.value}"
+        )  # Flow attribute variable name
         self.flow_attr_obj = flow_attr_obj  # None时仅生成结构体声明
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # Register the flow address in the tracker
-            self.tracker.create('flow', flow, qp=qp)
+            self.tracker.create("flow", self.flow.value, qp=self.qp.value)
             # Register the flow attribute variable
             # self.tracker.create('flow_attr', self.flow_attr_var, flow=flow)
+            self.allocated_resources.append(("flow", self.flow.value))  # 记录已分配的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1014,15 +1493,12 @@ class CreateFlow(VerbCall):
         return cls(qp, flow_var, flow_attr_var, flow_attr_obj)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = self.qp
+        qp_name = str(self.qp)
         flow_var = self.flow
-        # ctx.alloc_variable(flow_var, "struct ibv_flow *")  # Register the flow variable in the context
         flow_attr_var = self.flow_attr_var
         code = ""
         if self.flow_attr_obj is not None:
             code += self.flow_attr_obj.to_cxx(flow_attr_var, ctx)
-        else:
-            code += f"\n    struct ibv_flow_attr {flow_attr_var} = {{0}};\n"
         code += f"""
     {flow_var} = ibv_create_flow({qp_name}, &{flow_attr_var});
     if (!{flow_var}) {{
@@ -1034,18 +1510,62 @@ class CreateFlow(VerbCall):
 
 
 class CreateQP(VerbCall):
-    def __init__(self, pd, qp, init_attr_obj=None, ctx: CodeGenContext = None):
-        self.pd = pd                    # PD变量名
-        self.qp = qp                    # QP变量名
-        self.init_attr_obj = init_attr_obj      # IbvQpInitAttr实例（如自动生成/trace重放）
+    MUTABLE_FIELDS = ["pd", "qp", "init_attr_obj"]
+    CONTRACT = Contract(
+        requires=[
+            RequireSpec(rtype="pd", state=State.ALLOCATED, name_attr="pd"),
+            # 也可以要求 cq 存在（如果你用名字引用 cq）：RequireSpec("cq", State.ALLOCATED, "recv_cq") ...
+        ],
+        produces=[
+            ProduceSpec(rtype="qp", state=State.RESET, name_attr="qp"),
+        ],
+        transitions=[],
+    )
+
+    def __init__(self, pd: str = None, qp: str = None, init_attr_obj: IbvQPInitAttr = None):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.qp = (
+            ResourceValue(resource_type="qp", value=qp)
+            if qp
+            else ResourceValue(resource_type="qp", value=f"qp_{self.pd.value}")
+        )  # 默认生成 qp_<pd>
+        # QP变量名
+        self.init_attr_obj = init_attr_obj  # IbvQPInitAttr实例（如自动生成/trace重放）
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD and QP addresses in the tracker
-            self.tracker.use('pd', pd)
-            self.tracker.create('qp', qp, pd=pd)
-            self.tracker.use('cq', init_attr_obj.send_cq if init_attr_obj else None)
-            self.tracker.use('cq', init_attr_obj.recv_cq if init_attr_obj else None)
-            self.tracker.use('srq', init_attr_obj.srq if init_attr_obj else None)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.create("qp", self.qp.value, pd=self.pd.value)
+            self.allocated_resources.append(("qp", self.qp.value))  # 记录已分配的资源
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
+            if self.init_attr_obj:
+                self.init_attr_obj.apply(ctx)
+                # # # Register the SRQ if it exists
+                # if self.init_attr_obj.srq:
+                #     self.tracker.use('srq', self.init_attr_obj.srq)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT)
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.get_required_resources().copy()  # this is a bug!
+        if self.init_attr_obj is not None:
+            resources.extend(self.init_attr_obj.get_required_resources_recursively())
+        return resources
+
+    def set_resource_recursively(self, res_type: str, old_res_name: str, new_res_name: str):
+        """Set the resource name recursively in the MW bind object."""
+        self.set_resource(res_type, old_res_name, new_res_name)
+        if self.init_attr_obj is not None:
+            self.init_attr_obj.set_resource_recursively(res_type, old_res_name, new_res_name)
 
     @classmethod
     def from_trace(cls, info, ctx):
@@ -1054,11 +1574,11 @@ class CreateQP(VerbCall):
             pd=kv.get("pd"),
             init_attr_var=kv.get("init_attr"),
             qp=kv.get("qp"),
-            init_attr_obj=kv.get("init_attr_obj")  # 若trace包含IbvQpInitAttr对象
+            init_attr_obj=kv.get("init_attr_obj"),  # 若trace包含IbvQPInitAttr对象
         )
 
     def generate_c(self, ctx):
-        qp_name = self.qp
+        qp_name = str(self.qp)
         pd_name = self.pd
         attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         attr_name = f"attr_init{attr_suffix}"
@@ -1077,7 +1597,8 @@ class CreateQP(VerbCall):
         return -1;
     }}
 """
-        
+
+
 class CreateQPEx(VerbCall):
     """
     表示 ibv_create_qp_ex() 调用，自动生成/重放 qp_init_attr_ex 的初始化与调用。
@@ -1088,23 +1609,54 @@ class CreateQPEx(VerbCall):
         qp_attr_obj     -- IbvQPInitAttrEx对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, ctx_name: str, qp: str, qp_attr_var: str = None, qp_attr_obj: 'IbvQPInitAttrEx' = None, ctx: CodeGenContext = None):
-        self.ctx_name = ctx_name or ctx.ib_ctx  # IBV context 变量名
-        self.qp = qp
+    MUTABLE_FIELDS = ["ctx_name", "qp", "qp_attr_var", "qp_attr_obj"]
+
+    def __init__(
+        self,
+        ctx_name: str = None,
+        qp: str = None,
+        qp_attr_var: str = None,
+        qp_attr_obj: IbvQPInitAttrEx = None,
+    ):
+        # IBV context variable name, default is "ctx"
+        self.ctx_name = ConstantValue(ctx_name or "ctx")
+        self.qp = (
+            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        )  # QP variable name, default is "qp"
         # 默认生成 qp_init_attr_ex_<qp_var>
-        self.qp_attr_var = qp_attr_var or f"qp_init_attr_ex_{qp}"
+        self.qp_attr_var = ConstantValue(
+            qp_attr_var or f"qp_init_attr_ex_{self.qp.value}"
+        )  # QP attribute variable name
         self.qp_attr_obj = qp_attr_obj  # 若为None仅生成结构体声明
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        self.ctx_name = self.ctx_name or ctx.ib_ctx
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.create('qp_ex', qp)
-            # Register the QP attribute variable
-            # self.tracker.create('qp_attr', self.qp_attr_var, qp=qp)
-            self.tracker.use('cq', qp_attr_obj.send_cq if qp_attr_obj else None)
-            self.tracker.use('cq', qp_attr_obj.recv_cq if qp_attr_obj else None)
-            self.tracker.use('srq', qp_attr_obj.srq if qp_attr_obj else None)
-            self.tracker.use('pd', qp_attr_obj.pd if qp_attr_obj else None)
-            self.tracker.use('xrcd', qp_attr_obj.xrcd if qp_attr_obj else None)
+            self.tracker.create("qp_ex", self.qp.value)
+            self.allocated_resources.append(("qp_ex", self.qp.value))  # 记录已分配的资源
+            if self.qp_attr_obj:
+                self.qp_attr_obj.apply(ctx)
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.get_required_resources().copy()
+        if self.qp_attr_obj is not None:
+            resources.extend(self.qp_attr_obj.get_required_resources_recursively())
+        return resources
+
+    def set_resource_recursively(self, res_type: str, old_res_name: str, new_res_name: str):
+        """Set the resource name recursively in the MW bind object."""
+        self.set_resource(res_type, old_res_name, new_res_name)
+        if self.qp_attr_obj is not None:
+            self.qp_attr_obj.set_resource_recursively(res_type, old_res_name, new_res_name)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1120,9 +1672,7 @@ class CreateQPEx(VerbCall):
         code = ""
         # 自动生成结构体内容
         if self.qp_attr_obj is not None:
-            code += self.qp_attr_obj.to_cxx(self.qp_attr_var, ctx)
-        else:
-            code += f"\n    struct ibv_qp_init_attr_ex {self.qp_attr_var} = {{0}};\n"
+            code += self.qp_attr_obj.to_cxx(str(self.qp_attr_var), ctx)
         code += f"""
     {self.qp_var} = ibv_create_qp_ex({self.ctx_name}, &{self.qp_attr_var});
     if (!{self.qp_var}) {{
@@ -1131,6 +1681,7 @@ class CreateQPEx(VerbCall):
     }}
 """
         return code
+
 
 # class CreateRWQIndTable(VerbCall):
 #     def __init__(self, context: str, log_ind_tbl_size: int = 0, ind_tbls: list = []):
@@ -1172,18 +1723,35 @@ class CreateQPEx(VerbCall):
 #     }}
 # """
 
+
 class CreateSRQ(VerbCall):
     """Create a shared receive queue (SRQ)"""
 
-    def __init__(self, pd: str, srq: str, srq_init_obj=None, ctx: CodeGenContext = None):
-        self.pd = pd
-        self.srq = srq
+    MUTABLE_FIELDS = ["pd", "srq", "srq_init_obj"]
+
+    def __init__(self, pd: str = None, srq: str = None, srq_init_obj: IbvSrqInitAttr = None):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.srq = (
+            ResourceValue(resource_type="srq", value=srq)
+            if srq
+            else ResourceValue(resource_type="srq", value=f"srq_{self.pd.value}")
+        )  # 默认生成 srq_<pd>
         self.srq_init_obj = srq_init_obj
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD and SRQ addresses in the tracker
-            self.tracker.use('pd', pd)
-            self.tracker.create('srq', srq, pd=pd)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.create("srq", self.srq.value, pd=self.pd.value)
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
+            self.allocated_resources.append(("srq", self.srq.value))
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1196,7 +1764,7 @@ class CreateSRQ(VerbCall):
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         pd_name = self.pd
-        srq_name = self.srq
+        srq_name = str(self.srq)
 
         code = ""
         attr_name = f"srq_init_attr_{srq_name.replace('srq', '').replace('[', '').replace(']', '')}"
@@ -1224,21 +1792,52 @@ class CreateSRQEx(VerbCall):
         srq_attr_obj  -- IbvSrqInitAttrEx对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, ctx_name: str, srq: str, srq_attr_var: str = None, srq_attr_obj: 'IbvSrqInitAttrEx' = None, ctx: CodeGenContext = None):
-        self.ctx_name = ctx_name
-        self.srq = srq
+    MUTABLE_FIELDS = ["ctx_name", "srq", "srq_attr_var", "srq_attr_obj"]
+
+    def __init__(
+        self,
+        ctx_name: str = None,
+        srq: str = None,
+        srq_attr_var: str = None,
+        srq_attr_obj: "IbvSrqInitAttrEx" = None,
+    ):
+        # IBV context variable name, default is "ctx"
+        self.ctx_name = ConstantValue(ctx_name or "ctx")
+        self.srq = (
+            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
+        )  # SRQ variable name, default is "srq"
         # 默认生成 srq_attr_ex_<srq_var>
-        self.srq_attr_var = srq_attr_var or f"srq_attr_ex_{srq}"
+        self.srq_attr_var = ConstantValue(
+            srq_attr_var or f"srq_attr_ex_{self.srq.value}"
+        )  # SRQ attribute variable name
         self.srq_attr_obj = srq_attr_obj  # 若为None仅生成结构体声明
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the SRQ address in the tracker
-            self.tracker.create('srq_ex', srq)
-            # Register the SRQ attribute variable
-            # self.tracker.create('srq_attr', self.srq_attr_var, srq=srq)
-            self.tracker.use('pd', srq_attr_obj.pd if srq_attr_obj else None)
-            self.tracker.use('cq', srq_attr_obj.cq if srq_attr_obj else None)
-            self.tracker.use('xrcd', srq_attr_obj.xrcd if srq_attr_obj else None)
+            self.tracker.create("srq_ex", self.srq.value)
+            self.allocated_resources.append(("srq_ex", self.srq.value))
+            if self.srq_attr_obj is not None:
+                self.srq_attr_obj.apply(ctx)
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.get_required_resources().copy()
+        if self.srq_attr_obj is not None:
+            resources.extend(self.srq_attr_obj.get_required_resources_recursively())
+        return resources
+
+    def set_resource_recursively(self, res_type: str, old_res_name: str, new_res_name: str):
+        """Set the resource name recursively in the MW bind object."""
+        self.set_resource(res_type, old_res_name, new_res_name)
+        if self.srq_attr_obj is not None:
+            self.srq_attr_obj.set_resource_recursively(res_type, old_res_name, new_res_name)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1257,8 +1856,6 @@ class CreateSRQEx(VerbCall):
         # 自动生成结构体内容
         if self.srq_attr_obj is not None:
             code += self.srq_attr_obj.to_cxx(self.srq_attr_var, ctx)
-        else:
-            code += f"\n    struct ibv_srq_init_attr_ex {self.srq_attr_var} = {{0}};\n"
         code += f"""
     {self.srq_var} = ibv_create_srq_ex({self.ctx_name}, &{self.srq_attr_var});
     if (!{self.srq_var}) {{
@@ -1279,20 +1876,58 @@ class CreateWQ(VerbCall):
         wq_attr_obj  -- IbvWQInitAttr对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, ctx_name: str = None, wq: str = None, wq_attr_var: str = None, wq_attr_obj: 'IbvWQInitAttr' = None, ctx: CodeGenContext = None):
-        self.ctx_name = ctx_name
-        self.wq = wq
+    MUTABLE_FIELDS = ["ctx_name", "wq", "wq_attr_var", "wq_attr_obj"]
+    CONTRACT = Contract(
+        requires=[],
+        produces=[ProduceSpec("wq", state=State.ALLOCATED, name_attr="wq")],
+        transitions=[],
+    )
+
+    def __init__(
+        self,
+        ctx_name: str = None,
+        wq: str = None,
+        wq_attr_var: str = None,
+        wq_attr_obj: "IbvWQInitAttr" = None,
+    ):
+        # IBV context variable name, default is "ctx"
+        self.ctx_name = ConstantValue(ctx_name or "ctx")
+        self.wq = (
+            ResourceValue(resource_type="wq", value=wq) if wq else ResourceValue(resource_type="wq", value="wq")
+        )  # WQ variable name, default is "wq"
         # 默认生成 wq_attr_<wq_var>
-        self.wq_attr_var = wq_attr_var or f"wq_attr_{wq}"
+        self.wq_attr_var = ConstantValue(wq_attr_var or f"wq_attr_{self.wq.value}")  # WQ attribute variable name
         self.wq_attr_obj = wq_attr_obj  # 若为None仅生成结构体声明
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the WQ address in the tracker
-            self.tracker.create('wq', wq)
-            # Register the WQ attribute variable
-            # self.tracker.create('wq_attr', self.wq_attr_var, wq=wq)
-            self.tracker.use('pd', wq_attr_obj.pd if wq_attr_obj else None)
-            self.tracker.use('cq', wq_attr_obj.cq if wq_attr_obj else None)
+            self.tracker.create("wq", self.wq.value)
+            self.allocated_resources.append(("wq", self.wq.value))
+            if self.wq_attr_obj is not None:
+                self.wq_attr_obj.apply(ctx)
+            
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT)
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.get_required_resources().copy()
+        if self.wq_attr_obj is not None:
+            resources.extend(self.wq_attr_obj.get_required_resources_recursively())
+        return resources
+
+    def set_resource_recursively(self, res_type: str, old_res_name: str, new_res_name: str):
+        """Set the resource name recursively in the MW bind object."""
+        self.set_resource(res_type, old_res_name, new_res_name)
+        if self.wq_attr_obj is not None:
+            self.wq_attr_obj.set_resource_recursively(res_type, old_res_name, new_res_name)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1311,8 +1946,6 @@ class CreateWQ(VerbCall):
         # 自动生成结构体内容
         if self.wq_attr_obj is not None:
             code += self.wq_attr_obj.to_cxx(self.wq_attr_var, ctx)
-        else:
-            code += f"\n    struct ibv_wq_init_attr {self.wq_attr_var} = {{0}};\n"
         code += f"""
     {self.wq_var} = ibv_create_wq({self.ctx_name}, &{self.wq_attr_var});
     if (!{self.wq_var}) {{
@@ -1326,14 +1959,20 @@ class CreateWQ(VerbCall):
 class DeallocMW(VerbCall):
     """Deallocate a Memory Window (MW)."""
 
-    def __init__(self, mw: str, ctx: CodeGenContext = None):
-        self.mw = mw
+    MUTABLE_FIELDS = ["mw"]
+
+    def __init__(self, mw: str = None):
+        self.mw = ResourceValue(resource_type="mw", value=mw) if mw else ResourceValue(resource_type="mw", value="mw")
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the MW address in the tracker
-            self.tracker.use('mw', mw)
-            self.tracker.destroy('mw', mw)  # Ensure MW is deallocated
-            # 可以用来触发use-after-free错误
+            self.tracker.use("mw", self.mw.value)
+            self.tracker.destroy("mw", self.mw.value)
+            self.required_resources.append({"type": "mw", "name": self.mw.value, "position": "mw"})
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1355,13 +1994,31 @@ class DeallocMW(VerbCall):
 class DeallocPD(VerbCall):
     """Deallocate a protection domain (PD)."""
 
-    def __init__(self, pd: str, ctx: CodeGenContext = None):
-        self.pd = pd
+    MUTABLE_FIELDS = ["pd"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("pd", state=None, name_attr="pd")],
+        produces=[],
+        transitions=[TransitionSpec("pd", from_state=None, to_state=State.DESTROYED, name_attr="pd")],
+    )
+
+    def __init__(self, pd: str = None):
+        self.pd = (
+            ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        )  # 默认生成 pd
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD address in the tracker
-            self.tracker.use('pd', pd)
-            self.tracker.destroy('pd', pd)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.destroy("pd", self.pd.value)
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
+
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1383,13 +2040,23 @@ class DeallocPD(VerbCall):
 class DeallocTD(VerbCall):
     """Deallocate an RDMA thread domain (TD) object."""
 
-    def __init__(self, td: str, ctx: CodeGenContext = None):
-        self.td = td
+    MUTABLE_FIELDS = ["td"]
+
+    def __init__(self, td: str = None):
+        self.td = (
+            ResourceValue(resource_type="td", value=td) if td else ResourceValue(resource_type="td", value="td")
+        )  # 默认生成 td
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the TD address in the tracker
-            self.tracker.use('td', td)
-            self.tracker.destroy('td', td)
+            self.tracker.use("td", self.td.value)
+            self.tracker.destroy("td", self.td.value)
+            self.required_resources.append({"type": "td", "name": self.td.value, "position": "td"})
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1411,13 +2078,23 @@ class DeallocTD(VerbCall):
 class DeregMR(VerbCall):
     """Deregister a Memory Region."""
 
-    def __init__(self, mr: str, ctx: CodeGenContext = None):
-        self.mr = mr
+    MUTABLE_FIELDS = ["mr"]
+
+    def __init__(self, mr: str = None):
+        self.mr = (
+            ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        )  # 默认生成 mr
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the MR address in the tracker
-            self.tracker.use('mr', mr)
-            self.tracker.destroy('mr', mr)
+            self.tracker.use("mr", self.mr.value)
+            self.tracker.destroy("mr", self.mr.value)
+            self.required_resources.append({"type": "mr", "name": self.mr.value, "position": "mr"})
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1439,13 +2116,23 @@ class DeregMR(VerbCall):
 class DestroyAH(VerbCall):
     """Destroy an Address Handle (AH)."""
 
-    def __init__(self, ah: str, ctx: CodeGenContext = None):
-        self.ah = ah
+    MUTABLE_FIELDS = ["ah"]
+
+    def __init__(self, ah: str = None):
+        self.ah = (
+            ResourceValue(resource_type="ah", value=ah) if ah else ResourceValue(resource_type="ah", value="ah")
+        )  # 默认生成 ah
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the AH address in the tracker
-            self.tracker.use('ah', ah)
-            self.tracker.destroy('ah', ah)
+            self.tracker.use("ah", self.ah.value)
+            self.tracker.destroy("ah", self.ah.value)
+            self.required_resources.append({"type": "ah", "name": self.ah.value, "position": "ah"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1467,25 +2154,43 @@ class DestroyAH(VerbCall):
 class DestroyCompChannel(VerbCall):
     """Destroy a completion event channel."""
 
-    def __init__(self, comp_channel: str, ctx: CodeGenContext = None):
-        self.comp_channel = comp_channel
+    MUTABLE_FIELDS = ["channel"]
+
+    def __init__(self, channel: str = None):
+        self.channel = (
+            ResourceValue(resource_type="channel", value=channel)
+            if channel
+            else ResourceValue(resource_type="channel", value="channel")
+        )  # 默认生成 channel
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the completion channel address in the tracker
-            self.tracker.use('comp_channel', comp_channel)
-            self.tracker.destroy('comp_channel', comp_channel)
+            self.tracker.use("channel", self.channel.value)
+            self.tracker.destroy("channel", self.channel.value)
+            self.required_resources.append(
+                {
+                    "type": "channel",
+                    "name": self.channel.value,
+                    "position": "channel",
+                }
+            )  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
         kv = _parse_kv(info)
-        comp_channel = kv.get("comp_channel", "unknown")
-        return cls(comp_channel=comp_channel)
+        channel = kv.get("channel", "unknown")
+        return cls(channel=channel)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        comp_channel_name = self.comp_channel
+        channel_name = self.channel
         return f"""
-    /* ibv_destroy_comp_channel */
-    if (ibv_destroy_comp_channel({comp_channel_name})) {{
+    /* ibv_destroy_channel */
+    if (ibv_destroy_channel({channel_name})) {{
         fprintf(stderr, "Failed to destroy completion channel\\n");
         return -1;
     }}
@@ -1495,13 +2200,23 @@ class DestroyCompChannel(VerbCall):
 class DestroyCQ(VerbCall):
     """Destroy a Completion Queue."""
 
-    def __init__(self, cq: str, ctx: CodeGenContext = None):
-        self.cq = cq
+    MUTABLE_FIELDS = ["cq"]
+
+    def __init__(self, cq: str = None):
+        self.cq = (
+            ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        )  # 默认生成 cq
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the CQ address in the tracker
-            self.tracker.use('cq', cq)
-            self.tracker.destroy('cq', cq)
+            self.tracker.use("cq", self.cq.value)
+            self.tracker.destroy("cq", self.cq.value)
+            self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1523,14 +2238,28 @@ class DestroyCQ(VerbCall):
 class DestroyFlow(VerbCall):
     """Destroy a flow steering rule."""
 
-    def __init__(self, flow: str, ctx: CodeGenContext = None):
-        self.flow = flow
+    MUTABLE_FIELDS = ["flow"]
+
+    def __init__(self, flow: str = None):
+        self.flow = (
+            ResourceValue(resource_type="flow", value=flow)
+            if flow
+            else ResourceValue(resource_type="flow", value="flow")
+        )  # 默认生成 flow
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the flow address in the tracker
-            self.tracker.use('flow', flow)
-            self.tracker.destroy('flow', flow)
-        
+            self.tracker.use("flow", self.flow.value)
+            self.tracker.destroy("flow", self.flow.value)
+            self.required_resources.append(
+                {"type": "flow", "name": self.flow.value, "position": "flow"}
+            )  # 记录需要的资源
+
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
         kv = _parse_kv(info)
@@ -1551,13 +2280,21 @@ class DestroyFlow(VerbCall):
 class DestroyQP(VerbCall):
     """Destroy a Queue Pair (QP)."""
 
-    def __init__(self, qp: str, ctx: CodeGenContext = None):
-        self.qp = qp
+    MUTABLE_FIELDS = ["qp"]
+
+    def __init__(self, qp: str = None):
+        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
-            self.tracker.destroy('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.tracker.destroy("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1566,7 +2303,7 @@ class DestroyQP(VerbCall):
         return cls(qp=qp)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = self.qp
+        qp_name = str(self.qp)
         return f"""
     /* ibv_destroy_qp */
     if (ibv_destroy_qp({qp_name})) {{
@@ -1604,13 +2341,23 @@ class DestroyQP(VerbCall):
 class DestroySRQ(VerbCall):
     """Destroy a Shared Receive Queue (SRQ)."""
 
-    def __init__(self, srq: str, ctx: CodeGenContext = None):
-        self.srq = srq
+    MUTABLE_FIELDS = ["srq"]
+
+    def __init__(self, srq: str = None):
+        self.srq = (
+            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
+        )  # 默认生成 srq
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the SRQ address in the tracker
-            self.tracker.use('srq', srq)
-            self.tracker.destroy('srq', srq)
+            self.tracker.use("srq", self.srq.value)
+            self.tracker.destroy("srq", self.srq.value)
+            self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1632,13 +2379,30 @@ class DestroySRQ(VerbCall):
 class DestroyWQ(VerbCall):
     """Destroy a Work Queue (WQ)."""
 
-    def __init__(self, wq: str, ctx: CodeGenContext = None):
-        self.wq = wq
+    MUTABLE_FIELDS = ["wq"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("wq", None, "wq")],
+        produces=[],
+        transitions=[TransitionSpec("wq", from_state=None, to_state=State.DESTROYED, name_attr="wq")],
+    )
+
+    def __init__(self, wq: str = None):
+        self.wq = (
+            ResourceValue(resource_type="wq", value=wq) if wq else ResourceValue(resource_type="wq", value="wq")
+        )  # 默认生成 wq
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the WQ address in the tracker
-            self.tracker.use('wq', wq)
-            self.tracker.destroy('wq', wq)
+            self.tracker.use("wq", self.wq.value)
+            self.tracker.destroy("wq", self.wq.value)
+            self.required_resources.append({"type": "wq", "name": self.wq.value, "position": "wq"})  # 记录需要的资源
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1657,17 +2421,29 @@ class DestroyWQ(VerbCall):
 """
 
 
-class DetachMcast(VerbCall): #TBD
+class DetachMcast(VerbCall):  # TODO: gid 需要是变量名
     """Detach a QP from a multicast group."""
 
-    def __init__(self, qp: str, gid: str, lid: int, ctx: CodeGenContext = None):
-        self.qp = qp
-        self.gid = gid
-        self.lid = lid
+    MUTABLE_FIELDS = ["qp", "gid", "lid"]
+
+    def __init__(self, qp: str = None, gid: str = None, lid: int = None):
+        self.qp = (
+            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        )  # 默认生成 qp
+        # Multicast group address, default is "unknown"
+        self.gid = ConstantValue(gid or "unknown")
+        # LID of the multicast group, default is 0
+        self.lid = IntValue(lid or 0)
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # Register the multicast group address
             # self.tracker.use('gid', gid)
             # self.tracker.use('lid', str(lid))
@@ -1681,7 +2457,7 @@ class DetachMcast(VerbCall): #TBD
         return cls(qp=qp, gid=gid, lid=lid)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = self.qp
+        qp_name = str(self.qp)
         return f"""
     /* ibv_detach_mcast */
     if (ibv_detach_mcast({qp_name}, &{self.gid}, {self.lid})) {{
@@ -1713,7 +2489,7 @@ class DetachMcast(VerbCall): #TBD
 # """
 
 # class FlowActionESP(VerbCall): # 意义不明
-#     def __init__(self, ctx: str = "ctx", esp_params: Dict[str, any] = {}):
+#     def __init__(self, ctx: str = "ctx", esp_params: dict[str, any] = {}):
 #         self.ctx = ctx
 #         self.esp_params = esp_params
 
@@ -1753,6 +2529,8 @@ class DetachMcast(VerbCall): #TBD
 
 
 class ForkInit(VerbCall):
+    MUTABLE_FIELDS = []
+
     def __init__(self):
         pass
 
@@ -1761,17 +2539,19 @@ class ForkInit(VerbCall):
         return cls()
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        return f"""
+        return """
     /* ibv_fork_init */
-    if (ibv_fork_init()) {{
+    if (ibv_fork_init()) {
         fprintf(stderr, "Failed to initialize fork support\\n");
         return -1;
-    }}
+    }
 """
 
 
 class FreeDeviceList(VerbCall):
     """Release the array of RDMA devices obtained from ibv_get_device_list."""
+
+    MUTABLE_FIELDS = []
 
     def __init__(self):
         pass
@@ -1792,13 +2572,23 @@ class FreeDeviceList(VerbCall):
 class FreeDM(VerbCall):
     """Release a device memory buffer (DM)."""
 
-    def __init__(self, dm: str, ctx: CodeGenContext = None):
-        self.dm = dm
+    MUTABLE_FIELDS = ["dm"]
+
+    def __init__(self, dm: str = None):
+        self.dm = (
+            ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
+        )  # 默认生成 dm
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the DM address in the tracker
-            self.tracker.use('dm', dm)
-            self.tracker.destroy('dm', dm)
+            self.tracker.use("dm", self.dm.value)
+            self.tracker.destroy("dm", self.dm.value)
+            self.required_resources.append({"type": "dm", "name": self.dm.value, "position": "dm"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1817,134 +2607,144 @@ class FreeDM(VerbCall):
 """
 
 
-class GetAsyncEvent(VerbCall): # 意义不明
-    def __init__(self):
-        pass
+# class GetAsyncEvent(VerbCall):  # 意义不明
+#     MUTABLE_FIELDS = []
 
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext = None):
-        kv = _parse_kv(info)
-        return cls()
+#     def __init__(self):
+#         pass
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        return f"""
-    /* ibv_get_async_event */
-    struct ibv_async_event async_event;
-    if (ibv_get_async_event({ctx.ib_ctx}, &async_event)) {{
-        fprintf(stderr, "Failed to get async_event\\n");
-        return -1;
-    }}
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext = None):
+#         kv = _parse_kv(info)
+#         return cls()
 
-    /* Process the async event */
-    switch (async_event.event_type) {{
-        case IBV_EVENT_CQ_ERR:
-            fprintf(stderr, "CQ error\\n");
-            break;
-        case IBV_EVENT_QP_FATAL:
-            fprintf(stderr, "QP fatal error\\n");
-            break;
-        case IBV_EVENT_QP_REQ_ERR:
-            fprintf(stderr, "QP request error\\n");
-            break;
-        case IBV_EVENT_QP_ACCESS_ERR:
-            fprintf(stderr, "QP access error\\n");
-            break;
-        case IBV_EVENT_COMM_EST:
-            fprintf(stderr, "Communication established\\n");
-            break;
-        case IBV_EVENT_SQ_DRAINED:
-            fprintf(stderr, "Send Queue drained\\n");
-            break;
-        case IBV_EVENT_PATH_MIG:
-            fprintf(stderr, "Path migrated\\n");
-            break;
-        case IBV_EVENT_PATH_MIG_ERR:
-            fprintf(stderr, "Path migration error\\n");
-            break;
-        case IBV_EVENT_DEVICE_FATAL:
-            fprintf(stderr, "Device fatal error\\n");
-            break;
-        case IBV_EVENT_PORT_ACTIVE:
-            fprintf(stderr, "Port active\\n");
-            break;
-        case IBV_EVENT_PORT_ERR:
-            fprintf(stderr, "Port error\\n");
-            break;
-        case IBV_EVENT_LID_CHANGE:
-            fprintf(stderr, "LID changed\\n");
-            break;
-        case IBV_EVENT_PKEY_CHANGE:
-            fprintf(stderr, "P_Key table changed\\n");
-            break;
-        case IBV_EVENT_SM_CHANGE:
-            fprintf(stderr, "SM changed\\n");
-            break;
-        case IBV_EVENT_SRQ_ERR:
-            fprintf(stderr, "SRQ error\\n");
-            break;
-        case IBV_EVENT_SRQ_LIMIT_REACHED:
-            fprintf(stderr, "SRQ limit reached\\n");
-            break;
-        case IBV_EVENT_QP_LAST_WQE_REACHED:
-            fprintf(stderr, "Last WQE reached\\n");
-            break;
-        case IBV_EVENT_CLIENT_REREGISTER:
-            fprintf(stderr, "Client re-register request\\n");
-            break;
-        case IBV_EVENT_GID_CHANGE:
-            fprintf(stderr, "GID table changed\\n");
-            break;
-        case IBV_EVENT_WQ_FATAL:
-            fprintf(stderr, "WQ fatal error\\n");
-            break;
-        default:
-            fprintf(stderr, "Unknown event type\\n");
-            break;
-    }}
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         return f"""
+#     /* ibv_get_async_event */
+#     struct ibv_async_event async_event;
+#     if (ibv_get_async_event({ctx.ib_ctx}, &async_event)) {{
+#         fprintf(stderr, "Failed to get async_event\\n");
+#         return -1;
+#     }}
 
-    /* Acknowledge the async event */
-    ibv_ack_async_event(&async_event);
-"""
+#     /* Process the async event */
+#     switch (async_event.event_type) {{
+#         case IBV_EVENT_CQ_ERR:
+#             fprintf(stderr, "CQ error\\n");
+#             break;
+#         case IBV_EVENT_QP_FATAL:
+#             fprintf(stderr, "QP fatal error\\n");
+#             break;
+#         case IBV_EVENT_QP_REQ_ERR:
+#             fprintf(stderr, "QP request error\\n");
+#             break;
+#         case IBV_EVENT_QP_ACCESS_ERR:
+#             fprintf(stderr, "QP access error\\n");
+#             break;
+#         case IBV_EVENT_COMM_EST:
+#             fprintf(stderr, "Communication established\\n");
+#             break;
+#         case IBV_EVENT_SQ_DRAINED:
+#             fprintf(stderr, "Send Queue drained\\n");
+#             break;
+#         case IBV_EVENT_PATH_MIG:
+#             fprintf(stderr, "Path migrated\\n");
+#             break;
+#         case IBV_EVENT_PATH_MIG_ERR:
+#             fprintf(stderr, "Path migration error\\n");
+#             break;
+#         case IBV_EVENT_DEVICE_FATAL:
+#             fprintf(stderr, "Device fatal error\\n");
+#             break;
+#         case IBV_EVENT_PORT_ACTIVE:
+#             fprintf(stderr, "Port active\\n");
+#             break;
+#         case IBV_EVENT_PORT_ERR:
+#             fprintf(stderr, "Port error\\n");
+#             break;
+#         case IBV_EVENT_LID_CHANGE:
+#             fprintf(stderr, "LID changed\\n");
+#             break;
+#         case IBV_EVENT_PKEY_CHANGE:
+#             fprintf(stderr, "P_Key table changed\\n");
+#             break;
+#         case IBV_EVENT_SM_CHANGE:
+#             fprintf(stderr, "SM changed\\n");
+#             break;
+#         case IBV_EVENT_SRQ_ERR:
+#             fprintf(stderr, "SRQ error\\n");
+#             break;
+#         case IBV_EVENT_SRQ_LIMIT_REACHED:
+#             fprintf(stderr, "SRQ limit reached\\n");
+#             break;
+#         case IBV_EVENT_QP_LAST_WQE_REACHED:
+#             fprintf(stderr, "Last WQE reached\\n");
+#             break;
+#         case IBV_EVENT_CLIENT_REREGISTER:
+#             fprintf(stderr, "Client re-register request\\n");
+#             break;
+#         case IBV_EVENT_GID_CHANGE:
+#             fprintf(stderr, "GID table changed\\n");
+#             break;
+#         case IBV_EVENT_WQ_FATAL:
+#             fprintf(stderr, "WQ fatal error\\n");
+#             break;
+#         default:
+#             fprintf(stderr, "Unknown event type\\n");
+#             break;
+#     }}
+
+#     /* Acknowledge the async event */
+#     ibv_ack_async_event(&async_event);
+# """
 
 
-class GetCQEvent(VerbCall): # 意义不明
-    def __init__(self, channel: str, cq: str, cq_context: str):
-        self.channel = channel
-        self.cq = cq
-        self.cq_context = cq_context
+# class GetCQEvent(VerbCall):  # 意义不明，暂时不用
+#     MUTABLE_FIELDS = ["channel", "cq", "cq_context"]
 
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext):
-        kv = _parse_kv(info)
-        channel = kv.get("channel", "unknown")
-        cq = kv.get("cq", "unknown")
-        cq_context = kv.get("cq_context", "unknown")
-        return cls(channel=channel, cq=cq, cq_context=cq_context)
+#     def __init__(self, channel: str, cq: str, cq_context: str):
+#         self.channel = channel
+#         self.cq = cq
+#         self.cq_context = cq_context
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        # Assume context resolves object names
-        channel_name = self.chanel
-        cq_name = self.cq
-        return f"""
-    /* ibv_get_cq_event */
-    if (ibv_get_cq_event({channel_name}, &{cq_name}, &{self.cq_context})) {{
-        fprintf(stderr, "Failed to get CQ event\\n");
-        return -1;
-    }}
-    /* Acknowledge the event */
-    ibv_ack_cq_events({cq_name}, 1);
-"""
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext):
+#         kv = _parse_kv(info)
+#         channel = kv.get("channel", "unknown")
+#         cq = kv.get("cq", "unknown")
+#         cq_context = kv.get("cq_context", "unknown")
+#         return cls(channel=channel, cq=cq, cq_context=cq_context)
+
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         # Assume context resolves object names
+#         channel_name = self.chanel
+#         cq_name = self.cq
+#         return f"""
+#     /* ibv_get_cq_event */
+#     if (ibv_get_cq_event({channel_name}, &{cq_name}, &{self.cq_context})) {{
+#         fprintf(stderr, "Failed to get CQ event\\n");
+#         return -1;
+#     }}
+#     /* Acknowledge the event */
+#     ibv_ack_cq_events({cq_name}, 1);
+# """
 
 
 class GetDeviceGUID(VerbCall):
     """Get the Global Unique Identifier (GUID) of the RDMA device."""
 
-    def __init__(self, device="dev_list[0]", output: str = None, ctx: CodeGenContext = None):
-        self.device = device
-        self.output = output or "guid"  # Default output variable name
+    MUTABLE_FIELDS = ["device", "output"]
+
+    def __init__(self, device: str = None, output: str = None):
+        # Default device is the first in the list
+        self.device = ConstantValue(device or "dev_list[0]")
+        # Default output variable name
+        self.output = ConstantValue(output or "guid")
+
+    def apply(self, ctx: CodeGenContext):
         if ctx:
-            # ctx.alloc_variable("guid", "uint64_t")  # Register the GUID variable in context
-            ctx.alloc_variable(self.output, "__be64")
+            # Register the output variable in context
+            ctx.alloc_variable(self.output, "uint64_t")
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext = None):
@@ -1963,13 +2763,20 @@ class GetDeviceGUID(VerbCall):
 class GetDeviceIndex(VerbCall):
     """Retrieve the device index for the specified IB device."""
 
-    def __init__(self, device_name: str, output: str = None, ctx: CodeGenContext = None):
-        self.device_name = device_name
+    MUTABLE_FIELDS = ["device_name", "output"]
+
+    def __init__(self, device_name: str = None, output: str = None):
+        # Default device is the first in the list
+        self.device_name = ConstantValue(device_name or "dev_list[0]")
         # Default output variable name
-        self.output = output or f"device_index_{device_name}"
+        self.output = ConstantValue(output or "device_index")
+
+    def apply(self, ctx: CodeGenContext):
         if ctx:
-            # Register the index variable in context
+            # Register the output variable in context
             ctx.alloc_variable(self.output, "int")
+            # Register the device name in context
+            # ctx.use_device(self.device_name)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -1996,7 +2803,7 @@ class GetDeviceList(VerbCall):
     """Fetch the list of available RDMA devices.
 
     This verb generates the C code to retrieve a list of RDMA devices currently
-    available on the system using ibv_get_device_list(). If successful, a 
+    available on the system using ibv_get_device_list(). If successful, a
     NULL-terminated array of available devices is returned. This is typically
     the first step in setting up RDMA resources.
 
@@ -2004,6 +2811,8 @@ class GetDeviceList(VerbCall):
     - EPERM: Permission denied.
     - ENOSYS: Function not implemented.
     """
+
+    MUTABLE_FIELDS = []
 
     def __init__(self):
         pass
@@ -2025,6 +2834,7 @@ class GetDeviceList(VerbCall):
         return -1;
     }}
 """
+
 
 # class GetDeviceName(VerbCall):
 #     def __init__(self, device: str = "dev_list[0]"):
@@ -2051,10 +2861,13 @@ class GetDeviceList(VerbCall):
 
 
 class GetPKeyIndex(VerbCall):
-    def __init__(self, port_num: int, pkey: int, output: str = "pkey_index"):
-        self.port_num = port_num
-        self.pkey = pkey
-        self.output = output  # Variable name to store the P_Key index
+    MUTABLE_FIELDS = ["port_num", "pkey", "output"]
+
+    def __init__(self, port_num: int = None, pkey: int = None, output: str = None):
+        self.port_num = IntValue(port_num or 1)  # Default port number is 1
+        self.pkey = IntValue(pkey or 0)  # Default P_Key is 0
+        # Variable name to store the P_Key index
+        self.output = ConstantValue(output or "pkey_index")
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext = None):
@@ -2063,10 +2876,16 @@ class GetPKeyIndex(VerbCall):
         pkey = int(kv.get("pkey", 0))
         return cls(port_num=port_num, pkey=pkey)
 
+    def apply(self, ctx: CodeGenContext):
+        if ctx:
+            # Register the P_Key index variable in context
+            ctx.alloc_variable(self.output, "int")
+            # # Register the port number and P_Key in context
+            # ctx.use_port(self.port_num)
+            # ctx.use_pkey(self.pkey)
+
     def generate_c(self, ctx: CodeGenContext) -> str:
         ib_ctx = ctx.ib_ctx
-        # Register the P_Key index variable in context
-        ctx.alloc_variable(self.output, "int")
         pkey_index = self.output  # Use the output variable name for the P_Key index
         return f"""
     /* ibv_get_pkey_index */
@@ -2078,9 +2897,30 @@ class GetPKeyIndex(VerbCall):
 
 
 class GetSRQNum(VerbCall):
-    def __init__(self, srq: str, srq_num_var: str):
-        self.srq = srq  # Shared Receive Queue address
-        self.srq_num_var = srq_num_var  # Variable name to store the SRQ number
+    MUTABLE_FIELDS = ["srq", "srq_num_var"]
+
+    def __init__(self, srq: str = None, srq_num_var: str = None):
+        # self.srq = srq  # Shared Receive Queue address
+        self.srq = (
+            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
+        )  # 默认生成 srq
+        self.srq_num_var = ConstantValue(srq_num_var or "srq_num")
+
+        self.tracker = None
+        # self.srq_num_var = srq_num_var  # Variable name to store the SRQ number
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.tracker = ctx.tracker if ctx else None
+        if self.tracker:
+            # Register the SRQ address in the tracker
+            self.tracker.use("srq", self.srq.value)
+            # Register the SRQ number variable in the tracker
+            # self.tracker.create('srq_num', self.srq_num_var.value)
+            self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})
+        if ctx:
+            ctx.alloc_variable(self.srq_num_var, "uint32_t")
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2092,7 +2932,7 @@ class GetSRQNum(VerbCall):
     def generate_c(self, ctx: CodeGenContext) -> str:
         srq_name = self.srq
         # Register the SRQ number variable in context
-        ctx.alloc_variable(self.srq_num_var, "uint32_t")
+        # ctx.alloc_variable(self.srq_num_var, "uint32_t")
         return f"""
     /* ibv_get_srq_num */
     if (ibv_get_srq_num({srq_name}, &{self.srq_num_var})) {{
@@ -2102,39 +2942,55 @@ class GetSRQNum(VerbCall):
 """
 
 
-class ImportDevice(VerbCall):
-    def __init__(self, cmd_fd: int, ctx_var: str = "ctx"):
-        self.ctx_var = ctx_var  # Variable name for the context
-        self.cmd_fd = cmd_fd
+# class ImportDevice(VerbCall):  # 意义不明
+#     MUTABLE_FIELDS = ["cmd_fd", "ctx_var"]
 
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext):
-        kv = _parse_kv(info)
-        cmd_fd = int(kv.get("cmd_fd", "-1"))  # Default to -1 if not found
-        return cls(cmd_fd=cmd_fd)
+#     def __init__(self, cmd_fd: int = None, ctx_var: str = None):
+#         self.ctx_var = ctx_var  # Variable name for the context
+#         self.cmd_fd = cmd_fd
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        return f"""
-    /* ibv_import_device */
-    {self.ctx_var} = ibv_import_device({self.cmd_fd});
-    if (!{self.ctx_var}) {{
-        fprintf(stderr, "Failed to import device\\n");
-        return -1;
-    }}
-"""
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext):
+#         kv = _parse_kv(info)
+#         cmd_fd = int(kv.get("cmd_fd", "-1"))  # Default to -1 if not found
+#         return cls(cmd_fd=cmd_fd)
+
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         return f"""
+#     /* ibv_import_device */
+#     {self.ctx_var} = ibv_import_device({self.cmd_fd});
+#     if (!{self.ctx_var}) {{
+#         fprintf(stderr, "Failed to import device\\n");
+#         return -1;
+#     }}
+# """
 
 
 class ImportDM(VerbCall):
     # def __init__(self, dm_handle: int, dm_var: str = "dm"):
     #     self.dm_handle = dm_handle
     #     self.dm_var = dm_var  # Variable name for the imported device memory
-    def __init__(self, dm_handle: int, dm: str = "dm", ctx: CodeGenContext = None):
-        self.dm_handle = dm_handle
-        self.dm = dm  # Variable name for the imported device memory
+    MUTABLE_FIELDS = ["dm_handle", "dm"]
+
+    def __init__(self, dm_handle: int = None, dm: str = None):
+        # Default to 0 if not provided
+        # TODO: 似乎应该是变量名
+        self.dm_handle = IntValue(dm_handle or 0)
+        self.dm = (
+            ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
+        )  # Variable name for the imported device memory
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []  # Track allocated resources
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []  # Track allocated resources
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the DM address in the tracker
-            self.tracker.alloc('dm', dm)
+            self.tracker.create("dm", self.dm.value)
+            self.allocated_resources.append(("dm", self.dm.value))  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2158,17 +3014,32 @@ class ImportDM(VerbCall):
 
 
 class ImportMR(VerbCall):
-    def __init__(self, pd: str, mr_handle: int, mr: str, ctx: CodeGenContext):
-        self.pd = pd
-        self.mr_handle = mr_handle
-        self.mr = mr
+    MUTABLE_FIELDS = ["pd", "mr_handle", "mr"]
+
+    def __init__(self, pd: str = None, mr_handle: int = None, mr: str = None):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        # Default to 0 if not provided
+        self.mr_handle = IntValue(mr_handle or 0)
+        # TODO: 似乎应该是变量名
+        self.mr = (
+            ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        )  # Variable name for the imported memory region
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []  # Track allocated resources
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []  # Track allocated resources
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD address in the tracker
-            self.tracker.use('pd', pd)
+            self.tracker.use("pd", self.pd.value)
             # Register the MR address in the tracker
-            self.tracker.alloc('mr', mr)
-            
+            self.tracker.create("mr", self.mr.value)
+            self.allocated_resources.append(("mr", self.mr.value))  # 记录需要的资源
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2192,15 +3063,27 @@ class ImportMR(VerbCall):
 
 
 class ImportPD(VerbCall):
-    def __init__(self, pd: str, pd_handle: int, ctx: CodeGenContext):
-        self.pd = pd
-        self.pd_handle = pd_handle
+    MUTABLE_FIELDS = ["pd", "pd_handle"]
+
+    def __init__(self, pd: str = None, pd_handle: int = None):
+        self.pd = (
+            ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        )  # Variable name for the imported protection domain
+        # Default to 0 if not provided
+        self.pd_handle = IntValue(pd_handle or 0)  # TODO: 似乎应该是变量名
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []  # Track allocated resources
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []  # Track allocated resources
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD address in the tracker
-            self.tracker.alloc('pd', pd)
-            # # Register the PD handle in the tracker
-            # self.tracker.use('pd_handle', str(pd_handle))
+            self.tracker.create("pd", self.pd.value)
+            self.allocated_resources.append(("pd", self.pd.value))  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2221,102 +3104,124 @@ class ImportPD(VerbCall):
 """
 
 
-class IncRKey(VerbCall):
-    """Verb to increment the rkey value."""
+# class IncRKey(VerbCall):  # 意义不明
+#     """Verb to increment the rkey value."""
 
-    def __init__(self, rkey: str, new_rkey: str = "new_rkey"):
-        self.rkey = rkey
-        self.new_rkey = new_rkey  # Variable name for the new rkey
+#     def __init__(self, rkey: str = None, new_rkey: str = None):
+#         self.rkey = rkey
+#         self.new_rkey = new_rkey  # Variable name for the new rkey
 
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext):
-        kv = _parse_kv(info)
-        rkey = kv.get("rkey", "unknown")
-        return cls(rkey=rkey)
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext):
+#         kv = _parse_kv(info)
+#         rkey = kv.get("rkey", "unknown")
+#         return cls(rkey=rkey)
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        # Register the rkey variable in context
-        ctx.alloc_variable(self.rkey, "uint32_t")
-        return f"""
-    /* ibv_inc_rkey */
-    {self.new_rkey} = ibv_inc_rkey({self.rkey});
-    fprintf(stdout, "Old RKey: %u, New RKey: %u\\n", {self.rkey}, {self.new_rkey});
-"""
+#     def apply(self, ctx: CodeGenContext):
+#         if ctx:
+#             # # Register the rkey variable in context
+#             # ctx.alloc_variable(self.rkey, "uint32_t")
+#             # Register the new_rkey variable in context
+#             ctx.alloc_variable(self.new_rkey, "uint32_t")
 
-
-class InitAHFromWC(VerbCall): # 意义不明
-    def __init__(self, context: str, port_num: int, wc: str, grh: str, ah_attr: str):
-        self.context = context
-        self.port_num = port_num
-        self.wc = wc
-        self.grh = grh
-        self.ah_attr = ah_attr
-
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext):
-        kv = _parse_kv(info)
-        context = kv.get("context", "ctx")
-        port_num = int(kv.get("port_num", 1))
-        wc = kv.get("wc", "wc")
-        grh = kv.get("grh", "grh")
-        ah_attr = kv.get("ah_attr", "ah_attr")
-        return cls(context=context, port_num=port_num, wc=wc, grh=grh, ah_attr=ah_attr)
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        return f"""
-    /* ibv_init_ah_from_wc */
-    if (ibv_init_ah_from_wc({self.context}, {self.port_num}, &{self.wc}, &{self.grh}, &{self.ah_attr})) {{
-        fprintf(stderr, "Failed to initialize AH from WC\\n");
-        return -1;
-    }}
-"""
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         return f"""
+#     /* ibv_inc_rkey */
+#     {self.new_rkey} = ibv_inc_rkey({self.rkey});
+#     fprintf(stdout, "Old RKey: %u, New RKey: %u\\n", {self.rkey}, {self.new_rkey});
+# """
 
 
-class IsForkInitialized(VerbCall): # 意义不明
-    """Check if fork support is enabled using ibv_is_fork_initialized."""
+# class InitAHFromWC(VerbCall):  # 意义不明
+#     def __init__(self, context: str, port_num: int, wc: str, grh: str, ah_attr: str):
+#         self.context = context
+#         self.port_num = port_num
+#         self.wc = wc
+#         self.grh = grh
+#         self.ah_attr = ah_attr
 
-    def __init__(self, output: str = None):
-        self.output = output or 'fork_status'
-        pass
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext):
+#         kv = _parse_kv(info)
+#         context = kv.get("context", "ctx")
+#         port_num = int(kv.get("port_num", 1))
+#         wc = kv.get("wc", "wc")
+#         grh = kv.get("grh", "grh")
+#         ah_attr = kv.get("ah_attr", "ah_attr")
+#         return cls(context=context, port_num=port_num, wc=wc, grh=grh, ah_attr=ah_attr)
 
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext = None):
-        return cls()
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         return f"""
+#     /* ibv_init_ah_from_wc */
+#     if (ibv_init_ah_from_wc({self.context}, {self.port_num}, &{self.wc}, &{self.grh}, &{self.ah_attr})) {{
+#         fprintf(stderr, "Failed to initialize AH from WC\\n");
+#         return -1;
+#     }}
+# """
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        # Register the fork status variable in context
-        ctx.alloc_variable(self.output, "enum ibv_fork_status")
-        return f"""
-    /* Check if fork support is initialized */
-    {self.output} = ibv_is_fork_initialized();
-    switch ({self.output}) {{
-        case IBV_FORK_DISABLED:
-            fprintf(stdout, "Fork support is disabled\\n");
-            break;
-        case IBV_FORK_ENABLED:
-            fprintf(stdout, "Fork support is enabled\\n");
-            break;
-        case IBV_FORK_UNNEEDED:
-            fprintf(stdout, "Fork support is unneeded\\n");
-            break;
-        default:
-            fprintf(stdout, "Unknown fork status\\n");
-            break;
-    }}
-"""
+
+# class IsForkInitialized(VerbCall):  # 意义不明
+#     """Check if fork support is enabled using ibv_is_fork_initialized."""
+
+#     def __init__(self, output: str = None):
+#         self.output = output or 'fork_status'
+#         pass
+
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext = None):
+#         return cls()
+
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         # Register the fork status variable in context
+#         ctx.alloc_variable(self.output, "enum ibv_fork_status")
+#         return f"""
+#     /* Check if fork support is initialized */
+#     {self.output} = ibv_is_fork_initialized();
+#     switch ({self.output}) {{
+#         case IBV_FORK_DISABLED:
+#             fprintf(stdout, "Fork support is disabled\\n");
+#             break;
+#         case IBV_FORK_ENABLED:
+#             fprintf(stdout, "Fork support is enabled\\n");
+#             break;
+#         case IBV_FORK_UNNEEDED:
+#             fprintf(stdout, "Fork support is unneeded\\n");
+#             break;
+#         default:
+#             fprintf(stdout, "Unknown fork status\\n");
+#             break;
+#     }}
+# """
 
 
 class MemcpyFromDM(VerbCall):
-    def __init__(self, host: str, dm: str, dm_offset: int = 0, length: int = 0, ctx: CodeGenContext = None):
-        self.host = host
-        self.dm = dm
-        self.dm_offset = dm_offset
-        self.length = length
+    MUTABLE_FIELDS = ["host", "dm", "dm_offset", "length"]
+
+    def __init__(
+        self,
+        host: str = None,
+        dm: str = None,
+        dm_offset: int = None,
+        length: int = None,
+    ):
+        self.host = ConstantValue(host or "host_buf")  # Host memory address
+        self.dm = (
+            ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
+        )  # Device memory address
+        # Offset in the device memory
+        self.dm_offset = IntValue(dm_offset or 0)
+        self.length = IntValue(length or 0)  # Length of data to copy
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the host and device memory addresses in the tracker
+            # Register the device memory and host addresses in the tracker
+            self.tracker.use("dm", self.dm.value)
             # self.tracker.use('host', host)
-            self.tracker.use('dm', dm)
+            self.required_resources.append({"type": "dm", "name": self.dm.value, "position": "dm"})  # 记录需要的资源
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2339,15 +3244,32 @@ class MemcpyFromDM(VerbCall):
 
 
 class MemcpyToDM(VerbCall):
-    def __init__(self, dm: str, dm_offset: int, host: str, length: int, ctx: CodeGenContext = None):
-        self.dm = dm  # Device memory address
-        self.dm_offset = dm_offset  # Offset in the device memory
-        self.host = host  # Host memory address
-        self.length = length  # Length of data to copy
+    MUTABLE_FIELDS = ["dm", "dm_offset", "host", "length"]
+
+    def __init__(
+        self,
+        dm: str = None,
+        dm_offset: int = None,
+        host: str = None,
+        length: int = None,
+    ):
+        self.dm = (
+            ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
+        )  # Device memory address
+        # Offset in the device memory
+        self.dm_offset = IntValue(dm_offset or 0)
+        self.host = ConstantValue(host or "host_buf")  # Host memory address
+        self.length = IntValue(length or 0)  # Length of data to copy
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the device memory and host addresses in the tracker
-            self.tracker.use('dm', dm)
+            self.tracker.use("dm", self.dm.value)
+            self.required_resources.append({"type": "dm", "name": self.dm.value, "position": "dm"})  # 记录需要的资源
             # self.tracker.use('host', host)
 
     @classmethod
@@ -2358,7 +3280,7 @@ class MemcpyToDM(VerbCall):
             dm=dm,
             dm_offset=int(kv.get("dm_offset", 0)),
             host=kv.get("host", "host_buf"),
-            length=int(kv.get("length", 0))
+            length=int(kv.get("length", 0)),
         )
 
     def generate_c(self, ctx: CodeGenContext) -> str:
@@ -2375,23 +3297,35 @@ class MemcpyToDM(VerbCall):
 class ModifyCQ(VerbCall):
     """Modify a Completion Queue (CQ) attributes.
 
-    This verb modifies a CQ with new moderation attributes 
+    This verb modifies a CQ with new moderation attributes
     like number of completions per event and period in microseconds.
-    The `attr_mask` field in `ibv_modify_cq_attr` specifies which 
+    The `attr_mask` field in `ibv_modify_cq_attr` specifies which
     attributes to modify.
     """
 
-    def __init__(self, cq: str, attr_object=None, attr_var: str = None, ctx: CodeGenContext = None):
-        self.cq = cq
-        self.attr_object = attr_object  # This can be a dict or an object with attributes
+    MUTABLE_FIELDS = ["cq", "attr_obj", "attr_var"]
+
+    def __init__(self, cq: str = None, attr_obj: IbvModifyCQAttr = None, attr_var: str = None):
+        self.cq = (
+            ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        )  # CQ address
+        self.attr_obj = attr_obj  # This can be a dict or an object with attributes
         # Default variable name for the CQ attributes
-        self.attr_var = attr_var or f"attr_modify_cq_{cq}"
+        # Variable name for the CQ attributes
+        self.attr_var = ConstantValue(attr_var or "modify_cq_attr")
+
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the CQ address in the tracker
-            self.tracker.use('cq', cq)
+            self.tracker.use("cq", self.cq.value)
+            self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
             # # Register the CQ attributes variable in the tracker
-            # self.tracker.alloc('attr_var', self.attr_var)
+            # self.tracker.create('attr_var', self.attr_var)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2419,45 +3353,86 @@ class ModifyCQ(VerbCall):
 
 
 class ModifyQP(VerbCall):
-    # ctx for backward compatibility
-    def __init__(self, qp: str, attr: IbvQPAttr, attr_mask: str, ctx: CodeGenContext = None):
-        self.qp = qp
-        self.attr = attr
+    MUTABLE_FIELDS = ["qp", "attr", "attr_mask"]
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp")],
+        produces=[],  # 不新建资源
+        transitions=[TransitionSpec("qp", from_state=State.RESET, to_state=State.INIT, name_attr="qp")],
+    )
+
+    def __init__(self, qp: str = None, attr_obj: IbvQPAttr = None, attr_mask: str = None):  # TODO: attr 需要检查
+        self.qp = (
+            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        )  # QP address
+        self.attr_obj = attr_obj
         # e.g., "IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS"
-        self.attr_mask = attr_mask
+        self.attr_mask = FlagValue(
+            attr_mask or "IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
+            flag_type="IBV_QP_ATTR_MASK_ENUM",
+        )  # Variable name for the attribute mask
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the attribute variable in the tracker
-            # self.tracker.alloc('attr_modify_qp', f"qp_attr_{qp}")
+            # self.tracker.create('attr_modify_qp', f"qp_attr_{qp}")
+        if hasattr(ctx, "contracts"):
+            # 如果目标状态由 self.attr_obj.qp_state 决定，也可以在这里动态构造 Contract
+            ctx.contracts.apply_contract(self, self.CONTRACT)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
         kv = _parse_kv(info)
         qp = kv.get("qp", "unknown")
-        attr_keys = {"qp_state", "pkey_index", "port_num", "qp_access_flags",
-                     "path_mtu", "dest_qp_num", "rq_psn", "max_dest_rd_atomic",
-                     "min_rnr_timer", "ah_attr.is_global", "ah_attr.dlid",
-                     "ah_attr.sl", "ah_attr.src_path_bits", "ah_attr.port_num",
-                     #  "ah_attr.grh.dgid",
-                     "ah_attr.grh.flow_label",
-                     "ah_attr.grh.hop_limit", "ah_attr.grh.sgid_index",
-                     "ah_attr.grh.traffic_class", "timeout", "retry_cnt", "rnr_retry", "sq_psn", "max_rd_atomic"}
+        attr_keys = {
+            "qp_state",
+            "pkey_index",
+            "port_num",
+            "qp_access_flags",
+            "path_mtu",
+            "dest_qp_num",
+            "rq_psn",
+            "max_dest_rd_atomic",
+            "min_rnr_timer",
+            "ah_attr.is_global",
+            "ah_attr.dlid",
+            "ah_attr.sl",
+            "ah_attr.src_path_bits",
+            "ah_attr.port_num",
+            #  "ah_attr.grh.dgid",
+            "ah_attr.grh.flow_label",
+            "ah_attr.grh.hop_limit",
+            "ah_attr.grh.sgid_index",
+            "ah_attr.grh.traffic_class",
+            "timeout",
+            "retry_cnt",
+            "rnr_retry",
+            "sq_psn",
+            "max_rd_atomic",
+        }
         attr_params = {k: kv[k] for k in attr_keys if k in kv}
         attr_mask = kv.get(
-            "attr_mask", "IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS")
+            "attr_mask",
+            "IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
+        )
         return cls(qp=qp, attr=attr_params, attr_mask=attr_mask)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = self.qp
+        qp_name = str(self.qp)
         # e.g., "_0" for qp[0]
         attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         # attr_name = f"attr_modify_rtr{attr_suffix}"
         attr_name = f"qp_attr{attr_suffix}"
         # Convert the attr dict to C++ code
-        attr_lines = self.attr.to_cxx(attr_name, ctx)
-        mask_code = mask_fields_to_c(self.attr_mask)
+        attr_lines = self.attr_obj.to_cxx(attr_name, ctx)
+        # mask_code = mask_fields_to_c(self.attr_mask)
+        mask_code = str(self.attr_mask)
         return f"""
     memset(&{attr_name}, 0, sizeof({attr_name}));
     {attr_lines}
@@ -2474,18 +3449,34 @@ class ModifyQPRateLimit(VerbCall):
         attr_obj    -- IbvQPRateLimitAttr对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, qp: str, attr_var: str, attr_obj: 'IbvQPRateLimitAttr' = None, 
-                 ctx: CodeGenContext = None):
-        self.qp = qp
+    MUTABLE_FIELDS = ["qp", "attr_var", "attr_obj"]
+
+    def __init__(
+        self,
+        qp: str = None,
+        attr_var: str = None,
+        attr_obj: "IbvQPRateLimitAttr" = None,
+    ):
+        self.qp = (
+            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        )  # QP address
         # Default variable name for the rate limit attributes
-        self.attr_var = attr_var or f"rate_limit_attr_{qp}"
+        # Variable name for the rate limit attributes
+        self.attr_var = ConstantValue(attr_var or f"rate_limit_attr_{qp}")
         self.attr_obj = attr_obj
+
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the rate limit attributes variable in the tracker
-            # self.tracker.alloc('attr_var', self.attr_var)
+            # self.tracker.create('attr_var', self.attr_var)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2522,19 +3513,36 @@ class ModifySRQ(VerbCall):
         attr_mask    -- int，传递给 C API 的 srq_attr_mask
     """
 
-    def __init__(self, srq: str, attr_var: str = None, attr_obj: 'IbvSrqAttr' = None, attr_mask: int = 0, 
-                 ctx: CodeGenContext = None):
-        self.srq = srq
+    MUTABLE_FIELDS = ["srq", "attr_var", "attr_obj", "attr_mask"]
+
+    def __init__(
+        self,
+        srq: str = None,
+        attr_var: str = None,
+        attr_obj: IbvSrqAttr = None,
+        attr_mask: int = 0,
+    ):
+        self.srq = (
+            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
+        )  # SRQ address
         # Default variable name for the SRQ attributes
-        self.attr_var = attr_var or f"srq_attr_{srq}"
+        # Variable name for the SRQ attributes
+        self.attr_var = ConstantValue(attr_var or f"srq_attr_{srq}")
+        # attr_obj is an instance of IbvSrqAttr or similar, containing the attributes
         self.attr_obj = attr_obj
-        self.attr_mask = attr_mask
+        # Mask for the attributes to modify
+        self.attr_mask = FlagValue(attr_mask or 0, flag_type="IBV_SRQ_ATTR_MASK_ENUM")
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the SRQ address in the tracker
-            self.tracker.use('srq', srq)
+            self.tracker.use("srq", self.srq)
+            self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})
             # # Register the SRQ attributes variable in the tracker
-            # self.tracker.alloc('attr_var', self.attr_var)
+            # self.tracker.create('attr_var', self.attr_var)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2570,17 +3578,28 @@ class ModifyWQ(VerbCall):
         attr_obj    -- IbvWQAttr对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, wq: str, attr_var: str = None, attr_obj: 'IbvWQAttr' = None, ctx: CodeGenContext = None):
-        self.wq = wq
+    MUTABLE_FIELDS = ["wq", "attr_var", "attr_obj"]
+
+    def __init__(self, wq: str = None, attr_var: str = None, attr_obj: "IbvWQAttr" = None):
+        self.wq = (
+            ResourceValue(resource_type="wq", value=wq) if wq else ResourceValue(resource_type="wq", value="wq")
+        )  # WQ address
         # Default variable name for the WQ attributes
-        self.attr_var = attr_var or f"wq_attr_{wq}"
+        # Variable name for the WQ attributes
+        self.attr_var = ConstantValue(attr_var or f"wq_attr_{wq}")
         self.attr_obj = attr_obj
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the WQ address in the tracker
-            self.tracker.use('wq', wq)
+            self.tracker.use("wq", self.wq.value)
+            self.required_resources.append({"type": "wq", "name": self.wq.value, "position": "wq"})  # 记录需要的资源
             # # Register the WQ attributes variable in the tracker
-            # self.tracker.alloc('attr_var', self.attr_var)
+            # self.tracker.create('attr_var', self.attr_var)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2610,8 +3629,11 @@ class ModifyWQ(VerbCall):
 class OpenDevice(VerbCall):
     """Open an RDMA device and create a context for use."""
 
-    def __init__(self, device: str = "dev_list[0]"):
-        self.device = device  # Device name or variable, e.g., "dev_list[
+    MUTABLE_FIELDS = ["device"]
+
+    def __init__(self, device: str = None):
+        # Device name or variable, e.g., "dev_list[
+        self.device = ConstantValue(device or "dev_list")
         pass
 
     @classmethod
@@ -2642,21 +3664,47 @@ class OpenQP(VerbCall):
         attr_obj     -- IbvQPOpenAttr对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, ctx_var, qp: str, attr_var: str, attr_obj=None, ctx: CodeGenContext = None):
-        self.ctx_var = ctx_var or ctx.ib_ctx
-        self.qp = qp
+    MUTABLE_FIELDS = ["ctx_var", "qp", "attr_var", "attr_obj"]
+
+    def __init__(
+        self,
+        ctx_var=None,
+        qp: str = None,
+        attr_var: str = None,
+        attr_obj: IbvQPOpenAttr = None,
+    ):
+        # Context variable name, e.g., "ctx"
+        self.ctx_var = ConstantValue(ctx_var or "ctx")
+        self.qp = (
+            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        )  # QP address
         # Default variable name for the QP open attributes
-        self.attr_var = attr_var or f"qp_open_attr_{qp}"
+        # Variable name for the QP open attributes
+        self.attr_var = ConstantValue(attr_var or f"qp_open_attr_{qp}")
         self.attr_obj = attr_obj
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
+        self.ctx_var = self.ctx_var or ctx.ib_ctx if ctx else "ctx"
         if self.tracker:
             # # Register the context variable in the tracker
             # self.tracker.use('ctx', ctx_var)
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
-            self.tracker.use('xrcd', self.attr_obj.xrcd if self.attr_obj else None)
+            self.tracker.use("qp", self.qp.value)
+            # self.tracker.use(
+            #     'xrcd', self.attr_obj.xrcd if self.attr_obj else None)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
+            # self.required_resources.append(('xrcd', self.attr_obj.xrcd if self
+            #     .attr_obj else None))  # to be recursive 标记
+            # # Register the context variable in the tracker
             # # Register the QP open attributes variable in the tracker
-            # self.tracker.alloc('attr_var', self.attr_var)
+            # self.tracker.create('attr_var', self.attr_var)
+            if self.attr_obj is not None:
+                # Register the attribute object in the tracker
+                self.attr_obj.apply(ctx)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2694,20 +3742,42 @@ class OpenXRCD(VerbCall):
         attr_obj    -- IbvXRCDInitAttr对象（可选，自动生成结构体内容）
     """
 
-    def __init__(self, ctx_var: str, xrcd: str, attr_var: str, attr_obj=None, ctx: CodeGenContext = None):
-        self.ctx_var = ctx_var
-        self.xrcd = xrcd
+    MUTABLE_FIELDS = ["ctx_var", "xrcd", "attr_var", "attr_obj"]
+
+    def __init__(
+        self,
+        ctx_var: str = None,
+        xrcd: str = None,
+        attr_var: str = None,
+        attr_obj: IbvXRCDInitAttr = None,
+    ):
+        # Context variable name, e.g., "ctx"
+        self.ctx_var = ConstantValue(ctx_var or "ctx")
+        self.xrcd = (
+            ResourceValue(resource_type="xrcd", value=xrcd)
+            if xrcd
+            else ResourceValue(resource_type="xrcd", value="xrcd")
+        )  # XRC Domain address
         # Default variable name for the XRC Domain attributes
-        self.attr_var = attr_var or f"xrcd_init_attr_{xrcd}"
+        # Variable name for the XRC Domain attributes
+        self.attr_var = ConstantValue(attr_var or f"xrcd_init_attr_{xrcd}")
         self.attr_obj = attr_obj
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # # Register the context variable in the tracker
             # self.tracker.use('ctx', ctx_var)
             # Register the XRC Domain address in the tracker
-            self.tracker.use('xrcd', xrcd)
+            self.tracker.use("xrcd", self.xrcd.value)
+            self.required_resources.append(
+                {"type": "xrcd", "name": self.xrcd.value, "position": "xrcd"}
+            )  # 记录需要的资源
             # # Register the XRC Domain attributes variable in the tracker
-            # self.tracker.alloc('attr_var', self.attr_var)
+            # self.tracker.create('attr_var', self.attr_var)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2735,15 +3805,25 @@ class OpenXRCD(VerbCall):
         return code
 
 
-class PollCQ(VerbCall):
-    def __init__(self, cq: str, ctx: CodeGenContext = None):
-        self.cq = cq
+class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数，待改
+    MUTABLE_FIELDS = ["cq"]
+
+    def __init__(self, cq: str = None):
+        self.cq = (
+            ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        )  # CQ address
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the CQ address in the tracker
-            self.tracker.use('cq', cq)
+            self.tracker.use("cq", self.cq.value)
+            self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
             # # Register the CQ variable in the tracker
-            # self.tracker.alloc('cq_var', cq)
+            # self.tracker.create('cq_var', cq)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2793,6 +3873,7 @@ class PollCQ(VerbCall):
     }}
 """
 
+
 class PostRecv(VerbCall):
     """
     表示 ibv_post_recv() 调用，自动生成 recv_wr 链与调用代码。
@@ -2803,20 +3884,38 @@ class PostRecv(VerbCall):
         bad_wr_var-- bad_wr 结构体指针变量名
     """
 
-    def __init__(self, qp: str, wr_obj=None, wr_var: str = None, bad_wr_var: str = None, ctx: CodeGenContext = None):
-        self.qp = qp
+    MUTABLE_FIELDS = ["qp", "wr_obj", "wr_var", "bad_wr_var"]
+
+    def __init__(
+        self,
+        qp: str = None,
+        wr_obj: IbvRecvWR = None,
+        wr_var: str = None,
+        bad_wr_var: str = None,
+    ):
+        self.qp = (
+            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        )  # QP address
         self.wr_obj = wr_obj
         # Default variable name for the receive work request
-        self.wr_var = wr_var or f"recv_wr_{qp}"
-        self.bad_wr_var = bad_wr_var or f"bad_recv_wr_{qp}"
+        # Variable name for the receive work request
+        self.wr_var = ConstantValue(wr_var or f"recv_wr_{qp}")
+        # Variable name for the bad receive work request pointer
+        self.bad_wr_var = ConstantValue(bad_wr_var or f"bad_recv_wr_{qp}")
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the WR variable in the tracker
-            # self.tracker.alloc('wr_var', self.wr_var)
+            # self.tracker.create('wr_var', self.wr_var)
             # # Register the bad WR variable in the tracker
-            # self.tracker.alloc('bad_wr_var', self.bad_wr_var)
+            # self.tracker.create('bad_wr_var', self.bad_wr_var)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2830,19 +3929,21 @@ class PostRecv(VerbCall):
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         s = ""
+        wr_var = str(self.wr_var)  # e.g., "recv_wr_qp1"
+        bad_wr_var = str(self.bad_wr_var)  # e.g., "bad_recv
         # 构造 WR 结构体（链表/单个）
         if self.wr_obj is not None:
-            s += self.wr_obj.to_cxx(self.wr_var, ctx)
+            s += self.wr_obj.to_cxx(wr_var, ctx)
         else:
             s += f"\n    struct ibv_recv_wr {self.wr_var} = {{0}};\n"
         # bad_wr 定义
         if ctx:
             # Register the bad work request pointer in the context
-            ctx.alloc_variable(self.bad_wr_var, "struct ibv_recv_wr *", "NULL")
+            ctx.alloc_variable(bad_wr_var, "struct ibv_recv_wr *", "NULL")
         else:
             s += f"\n    struct ibv_recv_wr *{self.bad_wr_var} = NULL;\n"
         # 调用
-        qp_name = self.qp
+        qp_name = str(self.qp)
         s += f"""
     if (ibv_post_recv({qp_name}, &{self.wr_var}, &{self.bad_wr_var}) != 0) {{
         fprintf(stderr, "ibv_post_recv failed\\n");
@@ -2852,14 +3953,22 @@ class PostRecv(VerbCall):
         return s
 
 
-class PostSend(VerbCall):
-    def __init__(self, qp, wr_obj=None, ctx: CodeGenContext = None):
-        self.qp = qp        # qp对象变量名或trace地址
-        self.wr_obj = wr_obj          # IbvSendWR实例（用于自动生成WR内容）
+class PostSend(VerbCall):  # TODO: 修改varname
+    MUTABLE_FIELDS = ["qp", "wr_obj"]
+
+    def __init__(self, qp: str = None, wr_obj: IbvSendWR = None, wr_var=None, bad_wr_var=None):
+        self.qp = ResourceValue(resource_type="qp", value=qp)  # qp对象变量名或trace地址
+        self.wr_obj = wr_obj  # IbvSendWR实例（用于自动生成WR内容）
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # # Register the WR object in the tracker if it exists
             # if wr_obj:
             #     self.tracker.use('wr_obj', wr_obj)
@@ -2869,19 +3978,46 @@ class PostSend(VerbCall):
         # info: 字符串或者dict，含qp/wr/bad_wr等参数
         kv = _parse_kv(info)  # 假设有类似 {'qp':'qp1', 'wr':'wr1', ...}
         wr_obj = None
-        if 'wr_obj' in kv:
-            wr_obj = kv['wr_obj']
-        return cls(
-            qp=kv.get("qp"),
-            wr=kv.get("wr"),
-            bad_wr=kv.get("bad_wr"),
-            wr_obj=wr_obj
-        )
+        if "wr_obj" in kv:
+            wr_obj = kv["wr_obj"]
+        return cls(qp=kv.get("qp"), wr=kv.get("wr"), bad_wr=kv.get("bad_wr"), wr_obj=wr_obj)
 
-    def generate_c(self, ctx):
-        # ctx: CodeGenContext，负责变量声明/资源管理
-        qp_name = self.qp
-        # e.g., "_0" for qp[0]
+    # def generate_c(self, ctx):
+    #     # ctx: CodeGenContext，负责变量声明/资源管理
+    #     qp_name = str(self.qp)
+    #     # e.g., "_0" for qp[0]
+    #     attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
+    #     wr_name = f"wr{attr_suffix}"  # e.g., "wr_0"
+    #     bad_wr_name = f"bad_wr{attr_suffix}"  # e.g., "bad_wr_0"
+    #     code = ""
+    #     # 1. 声明send_wr结构体内容
+    #     if self.wr_obj is not None:
+    #         code += self.wr_obj.to_cxx(wr_name, ctx)
+    #     # 2. 声明bad_wr变量
+    #     if bad_wr_name:
+    #         # Register the bad work request pointer in the context
+    #         ctx.alloc_variable(bad_wr_name, "struct ibv_send_wr *", "NULL")
+    #     # 3. 生成ibv_post_send调用
+    #     bad_wr_arg = f"&{bad_wr_name}" if bad_wr_name else "NULL"
+    #     # code += (
+    #     #     f"\n    int rc = ibv_post_send({self.qp}, "
+    #     #     f"&{self.wr}, {bad_wr_arg});\n"
+    #     #     f"    if (ibv_post_send({self.qp}, "
+    #     #     f"&{self.wr}, {bad_wr_arg})) {{ printf(\"ibv_post_send failed: %d\\n\", rc); }}\n"
+    #     # )
+    #     return f"""
+    # /* ibv_post_send */
+    # {code}
+
+    # if (ibv_post_send({qp_name}, &{wr_name}, {bad_wr_arg}) != 0) {{
+    #     fprintf(stderr, "Failed to post send work request\\n");
+    #     return -1;
+    # }}
+    # """
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        qp_name = coerce_str(self.qp)
+        wr = unwrap(self.wr_obj)
         attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         wr_name = f"wr{attr_suffix}"  # e.g., "wr_0"
         bad_wr_name = f"bad_wr{attr_suffix}"  # e.g., "bad_wr_0"
@@ -2895,22 +4031,16 @@ class PostSend(VerbCall):
             ctx.alloc_variable(bad_wr_name, "struct ibv_send_wr *", "NULL")
         # 3. 生成ibv_post_send调用
         bad_wr_arg = f"&{bad_wr_name}" if bad_wr_name else "NULL"
-        # code += (
-        #     f"\n    int rc = ibv_post_send({self.qp}, "
-        #     f"&{self.wr}, {bad_wr_arg});\n"
-        #     f"    if (ibv_post_send({self.qp}, "
-        #     f"&{self.wr}, {bad_wr_arg})) {{ printf(\"ibv_post_send failed: %d\\n\", rc); }}\n"
-        # )
         return f"""
     /* ibv_post_send */
     {code}
-    
+
     if (ibv_post_send({qp_name}, &{wr_name}, {bad_wr_arg}) != 0) {{
         fprintf(stderr, "Failed to post send work request\\n");
         return -1;
     }}
     """
-        # return code
+
 
 class PostSRQRecv(VerbCall):
     """
@@ -2922,20 +4052,36 @@ class PostSRQRecv(VerbCall):
         bad_wr_var -- bad_recv_wr 结构体指针变量名
     """
 
-    def __init__(self, srq: str, wr_obj=None, wr_var: str = None, bad_wr_var: str = None, ctx: CodeGenContext = None):
-        self.srq = srq
+    MUTABLE_FIELDS = ["srq", "wr_obj", "wr_var", "bad_wr_var"]
+
+    def __init__(
+        self,
+        srq: str = None,
+        wr_obj: IbvRecvWR = None,
+        wr_var: str = None,
+        bad_wr_var: str = None,
+    ):
+        self.srq = (
+            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
+        )
         self.wr_obj = wr_obj
         # Default variable name for the receive work request
-        self.wr_var = wr_var or f"recv_wr_{srq}"
-        self.bad_wr_var = bad_wr_var or f"bad_recv_wr_{srq}"
+        self.wr_var = ConstantValue(wr_var or f"recv_wr_{srq}")
+        self.bad_wr_var = ConstantValue(bad_wr_var or f"bad_recv_wr_{srq}")
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the SRQ address in the tracker
-            self.tracker.use('srq', srq)
+            self.tracker.use("srq", self.srq.value)
+            self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})  # 记录需要的资源
             # # Register the WR variable in the tracker
-            # self.tracker.alloc('wr_var', self.wr_var)
+            # self.tracker.create('wr_var', self.wr_var)
             # # Register the bad WR variable in the tracker
-            # self.tracker.alloc('bad_wr_var', self.bad_wr_var)
+            # self.tracker.create('bad_wr_var', self.bad_wr_var)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -2970,12 +4116,14 @@ class PostSRQRecv(VerbCall):
         return s
 
 
-
 class QueryDeviceAttr(VerbCall):
     """Query the attributes of an RDMA device using its context."""
 
-    def __init__(self, output = None):
-        self.output = output
+    MUTABLE_FIELDS = ["output"]
+
+    def __init__(self, output: str = None):
+        # Default output variable name
+        self.output = ConstantValue(output or "dev_attr")
         pass
 
     @classmethod
@@ -3006,11 +4154,19 @@ class QueryDeviceEx(VerbCall):
         input_var -- (可选) input 结构体变量名
     """
 
-    def __init__(self, ctx_var: str, attr_var: str = "dev_attr_ex", comp_mask: int = 0, input_var: str = "query_input"):
-        self.ctx_var = ctx_var
-        self.attr_var = attr_var  # this is output
-        self.comp_mask = comp_mask
-        self.input_var = input_var  # this is input
+    MUTABLE_FIELDS = ["ctx_var", "attr_var", "comp_mask", "input_var"]
+
+    def __init__(
+        self,
+        ctx_var: str = None,
+        attr_var: str = None,
+        comp_mask: int = None,
+        input_var: str = None,
+    ):
+        self.ctx_var = ConstantValue(ctx_var or "ctx")  # Context variable name
+        self.attr_var = ConstantValue(attr_var or "attr")  # this is output
+        self.comp_mask = IntValue(comp_mask or 0)  # Comp mask value
+        self.input_var = ConstantValue(input_var or "query_input")  # Input variable name
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3021,11 +4177,20 @@ class QueryDeviceEx(VerbCall):
         input_var = kv.get("input_var", "query_input")
         return cls(ctx_var, attr_var, comp_mask, input_var)
 
+    def apply(self, ctx: CodeGenContext):
+        if ctx:
+            # # Register the context variable in the context
+            # ctx.alloc_variable(self.ctx_var, "struct ibv_context")
+            # Register the output variable in the context
+            ctx.alloc_variable(self.attr_var, "struct ibv_device_attr_ex")
+            # Register the input variable in the context
+            ctx.alloc_variable(self.input_var, "struct ibv_query_device_ex_input")
+
     def generate_c(self, ctx: CodeGenContext) -> str:
         # Register the input variable in the context
-        ctx.alloc_variable(self.input_var, "struct ibv_query_device_ex_input")
-        ctx.alloc_variable(
-            self.attr_var, "struct ibv_device_attr_ex")  # Register
+        # ctx.alloc_variable(self.input_var, "struct ibv_query_device_ex_input")
+        # ctx.alloc_variable(
+        #     self.attr_var, "struct ibv_device_attr_ex")  # Register
         s = f"""
     memset(&{self.input_var}, 0, sizeof({self.input_var}));
     {self.input_var}.comp_mask = {self.comp_mask};
@@ -3038,15 +4203,24 @@ class QueryDeviceEx(VerbCall):
 
 
 class QueryECE(VerbCall):
-    def __init__(self, qp: str, output: str = "ece", ctx: CodeGenContext = None):
-        self.qp = qp
-        self.output = output  # Variable name for the ECE options output
+    MUTABLE_FIELDS = ["qp", "output"]
+
+    def __init__(self, qp: str = None, output: str = None):
+        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        # Default output variable name
+        self.output = ConstantValue(output or "ece_options")
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the ECE options variable in the tracker
-            # self.tracker.alloc('ece_var', self.output)
+            # self.tracker.create('ece_var', self.output)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3055,7 +4229,7 @@ class QueryECE(VerbCall):
         return cls(qp=qp)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = self.qp
+        qp_name = str(self.qp)
         # Register the ECE options variable in the context
         ctx.alloc_variable(self.output, "struct ibv_ece")
         return f"""
@@ -3070,9 +4244,11 @@ class QueryECE(VerbCall):
 
 
 class QueryGID(VerbCall):
-    def __init__(self, port_num: int = 1, index: int = 1):
-        self.port_num = port_num
-        self.index = index
+    MUTABLE_FIELDS = ["port_num", "index"]
+
+    def __init__(self, port_num: int = None, index: int = None):
+        self.port_num = IntValue(port_num or 1)  # Default port number
+        self.index = IntValue(index or 0)  # Default GID index
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3108,11 +4284,21 @@ class QueryGID(VerbCall):
 
 
 class QueryGIDEx(VerbCall):
-    def __init__(self, port_num: int = 1, gid_index: int = 0, flags: int = 0, output: str = "gid_entry"):
-        self.port_num = port_num
-        self.gid_index = gid_index
-        self.flags = flags
-        self.output = output  # Variable name for the GID entry output
+    MUTATBLE_FIELDS = ["port_num", "gid_index", "flags", "output"]
+    """Query a specific GID entry on a given port of an RDMA device."""
+
+    def __init__(
+        self,
+        port_num: int = None,
+        gid_index: int = None,
+        flags: int = None,
+        output: str = None,
+    ):
+        self.port_num = IntValue(port_num or 1)  # Default port number
+        self.gid_index = IntValue(gid_index or 0)  # Default GID index
+        self.flags = IntValue(flags or 0)  # Default flags # now must be 0
+        # Variable name for the GID entry output
+        self.output = ConstantValue("gid" or output)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3137,9 +4323,12 @@ class QueryGIDEx(VerbCall):
 class QueryGIDTable(VerbCall):
     """Query GID table of a given RDMA device context."""
 
-    def __init__(self, max_entries: int = 10, output: str = "gid_entries"):
-        self.max_entries = max_entries
-        self.output = output  # Variable name for the GID entries output
+    MUTABLE_FIELDS = ["max_entries", "output"]
+
+    def __init__(self, max_entries: int = None, output: str = None):
+        self.max_entries = IntValue(max_entries or 10)  # Default max entries
+        # Variable name for the GID entries output
+        self.output = ConstantValue(output or "gid_entries")
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3147,8 +4336,7 @@ class QueryGIDTable(VerbCall):
         return cls(max_entries=int(kv.get("max_entries", 10)))
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        ctx.alloc_variable(self.output, "struct ibv_gid_entry",
-                           f"entries[{self.max_entries}]")
+        ctx.alloc_variable(self.output, "struct ibv_gid_entry", f"entries[{self.max_entries}]")
         ib_ctx = ctx.ib_ctx
         return f"""
     /* ibv_query_gid_table */
@@ -3162,10 +4350,13 @@ class QueryGIDTable(VerbCall):
 class QueryPKey(VerbCall):
     """Query an InfiniBand port's P_Key table entry."""
 
-    def __init__(self, port_num: int = 1, index: int = 0, pkey: str = "pkey"):
-        self.port_num = port_num
-        self.index = index
-        self.pkey = pkey
+    MUTATBLE_FIELDS = ["port_num", "index", "pkey"]
+
+    def __init__(self, port_num: int = None, index: int = None, pkey: str = None):
+        self.port_num = IntValue(port_num or 1)  # Default port number
+        self.index = IntValue(index or 0)  # Default P_Key index
+        # Variable name for the P_Key output
+        self.pkey = ConstantValue(pkey or "pkey")
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3189,8 +4380,10 @@ class QueryPKey(VerbCall):
 class QueryPortAttr(VerbCall):
     """Query the attributes of a specified RDMA port on a given device context."""
 
-    def __init__(self, port_num: int = 1):
-        self.port_num = port_num
+    MUTABLE_FIELDS = ["port_num"]
+
+    def __init__(self, port_num: int = None):
+        self.port_num = IntValue(port_num or 1)  # Default port number
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext = None):
@@ -3210,15 +4403,28 @@ class QueryPortAttr(VerbCall):
 
 
 class QueryQP(VerbCall):
-    def __init__(self, qp: str, attr_mask: int, ctx: CodeGenContext = None):
-        self.qp = qp
-        self.attr_mask = attr_mask
+    """Query the attributes of a specified Queue Pair (QP) in an RDMA context."""
+
+    MUTABLE_FIELDS = ["qp", "attr_mask"]
+
+    def __init__(self, qp: str = None, attr_mask: str = None):
+        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.attr_mask = FlagValue(
+            attr_mask or "IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
+            flag_type="IBV_QP_ATTR_MASK_ENUM",
+        )
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the attribute mask in the tracker
-            # self.tracker.alloc('attr_mask', attr_mask)
+            # self.tracker.create('attr_mask', attr_mask)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3228,7 +4434,7 @@ class QueryQP(VerbCall):
         return cls(qp=qp, attr_mask=int(mask))
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = self.qp
+        qp_name = str(self.qp)
         # e.g., "_0" for qp[0]
         attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
         attr_name = f"attr_query{attr_suffix}"
@@ -3243,6 +4449,7 @@ class QueryQP(VerbCall):
         return -1;
     }}
 """
+
 
 # class QueryQPDataInOrder(VerbCall):
 #     def __init__(self, qp: str, opcode: str, flags: int):
@@ -3296,14 +4503,25 @@ class QueryQP(VerbCall):
 class QuerySRQ(VerbCall):
     """Query a Shared Receive Queue (SRQ) for its attributes."""
 
-    def __init__(self, srq, ctx: CodeGenContext = None):
-        self.srq = srq
+    MUTABLE_FIELDS = ["srq"]
+
+    def __init__(self, srq: str = None):
+        self.srq = (
+            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
+        )
+        # Default variable name for the SRQ attributes
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the SRQ address in the tracker
-            self.tracker.use('srq', srq)
+            self.tracker.use("srq", self.srq.value)
+            self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})  # 记录需要的资源
             # # Register the SRQ variable in the tracker
-            # self.tracker.alloc('srq_var', srq)
+            # self.tracker.create('srq_var', srq)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3326,68 +4544,93 @@ class QuerySRQ(VerbCall):
 """
 
 
-class RateToMbps(VerbCall):
-    """Convert IB rate enumeration to Mbps."""
+# class RateToMbps(VerbCall): # 意义不明，没什么用
+#     """Convert IB rate enumeration to Mbps."""
+#     MUTABLE_FIELDS = ['rate', 'output']
+#     def __init__(self, rate: str, output: str = "mbps"):
+#         self.rate = rate  # IB rate enumeration
+#         self.output = output
 
-    def __init__(self, rate: str, output: str = "mbps"):
-        self.rate = rate  # IB rate enumeration
-        self.output = output
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext = None):
+#         kv = _parse_kv(info)
+#         rate = kv.get("rate", "IBV_RATE_MAX")
+#         return cls(rate=rate)
 
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext = None):
-        kv = _parse_kv(info)
-        rate = kv.get("rate", "IBV_RATE_MAX")
-        return cls(rate=rate)
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        # Register the output variable in the context
-        ctx.alloc_variable(self.output, "int")
-        return f"""
-    /* ibv_rate_to_mbps */
-    {self.output} = ibv_rate_to_mbps({self.rate});
-    printf("Rate: %s, Mbps: %d\\n", "{self.rate}", mbps);
-"""
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         # Register the output variable in the context
+#         ctx.alloc_variable(self.output, "int")
+#         return f"""
+#     /* ibv_rate_to_mbps */
+#     {self.output} = ibv_rate_to_mbps({self.rate});
+#     printf("Rate: %s, Mbps: %d\\n", "{self.rate}", mbps);
+# """
 
 
-class RateToMult(VerbCall):
-    """Convert IB rate enumeration to multiplier of 2.5 Gbit/sec (IBV_RATE_TO_MULT)"""
+# class RateToMult(VerbCall):
+#     """Convert IB rate enumeration to multiplier of 2.5 Gbit/sec (IBV_RATE_TO_MULT)"""
 
-    def __init__(self, rate: str, output: str = "mbps"):
-        self.rate = rate  # IB rate enumeration
-        self.output = output
+#     def __init__(self, rate: str, output: str = "mbps"):
+#         self.rate = rate  # IB rate enumeration
+#         self.output = output
 
-    @classmethod
-    def from_trace(cls, info: str, ctx: CodeGenContext):
-        kv = _parse_kv(info)
-        rate = kv.get("rate", "IBV_RATE_MAX")
-        return cls(rate=rate)
+#     @classmethod
+#     def from_trace(cls, info: str, ctx: CodeGenContext):
+#         kv = _parse_kv(info)
+#         rate = kv.get("rate", "IBV_RATE_MAX")
+#         return cls(rate=rate)
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        # Register the output variable in the context
-        ctx.alloc_variable(self.output, "int")
-        return f"""
-    /* ibv_rate_to_mult */
-    {self.output}  ibv_rate_to_mult({self.rate});
-    printf("Rate multiplier for {self.rate}: %d\\n", multiplier);
-"""
+#     def generate_c(self, ctx: CodeGenContext) -> str:
+#         # Register the output variable in the context
+#         ctx.alloc_variable(self.output, "int")
+#         return f"""
+#     /* ibv_rate_to_mult */
+#     {self.output}  ibv_rate_to_mult({self.rate});
+#     printf("Rate multiplier for {self.rate}: %d\\n", multiplier);
+# """
 
 
 class RegDmaBufMR(VerbCall):
-    def __init__(self, pd: str, mr: str, offset: int, length: int, iova: int, fd: int, access: int, ctx: CodeGenContext):
-        self.pd = pd
-        self.mr = mr
-        self.offset = offset
-        self.length = length
-        self.iova = iova
-        self.fd = fd
-        self.access = access
+    MUTABLE_FIELDS = ["pd", "mr", "offset", "length", "iova", "fd", "access"]
+
+    def __init__(
+        self,
+        pd: str = None,
+        mr: str = None,
+        offset: int = None,
+        length: int = None,
+        iova: int = None,
+        fd: int = None,
+        access: int = None,
+    ):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        self.offset = IntValue(offset or 0)  # Default offset
+        self.length = IntValue(length or 4096)  # Default length
+        self.iova = IntValue(iova or 0)  # Default IOVA
+        # Default file descriptor # TODO: 注意这个可能不能变异，得做成fd变量
+        self.fd = IntValue(fd or 0)
+        self.access = FlagValue(
+            access or "IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+            flag_type="IBV_ACCESS_FLAGS_ENUM",
+        )
+
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD and MR addresses in the tracker
-            self.tracker.use('pd', pd)
-            self.tracker.create('mr', mr)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.create("mr", self.mr.value)
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})
+            self.allocated_resources.append(("mr", self.mr.value))  # 记录需要的资源
             # # Register the MR variable in the tracker
-            # self.tracker.alloc('mr_var', mr)
+            # self.tracker.create('mr_var', mr)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3399,7 +4642,16 @@ class RegDmaBufMR(VerbCall):
         iova = int(kv.get("iova", "0"))
         fd = int(kv.get("fd", "0"))
         access = int(kv.get("access", "0"))
-        return cls(pd=pd, mr=mr, offset=offset, length=length, iova=iova, fd=fd, access=access, ctx=ctx)
+        return cls(
+            pd=pd,
+            mr=mr,
+            offset=offset,
+            length=length,
+            iova=iova,
+            fd=fd,
+            access=access,
+            ctx=ctx,
+        )
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         mr_name = self.mr
@@ -3415,19 +4667,38 @@ class RegDmaBufMR(VerbCall):
 
 
 class RegMR(VerbCall):
-    def __init__(self, pd, mr, buf="buf", length=4096, flags="IBV_ACCESS_LOCAL_WRITE", ctx : CodeGenContext = None):
-        self.pd = pd
-        self.mr = mr
-        self.buf = buf
-        self.length = length
-        self.flags = flags
+    MUTABLE_FIELDS = ["pd", "mr", "buf", "length", "flags"]
+    """Register a memory region (MR) with the specified protection domain (PD)."""
+
+    def __init__(
+        self,
+        pd: str = None,
+        mr: str = None,
+        buf: str = None,
+        length: int = None,
+        flags: str = None,
+    ):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        self.buf = ConstantValue(buf or "buf")  # Default buffer variable name
+        self.length = IntValue(length or 4096)  # Default length
+        self.flags = FlagValue(flags or "IBV_ACCESS_LOCAL_WRITE", flag_type="IBV_ACCESS_FLAGS_ENUM")
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD and MR addresses in the tracker
-            self.tracker.use('pd', pd)
-            self.tracker.create('mr', mr)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.create("mr", self.mr.value)
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})
+            self.allocated_resources.append(("mr", self.mr.value))  # 记录需要的资源
             # # Register the MR variable in the tracker
-            # self.tracker.alloc('mr_var', mr)
+            # self.tracker.create('mr_var', mr)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3438,11 +4709,14 @@ class RegMR(VerbCall):
         return cls(pd=pd, mr=mr, flags=flags, ctx=ctx)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        mr_name = self.mr
-        pd_name = self.pd
+        pd_name = coerce_str(self.pd)
+        mr_name = coerce_str(self.mr)
+        buf = ensure_identifier(self.buf)  # 若当成 C 变量名使用
+        length = coerce_int(self.length)
+        flags = coerce_str(self.flags)
         return f"""
     /* ibv_reg_mr */
-    {mr_name} = ibv_reg_mr({pd_name}, {self.buf}, {self.length}, {self.flags});
+    {mr_name} = ibv_reg_mr({pd_name}, {buf}, {length}, {flags});
     if (!{mr_name}) {{
         fprintf(stderr, "Failed to register memory region\\n");
         return -1;
@@ -3451,20 +4725,39 @@ class RegMR(VerbCall):
 
 
 class RegMRIova(VerbCall):
-    def __init__(self, pd, mr, buf="buf", length=4096, iova=0, access="IBV_ACCESS_LOCAL_WRITE", ctx: CodeGenContext = None):
-        self.pd = pd
-        self.mr = mr
-        self.buf = buf
-        self.length = length
-        self.iova = iova
-        self.access = access
+    MUTABLE_FIELDS = ["pd", "mr", "buf", "length", "iova", "access"]
+
+    def __init__(
+        self,
+        pd: str = None,
+        mr: str = None,
+        buf: str = None,
+        length: int = None,
+        iova: int = None,
+        access: str = None,
+    ):
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        self.buf = ConstantValue(buf or "buf")  # Default buffer variable name
+        self.length = IntValue(length or 4096)  # Default length
+        self.iova = IntValue(iova or 0)  # Default IOVA
+        self.access = FlagValue(access or "IBV_ACCESS_LOCAL_WRITE", flag_type="IBV_ACCESS_FLAGS_ENUM")
+        self.tracker = None
+        self.required_resources = []
+        self.allocated_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
+        self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the PD and MR addresses in the tracker
-            self.tracker.use('pd', pd)
-            self.tracker.create('mr', mr)
+            self.tracker.use("pd", self.pd.value)
+            self.tracker.create("mr", self.mr.value)
+            self.required_resources.append({"type": "pd", "name": self.pd.value, "position": "pd"})
+            self.allocated_resources.append(("mr", self.mr.value))  # 记录需要的资源
             # # Register the MR variable in the tracker
-            # self.tracker.alloc('mr_var', mr)
+            # self.tracker.create('mr_var', mr)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3478,7 +4771,7 @@ class RegMRIova(VerbCall):
             length=int(kv.get("length", 4096)),
             iova=int(kv.get("iova", 0)),
             access=kv.get("access", "IBV_ACCESS_LOCAL_WRITE"),
-            ctx=ctx
+            ctx=ctx,
         )
 
     def generate_c(self, ctx: CodeGenContext) -> str:
@@ -3497,15 +4790,24 @@ class RegMRIova(VerbCall):
 class ReqNotifyCQ(VerbCall):
     """Request completion notification on a completion queue (CQ)."""
 
-    def __init__(self, cq: str, solicited_only: int = 0, ctx: CodeGenContext = None):
-        self.cq = cq
-        self.solicited_only = solicited_only
+    MUTABLE_FIELDS = ["cq", "solicited_only"]
+
+    def __init__(self, cq: str = None, solicited_only: int = None):
+        self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        # Default solicited_only value
+        self.solicited_only = IntValue(solicited_only or 0)
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the CQ address in the tracker
-            self.tracker.use('cq', cq)
+            self.tracker.use("cq", self.cq.value)
+            self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
             # # Register the CQ variable in the tracker
-            # self.tracker.alloc('cq_var', cq)
+            # self.tracker.create('cq_var', cq)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3526,22 +4828,44 @@ class ReqNotifyCQ(VerbCall):
 
 
 class ReRegMR(VerbCall):
-    def __init__(self, mr: str, flags: int, pd: Optional[str] = None, addr: Optional[str] = None, length: int = 0, access: int = 0, ctx: CodeGenContext = None):
-        self.mr = mr
-        self.flags = flags
-        self.pd = pd
-        self.addr = addr
-        self.length = length
-        self.access = access
+    MUTABLE_FIELDS = ["mr", "flags", "pd", "addr", "length", "access"]
+    """Re-register a memory region (MR) with the specified protection domain (PD)."""
+
+    def __init__(
+        self,
+        mr: str = None,
+        flags: int = None,
+        pd: str | None = None,
+        addr: str | None = None,
+        length: int = 0,
+        access: int = 0,
+    ):
+        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        self.flags = FlagValue(flags or 0, flag_type="IBV_REREG_MR_FLAGS_ENUM")
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else None  # Optional PD
+        # Default address variable name
+        self.addr = ConstantValue(addr or "NULL")
+        self.length = IntValue(length or 0)  # Default length
+        # Default access flags
+        self.access = FlagValue(access or 0, flag_type="IBV_ACCESS_FLAGS_ENUM")
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the MR address in the tracker
-            self.tracker.use('mr', mr)
+            self.tracker.use("mr", self.mr.value)
+            self.required_resources.append({"type": "mr", "name": self.mr.value, "position": "mr"})  # 记录需要的资源
             # Register the PD address if specified
-            if pd:
-                self.tracker.use('pd', pd)
+            if self.pd:
+                self.tracker.use("pd", self.pd.value)
+                self.required_resources.append(
+                    {"type": "pd", "name": self.pd.value, "position": "pd"}
+                )  # 记录需要的资源
             # # Register the MR variable in the tracker
-            # self.tracker.alloc('mr_var', mr)
+            # self.tracker.create('mr_var', mr)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3552,14 +4876,7 @@ class ReRegMR(VerbCall):
         addr = kv.get("addr")
         length = int(kv.get("length", 0))
         access = int(kv.get("access", 0))
-        return cls(
-            mr=mr,
-            flags=flags,
-            pd=pd,
-            addr=addr,
-            length=length,
-            access=access
-        )
+        return cls(mr=mr, flags=flags, pd=pd, addr=addr, length=length, access=access)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         mr_name = self.mr
@@ -3575,15 +4892,25 @@ class ReRegMR(VerbCall):
 
 
 class ResizeCQ(VerbCall):
-    def __init__(self, cq: str, cqe: int, ctx: CodeGenContext = None):
-        self.cq = cq
-        self.cqe = cqe
+    MUTABLE_FIELDS = ["cq", "cqe"]
+    """Resize a completion queue (CQ) to a new size."""
+
+    def __init__(self, cq: str = None, cqe: int = None):
+        self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        self.cqe = IntValue(cqe or 0)  # Default CQE count
+
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the CQ address in the tracker
-            self.tracker.use('cq', cq)
+            self.tracker.use("cq", self.cq.value)
+            self.required_resources.append({"type": "cq", "name": self.cq.value, "position": "cq"})  # 记录需要的资源
             # # Register the CQ variable in the tracker
-            # self.tracker.alloc('cq_var', cq)
+            # self.tracker.create('cq_var', cq)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3612,16 +4939,28 @@ class SetECE(VerbCall):
         ece_var    -- ece 结构体变量名
     """
 
-    def __init__(self, qp: str, ece_obj: 'IbvECE', ece_var: str = "ece", ctx: CodeGenContext = None):
-        self.qp = qp
+    MUTABLE_FIELDS = ["qp", "ece_obj", "ece_var"]
+
+    def __init__(self, qp: str = None, ece_obj: "IbvECE" = None, ece_var: str = None):
+        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
         self.ece_obj = ece_obj
-        self.ece_var = ece_var
+        # Default variable name for the ECE structure
+        self.ece_var = ConstantValue(ece_var or "ece")
+        # Default to None, will be set in apply()
+        # 记录需要的资源
+
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP address in the tracker
-            self.tracker.use('qp', qp)
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
             # # Register the ECE options variable in the tracker
-            # self.tracker.alloc('ece_var', ece_var)
+            # self.tracker.create('ece_var', ece_var)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3638,7 +4977,7 @@ class SetECE(VerbCall):
             s += self.ece_obj.to_cxx(self.ece_var, ctx)
         else:
             s += f"\n    struct ibv_ece {self.ece_var} = {{0}};\n"
-        qp_name = self.qp
+        qp_name = str(self.qp)
         s += f"""
     if (ibv_set_ece({qp_name}, &{self.ece_var}) != 0) {{
         fprintf(stderr, "ibv_set_ece failed\\n");
@@ -3647,17 +4986,32 @@ class SetECE(VerbCall):
 """
         return s
 
+
 class AbortWR(VerbCall):
     """Abort all prepared work requests since wr_start."""
 
-    def __init__(self, qp_ex: str, ctx: CodeGenContext = None):
-        self.qp_ex = qp_ex
+    MUTABLE_FIELDS = ["qp_ex"]
+
+    def __init__(self, qp_ex: str = None):
+        self.qp_ex = (
+            ResourceValue(resource_type="qp_ex", value=qp_ex)
+            if qp_ex
+            else ResourceValue(resource_type="qp_ex", value="qp_ex")
+        )
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP extension address in the tracker
-            self.tracker.use('qp_ex', qp_ex)
+            self.tracker.use("qp_ex", self.qp_ex.value)
+            self.required_resources.append(
+                {"type": "qp_ex", "name": self.qp_ex.value, "position": "qp_ex"}
+            )  # 记录需要的资源
             # # Register the QP extension variable in the tracker
-            # self.tracker.alloc('qp_ex_var', qp_ex)
+            # self.tracker.create('qp_ex_var', qp_ex)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3675,14 +5029,28 @@ class AbortWR(VerbCall):
 
 
 class WRComplete(VerbCall):
-    def __init__(self, qp_ex: str, ctx: CodeGenContext = None):
-        self.qp_ex = qp_ex
+    MUTABLE_FIELDS = ["qp_ex"]
+
+    def __init__(self, qp_ex: str):
+        self.qp_ex = (
+            ResourceValue(resource_type="qp_ex", value=qp_ex)
+            if qp_ex
+            else ResourceValue(resource_type="qp_ex", value="qp_ex")
+        )
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP extension address in the tracker
-            self.tracker.use('qp_ex', qp_ex)
+            self.tracker.use("qp_ex", self.qp_ex.value)
+            self.required_resources.append(
+                {"type": "qp_ex", "name": self.qp_ex.value, "position": "qp_ex"}
+            )  # 记录需要的资源
             # # Register the QP extension variable in the tracker
-            # self.tracker.alloc('qp_ex_var', qp_ex)
+            # self.tracker.create('qp_ex_var', qp_ex)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3702,14 +5070,28 @@ class WRComplete(VerbCall):
 
 
 class WrStart(VerbCall):
-    def __init__(self, qp_ex: str, ctx: CodeGenContext = None):
-        self.qp_ex = qp_ex
+    MUTABLE_FIELDS = ["qp_ex"]
+
+    def __init__(self, qp_ex: str = None):
+        self.qp_ex = (
+            ResourceValue(resource_type="qp_ex", value=qp_ex)
+            if qp_ex
+            else ResourceValue(resource_type="qp_ex", value="qp_ex")
+        )
+        self.tracker = None
+        self.required_resources = []
+
+    def apply(self, ctx: CodeGenContext):
+        self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the QP extension address in the tracker
-            self.tracker.use('qp_ex', qp_ex)
+            self.tracker.use("qp_ex", self.qp_ex.value)
+            self.required_resources.append(
+                {"type": "qp_ex", "name": self.qp_ex.value, "position": "qp_ex"}
+            )  # 记录需要的资源
             # # Register the QP extension variable in the tracker
-            # self.tracker.alloc('qp_ex_var', qp_ex)
+            # self.tracker.create('qp_ex_var', qp_ex)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3724,6 +5106,7 @@ class WrStart(VerbCall):
     /* ibv_wr_start */
     ibv_wr_start({qp_ex_name});
 """
+
 
 # Mapping verb -> constructor
 VERB_FACTORY = {
@@ -3747,5 +5130,5 @@ VERB_FACTORY = {
     "ibv_dereg_mr": DeregMR.from_trace,
     "ibv_destroy_cq": DestroyCQ.from_trace,
     "ibv_dealloc_pd": DeallocPD.from_trace,
-    "ibv_close_device": CloseDevice.from_trace
+    "ibv_close_device": CloseDevice.from_trace,
 }
