@@ -6,6 +6,70 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional, Tuple
 
+# ===== 在文件开头加一个全局开关和工具函数 =====
+DEBUG = False  # 改成 True 就能打开所有调试信息
+
+
+def debug_print(*args, **kwargs):
+    """只在 DEBUG=True 时输出"""
+    if DEBUG:
+        print(*args, **kwargs)
+
+
+def _unwrap(x: Any) -> Any:
+    return getattr(x, "value", x)
+
+
+def _get_by_path(root: Any, path: str, *, missing_ok: bool = True) -> Any:
+    """
+    支持点路径 'a.b.c'，并在**每一跳**先做 unwrap：
+      - 若当前节点是 wrapper（有 .value），先取 .value
+      - 若为 None 且 missing_ok=True，直接返回 None（表示“可缺省”）
+      - 支持 dict（按 key）与 list/tuple（按下标）访问
+    """
+    cur = root
+    for seg in path.split("."):
+        cur = _unwrap(cur)
+        if cur is None:
+            if missing_ok:
+                return None
+            raise AttributeError(f"path '{path}' broken at segment '{seg}' (None)")
+
+        # dict 优先
+        if isinstance(cur, dict) and seg in cur:
+            cur = cur[seg]
+            continue
+
+        # list/tuple 下标
+        if isinstance(cur, (list, tuple)):
+            try:
+                idx = int(seg)
+                cur = cur[idx]
+                continue
+            except Exception:
+                # 不是下标，继续尝试 getattr
+                pass
+
+        # 常规 getattr
+        cur = getattr(cur, seg)
+
+    return _unwrap(cur)
+
+
+def _as_iter(x: Any) -> Iterable:
+    """
+    对 require/transition/produce 里的 name 值做批量化：
+      - None -> 空列表（跳过）
+      - list/tuple/set -> 原样迭代
+      - 其他 -> 单元素列表
+    """
+    x = _unwrap(x)
+    if x is None:
+        return []
+    if isinstance(x, (list, tuple, set)):
+        return x
+    return [x]
+
 
 # -------- 资源状态机：可按需扩展 --------
 class State(Enum):
@@ -15,6 +79,7 @@ class State(Enum):
     RTR = auto()
     RTS = auto()
     DESTROYED = auto()
+    IMPORTED = auto()
 
 
 @dataclass(frozen=True)
@@ -112,21 +177,48 @@ class ContractTable:
         rec.state = State.DESTROYED
 
     # ===== 契约执行 =====
+    # def apply_contract(self, verb: Any, contract: Contract):
+    #     # 1) 检查 require
+    #     for spec in contract.requires:
+    #         name = getattr(verb, spec.name_attr)
+    #         self.require(spec.rtype, str(name), spec.state)
+
+    #     # 2) 检查/执行 transition
+    #     for spec in contract.transitions:
+    #         name = getattr(verb, spec.name_attr)
+    #         self.transition(spec.rtype, str(name), spec.to_state, spec.from_state)
+
+    #     # 3) 执行 produce
+    #     for spec in contract.produces:
+    #         name = getattr(verb, spec.name_attr)
+    #         self.put(spec.rtype, str(name), spec.state)
     def apply_contract(self, verb: Any, contract: Contract):
-        # 1) 检查 require
+        # 1) requires
         for spec in contract.requires:
-            name = getattr(verb, spec.name_attr)
-            self.require(spec.rtype, str(name), spec.state)
+            try:
+                val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+            except Exception as e:
+                raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+            for name in _as_iter(val):
+                self.require(spec.rtype, str(name), spec.state)
 
-        # 2) 检查/执行 transition
+        # 2) transitions
         for spec in contract.transitions:
-            name = getattr(verb, spec.name_attr)
-            self.transition(spec.rtype, str(name), spec.to_state, spec.from_state)
+            try:
+                val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+            except Exception as e:
+                raise ContractError(f"transition: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+            for name in _as_iter(val):
+                self.transition(spec.rtype, str(name), spec.to_state, spec.from_state)
 
-        # 3) 执行 produce
+        # 3) produces
         for spec in contract.produces:
-            name = getattr(verb, spec.name_attr)
-            self.put(spec.rtype, str(name), spec.state)
+            try:
+                val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+            except Exception as e:
+                raise ContractError(f"produce: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+            for name in _as_iter(val):
+                self.put(spec.rtype, str(name), spec.state)
 
     # ===== 查询 / 调试 =====
     def snapshot(self) -> Dict[Tuple[str, str], str]:

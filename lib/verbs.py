@@ -3605,13 +3605,21 @@ class ModifyCQ(VerbCall):
         return code
 
 
+_QP_ENUM_TO_STATE = {
+    "IBV_QPS_RESET": State.RESET,
+    "IBV_QPS_INIT": State.INIT,
+    "IBV_QPS_RTR": State.RTR,
+    "IBV_QPS_RTS": State.RTS,
+}
+
+
 class ModifyQP(VerbCall):
-    MUTABLE_FIELDS = ["qp", "attr", "attr_mask"]
-    CONTRACT = Contract(
-        requires=[RequireSpec("qp", None, "qp")],
-        produces=[],  # 不新建资源
-        transitions=[TransitionSpec("qp", from_state=State.RESET, to_state=State.INIT, name_attr="qp")],
-    )
+    MUTABLE_FIELDS = ["qp", "attr_obj", "attr_mask"]
+    # CONTRACT = Contract(
+    #     requires=[RequireSpec("qp", None, "qp")],
+    #     produces=[],  # 不新建资源
+    #     transitions=[TransitionSpec("qp", from_state=State.RESET, to_state=State.INIT, name_attr="qp")],
+    # )
 
     def __init__(self, qp: str = None, attr_obj: IbvQPAttr = None, attr_mask: str = None):  # TODO: attr 需要检查
         self.qp = (
@@ -3625,6 +3633,33 @@ class ModifyQP(VerbCall):
         )  # Variable name for the attribute mask
         self.tracker = None
         self.required_resources = []
+
+    def _contract(self) -> Contract:
+        """Generate the contract for this verb call."""
+        return self._contract_for_this_call()
+
+    def _contract_for_this_call(self) -> Contract:
+        # 读取本次期望目标状态
+        target = None
+        ao = getattr(self, "attr_obj", None) or getattr(self, "attr", None)
+        if ao is not None and hasattr(ao, "qp_state"):
+            qs = getattr(ao, "qp_state")
+            qs = getattr(qs, "value", qs)
+            target = _QP_ENUM_TO_STATE.get(str(qs))
+
+        # 只要求 qp 存在；迁移到“本次 attr 指定的状态”
+        if target is None:
+            return Contract(
+                requires=[RequireSpec("qp", None, "qp")],
+                produces=[],
+                transitions=[],
+            )
+        return Contract(
+            requires=[RequireSpec("qp", None, "qp")],
+            produces=[],
+            # from_state=None = 放宽来源，避免你这种二次调用还要求 RESET 的情况
+            transitions=[TransitionSpec("qp", from_state=None, to_state=target, name_attr="qp")],
+        )
 
     def apply(self, ctx: CodeGenContext):
         self.required_resources = []
@@ -4232,7 +4267,7 @@ class PostRecv(VerbCall):
 
 class PostSend(VerbCall):  # TODO: 修改varname
     MUTABLE_FIELDS = ["qp", "wr_obj"]
-    ONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
 
     def __init__(self, qp: str = None, wr_obj: IbvSendWR = None, wr_var=None, bad_wr_var=None):
         self.qp = ResourceValue(resource_type="qp", value=qp)  # qp对象变量名或trace地址

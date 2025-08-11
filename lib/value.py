@@ -81,32 +81,67 @@ class Value:
 
 
 class IntValue(Value):
-    def __init__(self, value: int = None, range: Range = None, mutable: bool = True):
+    def __init__(
+        self,
+        value: int | None = None,
+        range: Range | list | None = None,
+        step: int | None = None,
+        rng=None,
+        mutable=True,
+    ):
         super().__init__(value, mutable)
-        self.range = range  # should be a default Range object or None
-        if isinstance(self.range, int):
-            self.range = Range(0, self.range)
+        self.range = Range(0, range) if isinstance(range, int) else range
+        self.step = step
+        self.rng = rng or random
 
     def mutate(self):
         if not self.mutable:
             debug_print("This IntValue is not mutable.")
             return
-        # Example mutation: increment or decrement the value
         if isinstance(self.range, Range):
-            # Ensure the mutation stays within the specified range
-            min_val, max_val = self.range.min_value, self.range.max_value
-            # mutation = random.choice([-1, 1])
-            # self.value = max(min_val, min(max_val, self.value + mutation))
-            self.value = random.randint(min_val, max_val)
-        elif isinstance(self.range, list):
-            # If range is a list, randomly select a value from the list
-            self.value = random.choice(self.range)
-        if self.range is None:
-            # If no range is specified, just increment or decrement
-            # mutation = random.choice([-1, 1])
-            # self.value += mutation
-            self.value = random.randint(0, 100)  # Example: random value between 0 and 100
-            debug_print(f"IntValue mutated to {self.value} within range {self.range}")
+            if self.step:  # 小步走，更利于“梯度式”探索
+                delta = self.rng.choice([-self.step, self.step])
+                v = (self.value or 0) + delta
+                self.value = max(self.range.min_value, min(self.range.max_value, v))
+            else:  # 整体重采样
+                self.value = self.rng.randint(self.range.min_value, self.range.max_value)
+        elif isinstance(self.range, list):  # 离散集合
+            # 避免原地踏步
+            candidates = [x for x in self.range if x != self.value] or self.range
+            self.value = self.rng.choice(candidates)
+        else:
+            # 无约束：温和扰动
+            v = (self.value or 0) + self.rng.choice([-1, 1])
+            self.value = max(0, v)
+
+
+# class IntValue(Value):
+#     def __init__(self, value: int = None, range: Range = None, mutable: bool = True):
+#         super().__init__(value, mutable)
+#         self.range = range  # should be a default Range object or None
+#         if isinstance(self.range, int):
+#             self.range = Range(0, self.range)
+
+#     def mutate(self):
+#         if not self.mutable:
+#             debug_print("This IntValue is not mutable.")
+#             return
+#         # Example mutation: increment or decrement the value
+#         if isinstance(self.range, Range):
+#             # Ensure the mutation stays within the specified range
+#             min_val, max_val = self.range.min_value, self.range.max_value
+#             # mutation = random.choice([-1, 1])
+#             # self.value = max(min_val, min(max_val, self.value + mutation))
+#             self.value = random.randint(min_val, max_val)
+#         elif isinstance(self.range, list):
+#             # If range is a list, randomly select a value from the list
+#             self.value = random.choice(self.range)
+#         if self.range is None:
+#             # If no range is specified, just increment or decrement
+#             # mutation = random.choice([-1, 1])
+#             # self.value += mutation
+#             self.value = random.randint(0, 100)  # Example: random value between 0 and 100
+#             debug_print(f"IntValue mutated to {self.value} within range {self.range}")
 
 
 class BoolValue(Value):
@@ -247,16 +282,25 @@ class EnumValue(Value):
         else:
             raise ValueError(f"Enum type {enum_type} not found in EnumValue class.")
 
+    # def mutate(self):
+    #     if not self.mutable:
+    #         debug_print("This EnumValue is not mutable.")
+    #         return
+    #     # Example mutation: change to another value in the enum type
+    #     # This is a placeholder; actual implementation would depend on the enum type
+    #     debug_print(f"Mutating EnumValue of type {self.enum_type} with value {self.value}")
+    #     debug_print(f"Available enums: {self.enums}")
+    #     self.value = random.choice(self.enums)
+    #     pass  # Implement actual mutation logic based on enum type
     def mutate(self):
         if not self.mutable:
             debug_print("This EnumValue is not mutable.")
             return
-        # Example mutation: change to another value in the enum type
-        # This is a placeholder; actual implementation would depend on the enum type
-        debug_print(f"Mutating EnumValue of type {self.enum_type} with value {self.value}")
-        debug_print(f"Available enums: {self.enums}")
-        self.value = random.choice(self.enums)
-        pass  # Implement actual mutation logic based on enum type
+        pool = list(self.enums)
+        if self.value in pool and len(pool) > 1:
+            pool.remove(self.value)
+        # （可选）按“邻近枚举”权重优先；这里给个简单实现
+        self.value = random.choice(pool)
 
 
 class FlagValue(Value):
@@ -308,7 +352,7 @@ class FlagValue(Value):
         "IBV_REREG_MR_CHANGE_TRANSLATION": 1 << 0,
         "IBV_REREG_MR_CHANGE_PD": 1 << 1,
         "IBV_REREG_MR_CHANGE_ACCESS": 1 << 2,
-        "IBV_REREG_MR_FLAGS_SUPPORTED": 1 << 3 - 1,
+        "IBV_REREG_MR_FLAGS_SUPPORTED": (1 << 3) - 1,
     }
 
     IBV_SEND_FLAGS_ENUM = {
@@ -354,32 +398,64 @@ class FlagValue(Value):
         "IBV_QP_EX_WITH_ATOMIC_WRITE": 1 << 12,
     }
 
-    def __init__(self, value: str = None, flag_type=None, mutable: bool = True):
+    def __init__(self, value: int | None = None, flag_type=None, mutable=True):
         super().__init__(value, mutable)
         self.flag_type = flag_type
-        self.flags = self._get_flag_values(flag_type)
-        self.flags = list(self.flags)
+        self.flags = list(self._get_flag_values(flag_type))  # -> keys like "IBV_QP_STATE"
+        self.map = getattr(self, flag_type) if isinstance(flag_type, str) else flag_type  # name->int
 
-    def _get_flag_values(self, flag_type: list) -> list[str]:
-        # Placeholder for fetching flag values based on the flag type
-        # In a real implementation, this would fetch from an actual flag definition
+    def _get_flag_values(self, flag_type: str) -> list[str]:
+        """Get the flag values based on the flag type."""
         if isinstance(flag_type, dict):
             return flag_type.keys()
-        elif isinstance(flag_type, str):
-            # If flag_type is a string, assume it's a predefined enum type
-            return getattr(self, flag_type, {}).keys()
-        return flag_type
+        elif hasattr(self, flag_type):
+            return getattr(self, flag_type).keys()
+        else:
+            raise ValueError(f"Flag type {flag_type} not found in FlagValue class.")
 
-    def mutate(self):  # 随机选一个或者多个，然后combine
+    def mutate(self):
         if not self.mutable:
-            debug_print("This FlagValue is not mutable.")
             return
-        debug_print(f"Mutating FlagValue of type {self.flag_type} with value {self.value}")
-        debug_print(f"Available flags: {self.flags}")
-        # Randomly select one or more flags and combine them
-        selected_flags = random.sample(self.flags, k=random.randint(1, len(self.flags)))
-        self.value = " | ".join(selected_flags)
-        debug_print(f"New value after mutation: {self.value}")
+        k = random.randint(1, max(1, len(self.flags)))
+        picked = random.sample(self.flags, k=k)
+        mask = 0
+        for name in picked:
+            mask |= self.map[name]
+        self.value = mask
+
+    def to_c_expr(self) -> str:
+        # 可选：把当前 mask 转回 "A | B" 便于代码生成
+        if self.value is None:
+            return "0"
+        names = [n for n, v in self.map.items() if (self.value & v)]
+        return " | ".join(names) if names else "0"
+
+    # def __init__(self, value: str = None, flag_type=None, mutable: bool = True):
+    #     super().__init__(value, mutable)
+    #     self.flag_type = flag_type
+    #     self.flags = self._get_flag_values(flag_type)
+    #     self.flags = list(self.flags)
+
+    # def _get_flag_values(self, flag_type: list) -> list[str]:
+    #     # Placeholder for fetching flag values based on the flag type
+    #     # In a real implementation, this would fetch from an actual flag definition
+    #     if isinstance(flag_type, dict):
+    #         return flag_type.keys()
+    #     elif isinstance(flag_type, str):
+    #         # If flag_type is a string, assume it's a predefined enum type
+    #         return getattr(self, flag_type, {}).keys()
+    #     return flag_type
+
+    # def mutate(self):  # 随机选一个或者多个，然后combine
+    #     if not self.mutable:
+    #         debug_print("This FlagValue is not mutable.")
+    #         return
+    #     debug_print(f"Mutating FlagValue of type {self.flag_type} with value {self.value}")
+    #     debug_print(f"Available flags: {self.flags}")
+    #     # Randomly select one or more flags and combine them
+    #     selected_flags = random.sample(self.flags, k=random.randint(1, len(self.flags)))
+    #     self.value = " | ".join(selected_flags)
+    #     debug_print(f"New value after mutation: {self.value}")
 
 
 class ResourceValue(Value):
@@ -389,25 +465,40 @@ class ResourceValue(Value):
         if not resource_type:
             raise ValueError("ResourceValue must have a resource type defined.")
 
-    def mutate(self, tracker: ObjectTracker = None):
+    # def mutate(self, tracker: ObjectTracker = None):
+    #     if not self.mutable:
+    #         debug_print("This ResourceValue is not mutable.")
+    #         return
+    #     # # Resource values may not change, so this method does nothing
+    #     # debug_print("ResourceValue does not mutate.")
+    #     if tracker:
+    #         # Example mutation: randomly select a resource from the tracker
+    #         # resources = tracker.all_objs(self.resource_type)
+    #         # if resources:
+    #         #     self.value = random.choice(resources)
+    #         # else:
+    #         #     debug_print(f"No resources of type {self.resource_type} available for mutation.")
+    #         self.value = tracker.random_choose(self.resource_type, exclude=self.value)
+    #         if self.value is None:
+    #             debug_print(f"No resources of type {self.resource_type} available for mutation.")
+    #     else:
+    #         debug_print("No ObjectTracker provided, cannot mutate ResourceValue.")
+    #     pass
+    def mutate(
+        self, tracker: ObjectTracker = None, contracts=None, want_type: str | None = None, allow_destroyed=False
+    ):
         if not self.mutable:
             debug_print("This ResourceValue is not mutable.")
             return
-        # # Resource values may not change, so this method does nothing
-        # debug_print("ResourceValue does not mutate.")
+        if contracts is not None and hasattr(contracts, "snapshot"):
+            typ = want_type or self.resource_type
+            snap = contracts.snapshot()
+            cands = [name for (t, name), st in snap.items() if t == typ and (allow_destroyed or st != "DESTROYED")]
+            if cands:
+                self.value = random.choice([x for x in cands if x != self.value] or cands)
+                return
         if tracker:
-            # Example mutation: randomly select a resource from the tracker
-            # resources = tracker.all_objs(self.resource_type)
-            # if resources:
-            #     self.value = random.choice(resources)
-            # else:
-            #     debug_print(f"No resources of type {self.resource_type} available for mutation.")
             self.value = tracker.random_choose(self.resource_type, exclude=self.value)
-            if self.value is None:
-                debug_print(f"No resources of type {self.resource_type} available for mutation.")
-        else:
-            debug_print("No ObjectTracker provided, cannot mutate ResourceValue.")
-        pass
 
 
 class ListValue(Value):  # 能不能限定：列表的元素都一样；传入时知道元素类型，比如IbvSge
@@ -418,7 +509,7 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
         "swap_items",  # Swap two items in the list
     ]
 
-    def __init__(self, value: list[Value] = None, factory=None, mutable: bool = True):
+    def __init__(self, value: list[Value] = None, factory=None, mutable: bool = True, on_after_mutate=None):
         super().__init__(value, mutable)
         if value is None:
             self.value = []
@@ -432,6 +523,8 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
         if factory is not None and not callable(factory):
             raise TypeError("Factory must be a callable that returns a Value object.")
         self.factory = factory  # Factory function to create new Value objects
+
+        self.on_after_mutate = on_after_mutate
 
     def mutate(self):
         if not self.mutable:
@@ -472,6 +565,8 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
                 debug_print(f"Swapped items: {self.value[idx1]} and {self.value[idx2]}")
             else:
                 debug_print("Not enough items to swap in the list.")
+        if callable(self.on_after_mutate):
+            self.on_after_mutate(self)
 
     def __iter__(self):
         """Make ListValue iterable."""

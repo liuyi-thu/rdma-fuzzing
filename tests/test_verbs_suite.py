@@ -93,6 +93,14 @@ def _mk_cq(ctx, name="cq0", cqe=8, comp_vector=0):
     return name
 
 
+def _mk_qp(ctx, pd="pd0", cq="cq0", qp="qp0"):
+    v = verbs.CreateQP(pd=pd, qp=qp, init_attr_obj=verbs.IbvQPInitAttr(qp_type="IBV_QPT_RC", send_cq=cq, recv_cq=cq))
+    v.apply(ctx)
+    # if hasattr(ctx, "contracts"):
+    #     ctx.contracts.put("qp", qp, contracts.State.RESET)
+    return qp
+
+
 def _mk_wq(ctx, pd="pd0", cq="cq0", wq="wq0"):
     """Create WQ by passing pd/cq via IbvWQInitAttr into CreateWQ(wq, wq_attr_obj)."""
     IbvWQInitAttr = _load("IbvWQInitAttr", "lib.IbvWQInitAttr")
@@ -217,6 +225,9 @@ def test_create_cq_ex_minimal_codegen():
 
 def test_create_flow_minimal_codegen():
     ctx = FakeCtx()
+    _mk_pd(ctx, "pd0")
+    _mk_cq(ctx, "cq0")
+    _mk_qp(ctx, "pd0", "cq0", "qp0")
     IbvFlowAttr = _load("IbvFlowAttr", "lib.IbvFlowAttr")
     if IbvFlowAttr is None:
         pytest.skip("IbvFlowAttr not found")
@@ -274,6 +285,9 @@ def test_create_wq_minimal_apply_and_codegen():
 
 def test_destroy_wq_apply_and_codegen():
     ctx = FakeCtx()
+    _mk_pd(ctx, "pd0")
+    _mk_cq(ctx, "cq0")
+    _mk_wq(ctx, "pd0", "cq0", "wq0")
     v = verbs.DestroyWQ(wq="wq0")
     v.apply(ctx)
     assert {"type": "wq", "name": "wq0", "position": "wq"} in getattr(v, "required_resources", [])
@@ -355,6 +369,7 @@ def test_create_and_modify_srq_apply_and_codegen():
 
 def test_modify_cq_with_attr_obj_codegen():
     ctx = FakeCtx()
+    _mk_cq(ctx, "cq0")
     IbvModifyCQAttr = _load("IbvModifyCQAttr", "lib.IbvModifyCQAttr")
     if IbvModifyCQAttr is None:
         pytest.skip("IbvModifyCQAttr not found")
@@ -425,6 +440,7 @@ def test_modify_qp_rate_limit_minimal():
 
 def test_mutation_advise_mr_smoke():
     ctx = FakeCtx()
+    _mk_pd(ctx, "pd0")
     v = verbs.AdviseMR(pd="pd0", advice=1, flags=0, sg_list=[], num_sge=1)
     v.apply(ctx)
     _mutate_all_fields(v, exempt_keys=("sg_var",))
@@ -434,6 +450,7 @@ def test_mutation_advise_mr_smoke():
 
 def test_mutation_reg_mr_smoke():
     ctx = FakeCtx()
+    _mk_pd(ctx, "pd0")
     v = verbs.RegMR(pd="pd0", mr="mr0", buf="buf", length=64, flags="IBV_ACCESS_LOCAL_WRITE")
     v.apply(ctx)
     _mutate_all_fields(v)
