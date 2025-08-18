@@ -5,6 +5,8 @@ try:
 except ImportError:
     from codegen_context import CodeGenContext
 
+from .contracts import Contract, InstantiatedContract
+
 # ===== 在文件开头加一个全局开关和工具函数 =====
 DEBUG = False  # 改成 True 就能打开所有调试信息
 
@@ -18,6 +20,31 @@ def debug_print(*args, **kwargs):
 class Attr:
     def to_cxx(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError
+
+    def _contract(self):
+        return Contract(
+            requires=[],
+            produces=[],
+            transitions=[],
+        )
+
+    def get_contract(self):
+        return self.CONTRACT if hasattr(self, "CONTRACT") else self._contract()
+
+    def instantiate_contract(self):
+        # print("why")
+        """Instantiate the contract for this verb call."""
+        # return InstantiatedContract.instantiate(self, self.get_contract())
+        instantiate_contracts = [InstantiatedContract.instantiate(self, self.get_contract())]
+        for field in getattr(self, "MUTABLE_FIELDS", []):
+            # print(f"Checking field: {field}")
+            if hasattr(self, field):
+                # 递归调用
+                c = getattr(self, field).instantiate_contract()
+                if c:
+                    instantiate_contracts.append(c)
+        contract = InstantiatedContract.merge(instantiate_contracts)
+        return contract
 
     def set_resource(self, res_type: str, old_res_name: str, new_res_name: str):
         """Set a resource for this verb call, used for replacing resources."""

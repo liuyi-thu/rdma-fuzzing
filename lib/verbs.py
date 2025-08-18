@@ -56,7 +56,7 @@ except Exception:
         unwrap_all,
     )
 
-from .contracts import Contract, ProduceSpec, RequireSpec, State, TransitionSpec
+from .contracts import Contract, InstantiatedContract, ProduceSpec, RequireSpec, State, TransitionSpec
 
 
 def mask_fields_to_c(mask):
@@ -95,6 +95,8 @@ def _parse_kv(info: str) -> dict[str, str]:
 
 
 class VerbCall:
+    FIELD_LIST = []
+
     def __init__(self):
         self.tracker = None
         self.required_resources = []  # 记录所需资源
@@ -102,6 +104,24 @@ class VerbCall:
 
     def _contract(self):
         return None
+
+    def get_contract(self):
+        return self.CONTRACT if hasattr(self, "CONTRACT") else self._contract()
+
+    def instantiate_contract(self):
+        # print("why")
+        """Instantiate the contract for this verb call."""
+        # return InstantiatedContract.instantiate(self, self.get_contract())
+        instantiate_contracts = [InstantiatedContract.instantiate(self, self.get_contract())]
+        for field in getattr(self, "MUTABLE_FIELDS", []):
+            # print(f"Checking field: {field}")
+            if hasattr(self, field):
+                # 递归调用
+                c = getattr(self, field).instantiate_contract()
+                if c:
+                    instantiate_contracts.append(c)
+        contract = InstantiatedContract.merge(instantiate_contracts)
+        return contract
 
     def generate_c(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError
@@ -194,6 +214,15 @@ class UtilityCall:  # 生成verbs之外的函数
         self.tracker = None
         self.required_resources = []  # 记录所需资源
         self.allocated_resources = []  # 记录已分配的资源
+
+    def _contract(self):
+        return None
+
+    def apply(self, ctx: CodeGenContext):
+        return
+
+    def get_contract(self):
+        return self.CONTRACT if hasattr(self, "CONTRACT") else self._contract()
 
     def generate_c(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError
@@ -3612,6 +3641,13 @@ _QP_ENUM_TO_STATE = {
     "IBV_QPS_RTS": State.RTS,
 }
 
+_PREV_STATE = {
+    State.RESET: None,
+    State.INIT: State.RESET,
+    State.RTR: State.INIT,
+    State.RTS: State.RTR,
+}
+
 
 class ModifyQP(VerbCall):
     MUTABLE_FIELDS = ["qp", "attr_obj", "attr_mask"]
@@ -3655,10 +3691,11 @@ class ModifyQP(VerbCall):
                 transitions=[],
             )
         return Contract(
+            # requires=[RequireSpec("qp", _PREV_STATE[target], "qp")],
             requires=[RequireSpec("qp", None, "qp")],
             produces=[],
             # from_state=None = 放宽来源，避免你这种二次调用还要求 RESET 的情况
-            transitions=[TransitionSpec("qp", from_state=None, to_state=target, name_attr="qp")],
+            transitions=[TransitionSpec("qp", from_state=_PREV_STATE[target], to_state=target, name_attr="qp")],
         )
 
     def apply(self, ctx: CodeGenContext):

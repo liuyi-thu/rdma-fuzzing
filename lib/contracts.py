@@ -131,6 +131,98 @@ class Contract:
         return Contract([], [], [])
 
 
+@dataclass
+class InstantiatedContract(Contract):
+    """
+    用于测试时的契约验证。
+    主要用于测试时的契约验证。
+    """
+
+    @staticmethod
+    def instantiate(verb: Any, contract: Contract) -> InstantiatedContract:
+        requires = []
+        for spec in contract.requires:
+            try:
+                val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+            except Exception as e:
+                raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+            for name in _as_iter(val):
+                requires.append(RequireSpec(rtype=spec.rtype, state=spec.state, name_attr=str(name)))
+        produces = []
+        for spec in contract.produces:
+            try:
+                val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+            except Exception as e:
+                raise ContractError(f"produce: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+            for name in _as_iter(val):
+                produces.append(ProduceSpec(rtype=spec.rtype, state=spec.state, name_attr=str(name)))
+        transitions = []
+        for spec in contract.transitions:
+            try:
+                val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+            except Exception as e:
+                raise ContractError(f"transition: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+            for name in _as_iter(val):
+                transitions.append(
+                    TransitionSpec(
+                        rtype=spec.rtype, from_state=spec.from_state, to_state=spec.to_state, name_attr=str(name)
+                    )
+                )
+        return InstantiatedContract(
+            requires=requires,
+            produces=produces,
+            transitions=transitions,
+        )
+
+    @staticmethod
+    # def merge(self, other: InstantiatedContract) -> InstantiatedContract:
+    #     """
+    #     合并两个契约实例，返回一个新的实例。
+    #     """
+    #     return InstantiatedContract(
+    #         requires=self.requires + other.requires,
+    #         produces=self.produces + other.produces,
+    #         transitions=self.transitions + other.transitions,
+    #     )
+    def merge(list_of_contracts: List[InstantiatedContract]) -> InstantiatedContract:
+        """
+        合并多个契约实例，返回一个新的实例。
+        """
+        requires = []
+        produces = []
+        transitions = []
+        for contract in list_of_contracts:
+            requires.extend(contract.requires)
+            produces.extend(contract.produces)
+            transitions.extend(contract.transitions)
+
+        def remove_duplicates_by_eq_loop(data_list):
+            """
+            使用循环实现列表去重（基于相等性）。
+
+            Args:
+                data_list: 包含重复元素的列表。
+
+            Returns:
+                去重后的列表。
+            """
+            unique_list = []
+            for item in data_list:
+                if item not in unique_list:
+                    unique_list.append(item)
+            return unique_list
+
+        requires = remove_duplicates_by_eq_loop(requires)
+        produces = remove_duplicates_by_eq_loop(produces)
+        transitions = remove_duplicates_by_eq_loop(transitions)
+
+        return InstantiatedContract(
+            requires=requires,
+            produces=produces,
+            transitions=transitions,
+        )
+
+
 class ContractTable:
     """
     维护资源状态机；你可以把它挂在 CodeGenContext/ctx 上为 ctx.contracts。
@@ -193,6 +285,8 @@ class ContractTable:
     #         name = getattr(verb, spec.name_attr)
     #         self.put(spec.rtype, str(name), spec.state)
     def apply_contract(self, verb: Any, contract: Contract):
+        contract = verb.get_contract()
+        print(contract)
         # 1) requires
         for spec in contract.requires:
             try:
@@ -223,3 +317,22 @@ class ContractTable:
     # ===== 查询 / 调试 =====
     def snapshot(self) -> Dict[Tuple[str, str], str]:
         return {(k.rtype, k.name): v.state.name for k, v in self._store.items()}
+
+    # @staticmethod
+    # def instantiate_contract(verb: Any, contract: Contract):
+    #     """
+    #     实例化一个 Contract 对象，便于在测试中使用。
+    #     主要用于测试时的契约验证。
+    #     """
+    #     # return Contract(
+    #     #     requires=[RequireSpec(rtype=spec.rtype, state=spec.state, name_attr=spec.name_attr) for spec in contract.requires],
+    #     #     produces=[ProduceSpec(rtype=spec.rtype, state=spec.state, name_attr=spec.name_attr) for spec in contract.produces],
+    #     #     transitions=[TransitionSpec(rtype=spec.rtype, from_state=spec.from_state, to_state=spec.to_state, name_attr=spec.name_attr) for spec in contract.transitions],
+    #     # )
+    #     requires = []
+
+    #     for spec in contract.requires:
+    #         try:
+    #             val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+    #         except Exception as e:
+    #             raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")

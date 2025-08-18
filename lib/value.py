@@ -79,6 +79,12 @@ class Value:
             return 0
         return 1
 
+    def get_contract(self):
+        return None  # value does not have a contract by default
+
+    def instantiate_contract(self):
+        return None
+
 
 class IntValue(Value):
     def __init__(

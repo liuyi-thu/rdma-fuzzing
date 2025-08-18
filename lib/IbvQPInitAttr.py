@@ -25,6 +25,8 @@ try:
 except ImportError:
     from value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
 
+from .contracts import Contract, ProduceSpec, RequireSpec, State, TransitionSpec
+
 IBV_QP_TYPE_ENUM = {
     2: "IBV_QPT_RC",
     3: "IBV_QPT_UC",
@@ -39,6 +41,15 @@ IBV_QP_TYPE_ENUM = {
 class IbvQPInitAttr(Attr):
     FIELD_LIST = ["qp_context", "send_cq", "recv_cq", "srq", "cap", "qp_type", "sq_sig_all"]
     MUTABLE_FIELDS = FIELD_LIST
+    CONTRACT = Contract(
+        requires=[
+            RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="send_cq"),
+            RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="recv_cq"),
+            RequireSpec(rtype="srq", state=State.ALLOCATED, name_attr="srq"),
+        ],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(self, qp_context=None, send_cq=None, recv_cq=None, srq=None, cap=None, qp_type=None, sq_sig_all=None):
         self.qp_context = OptionalValue(
@@ -97,6 +108,8 @@ class IbvQPInitAttr(Attr):
                 self.required_resources.append({"type": "srq", "name": self.srq.get_value(), "position": "srq"})
             # if self.cap:
             #     self.cap.apply(ctx)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
     # def get_required_resources_recursively(self) -> List[Dict[str, str]]:
     #     """Get all required resources recursively."""
