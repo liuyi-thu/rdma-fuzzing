@@ -11,6 +11,7 @@ import lib.fuzz_mutate as fuzz_mutate
 import lib.ibv_all as ibv_all
 import lib.verbs as verbs
 from lib.debug_dump import snapshot_verbs, dump_verbs, diff_verb_snapshots, summarize_verb_list, summarize_verb
+from termcolor import colored
 
 
 # Allow users to override the module name via env var (default: "verbs").
@@ -223,13 +224,13 @@ if __name__ == "__main__":
     ]
     random.seed(42)  # for reproducibility
     for i in range(len(original_verb_list)):
-        print(f"=== Iteration {i} ===")
+        print(colored(f"=== Mutation Iteration {i} ===", "blue"))
         rng = random.Random(42)  # for reproducibility
         ctx = FakeCtx()
         verb_list = list(original_verb_list)  # make a copy
         for v in verb_list:
             v.apply(ctx)
-        print("=== VERBS SUMMARY (before) ===")
+        print(colored("=== VERBS SUMMARY (before) ===", "green"))
         print(
             summarize_verb_list(verbs=verb_list, deep=True, highlight=i)
         )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
@@ -237,13 +238,13 @@ if __name__ == "__main__":
         mutator.mutate(verb_list, i)
 
         ctx = FakeCtx()
-        print("=== VERBS SUMMARY (after) ===")
+        print(colored("=== VERBS SUMMARY (after) ===", "green"))
         print(summarize_verb_list(verbs=verb_list, deep=True))  # 如果想看 before 的一行摘要：传入反序列化前的
 
         try:
             for v in verb_list:
                 v.apply(ctx)
         except Exception as e:
-            print(f"Error applying verb: {e}")
+            print(colored(f"Error during apply: {e}", "red"))
             print(summarize_verb(v, deep=True))  # 如果想看某个 verb 的一行摘要：传入反序列化前的原 verb
         print()
