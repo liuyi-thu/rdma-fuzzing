@@ -10,6 +10,8 @@ import lib.contracts as contracts
 import lib.fuzz_mutate as fuzz_mutate
 import lib.ibv_all as ibv_all
 import lib.verbs as verbs
+from lib.debug_dump import snapshot_verbs, dump_verbs, diff_verb_snapshots, summarize_verb_list, summarize_verb
+
 
 # Allow users to override the module name via env var (default: "verbs").
 # VERBS_MODULE = os.environ.get("VERBS_MODULE", "lib.verbs")
@@ -203,12 +205,8 @@ def _mk_dereg_mr(mr):
 
 
 if __name__ == "__main__":
-    random.seed(42)  # for reproducibility
-    ctx = FakeCtx()
     buf_size = 1024
-    # v = verbs.AllocPD("pd0")
-    # v.apply(ctx)
-    verb_list = [
+    original_verb_list = [
         _mk_pd("PD0"),
         _mk_cq("CQ0"),
         _mk_mr("PD0", buf="bufs[0]", length=buf_size, name="MR0"),
@@ -223,45 +221,29 @@ if __name__ == "__main__":
         _mk_dealloc_pd("PD0"),
         _mk_dereg_mr("MR0"),
     ]
-    for v in verb_list:
-        v.apply(ctx)
-        # print(ctx.contracts.snapshot())
+    random.seed(42)  # for reproducibility
+    for i in range(len(original_verb_list)):
+        print(f"=== Iteration {i} ===")
+        rng = random.Random(42)  # for reproducibility
+        ctx = FakeCtx()
+        verb_list = list(original_verb_list)  # make a copy
+        for v in verb_list:
+            v.apply(ctx)
+        print("=== VERBS SUMMARY (before) ===")
+        print(
+            summarize_verb_list(verbs=verb_list, deep=True, highlight=i)
+        )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
+        mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
+        mutator.mutate(verb_list, i)
 
-    # v = verbs.PollCQ(cq="CQ0")
-    # c = contracts.InstantiatedContract.instantiate(v, v.CONTRACT)
-    # print(c)
-    # for v in verb_list:
-    #     if hasattr(v, "get_contract"):
-    #         contract = v.get_contract()
-    #         # if contract:
-    #         #     print(f"Contract for {v}: {contract}")
-    #         print(v)
-    #         print(v.instantiate_contract())
-    #         # print(contracts.InstantiatedContract.merge(v.instantiate_contract()))
+        ctx = FakeCtx()
+        print("=== VERBS SUMMARY (after) ===")
+        print(summarize_verb_list(verbs=verb_list, deep=True))  # 如果想看 before 的一行摘要：传入反序列化前的
 
-    # snaps = build_prefix_snapshots(verb_list)
-    # print(snaps)
-
-    # for i, snap in enumerate(snaps):
-    #     print(f"Snapshot {i}:")
-    #     print(verb_list[i - 1])
-    #     for (rtype, name), state in snap.res_states.items():
-    #         if state is not None:
-    #             print(f"  {rtype} {name}: {state}")
-    #         else:
-    #             print(f"  {rtype} {name}: None")
-    #     print()
-
-    # index = 4
-
-    mutator = fuzz_mutate.ContractAwareMutator(rng=random.Random(42), pass_through_fail_prob=0.1)
-    if mutator.mutate(verb_list, 4):
-        print("Mutation successful!")
-
-    for v in verb_list:
-        print(v)
-        # print(v.instantiate_contract())
-        # print()
-    # a = contracts.RequireSpec(rtype="cq", state=None, name_attr="CQ0")
-    # b = contracts.RequireSpec(rtype="cq", state=None, name_attr="CQ1")
-    # print(a == b)  # Should be False, different names
+        try:
+            for v in verb_list:
+                v.apply(ctx)
+        except Exception as e:
+            print(f"Error applying verb: {e}")
+            print(summarize_verb(v, deep=True))  # 如果想看某个 verb 的一行摘要：传入反序列化前的原 verb
+        print()

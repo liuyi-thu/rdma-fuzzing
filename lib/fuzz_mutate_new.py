@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from .verbs import VerbCall
-from lib.debug_dump import snapshot_verbs, dump_verbs, diff_verb_snapshots, summarize_verb_list, summarize_verb
 
 try:
     from .contracts import ContractError, ContractTable, State
@@ -239,10 +238,8 @@ def _iter_children_fields(obj):
         for f in (getattr(obj.__class__, "FIELD_LIST", []) or [])
         if f not in getattr(obj.__class__, "MUTABLE_FIELDS", [])
     ]
-    # if not fields:
-    #     fields = list(getattr(obj, "__dict__", {}).keys())
     if not fields:
-        fileds = []
+        fields = list(getattr(obj, "__dict__", {}).keys())
     seen = set()
     for name in fields:
         if name in seen:
@@ -273,8 +270,7 @@ def _extract_edges_recursive(root, obj, visited: set):
     visited.add(oid)
 
     req, pro, des = [], [], []
-    # contract = getattr(obj.__class__, "CONTRACT", None)
-    contract = obj.get_contract()
+    contract = getattr(obj.__class__, "CONTRACT", None)
     if contract:
         for rq in getattr(contract, "requires", []) or []:
             rtype = str(getattr(rq, "rtype", "") or "")
@@ -296,7 +292,7 @@ def _extract_edges_recursive(root, obj, visited: set):
                 if rtype and name:
                     des.append((rtype, name))
 
-    for child in _iter_children_fields(obj):  # TODO: 感觉很奇怪，但是不影响功能
+    for child in _iter_children_fields(obj):
         r, p, d = _extract_edges_recursive(root, child, visited)
         req.extend(r)
         pro.extend(p)
@@ -313,8 +309,6 @@ def compute_forward_impact(verbs, start_idx: int, lost_resources: set):
     to_drop, frontier = set(), set(lost_resources)
     for i in range(start_idx, len(verbs)):
         req, pro, _ = verb_edges_recursive(verbs[i])
-        # print(summarize_verb(verbs[i], deep=True))
-        # print("f:", frontier, "r:", req)
         if any((r, n) in frontier for (r, n) in req):
             to_drop.add(i)
             for item in pro:
@@ -595,15 +589,14 @@ class ContractAwareMutator:
         self.cfg = cfg or MutatorConfig()
 
     # —— 删除变异（保留你的思路；若已有实现可直接替换/合并） ——
-    def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
+    def mutate_delete(self, verbs: List[VerbCall]) -> bool:
         if not verbs:
             return False
-        idx = self.rng.randrange(len(verbs)) if idx_ is None else idx_
+        idx = self.rng.randrange(len(verbs))
         victim = verbs[idx]
         del verbs[idx]
         # 级联清理：删除受其 produces 影响的后续
         req, pro, _ = verb_edges_recursive(victim)
-        # print(req, pro)
         lost = set(pro)
         impact = compute_forward_impact(verbs, idx, lost)
         for k in sorted(impact, reverse=True):
@@ -691,9 +684,9 @@ class ContractAwareMutator:
         return True
 
     # —— 总入口：可路由到不同策略 ——
-    def mutate(self, verbs: List[VerbCall], idx: Optional[int]) -> bool:
+    def mutate(self, verbs: List[VerbCall]) -> bool:
         r = self.rng.random()
         if r < 0.5:
-            return self.mutate_insert(verbs, idx)
+            return self.mutate_insert(verbs)
         else:
-            return self.mutate_delete(verbs, idx)
+            return self.mutate_delete(verbs)

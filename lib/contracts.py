@@ -286,7 +286,7 @@ class ContractTable:
     #         self.put(spec.rtype, str(name), spec.state)
     def apply_contract(self, verb: Any, contract: Contract):
         contract = verb.get_contract()
-        print(contract)
+        # print(contract)
         # 1) requires
         for spec in contract.requires:
             try:

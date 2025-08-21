@@ -43,30 +43,111 @@ class IbvGID(Attr):
     MUTABLE_FIELDS = ["raw", "src_var"]
 
     def __init__(self, raw=None, src_var=None):
-        self.raw = raw  # 16字节list， list后面需要想想能不能mutate
-        self.src_var = ConstantValue(src_var)  # C++已有变量名，比如 "existing_gid"
+        # raw: list[int] 长度 16, 每项 0..255；src_var: 现有 union ibv_gid 变量名（字符串）
+        self.raw = raw
+        self.src_var = ConstantValue(src_var) if src_var is not None else None
+
+        # 轻量校验（不抛异常，只在 to_cxx 做最终兜底）
+        if self.raw is not None and (not isinstance(self.raw, list) or len(self.raw) != 16):
+            raise ValueError("IbvGID.raw must be a list of 16 integers (0..255)")
+
+    # ---------- 便捷工厂 ----------
+    @classmethod
+    def zero(cls):
+        return cls(raw=[0] * 16)
+
+    @classmethod
+    def from_hex(cls, hex_str: str):
+        """接受 32 hex chars 或 'xxxx:...:xxxx' 形式，生成 raw。"""
+        s = hex_str.replace(":", "").replace(" ", "").lower()
+        if len(s) != 32 or any(c not in "0123456789abcdef" for c in s):
+            raise ValueError("hex_str must be 32 hex chars for GID")
+        raw = [int(s[i : i + 2], 16) for i in range(0, 32, 2)]
+        return cls(raw=raw)
 
     @classmethod
     def random_mutation(cls):
-        return cls(raw=[random.randint(0, 255) for _ in range(16)])
+        # 90%：在 zero 上微扰；10%：完全随机
+        if random.random() < 0.9:
+            base = [0] * 16
+            flips = random.randint(1, 3)
+            idxs = random.sample(range(16), flips)
+            for i in idxs:
+                base[i] = random.randint(0, 255)
+            return cls(raw=base)
+        else:
+            return cls(raw=[random.randint(0, 255) for _ in range(16)])
+
+    # ---------- 轻量变异（可用于 wrapper mutate） ----------
+    def mutate(self, rng: random.Random):
+        if self.src_var is not None and rng.random() < 0.2:
+            # 小概率改成 raw，避免总是引用外部变量
+            self.src_var = None
+            self.raw = [rng.randint(0, 255) for _ in range(16)]
+            return True
+        if self.raw is None:
+            # 从 src_var 转 raw 的另一种路径
+            self.raw = [0] * 16
+        flips = rng.randint(1, 3)
+        for _ in range(flips):
+            i = rng.randrange(16)
+            self.raw[i] = rng.randint(0, 255)
+        return True
 
     def to_cxx(self, varname, ctx=None):
+        # 变量声明
         if ctx:
             ctx.alloc_variable(varname, "union ibv_gid")
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
+
+        # 优先使用 src_var
         if self.src_var:
-            # 直接用已有变量整体赋值
-            # s += f"    {varname} = {self.src_var};\n"
             s += f"    memcpy(&{varname}, &{self.src_var}, sizeof({varname}));\n"
-        elif self.raw:
+            return s
+
+        # 使用 raw
+        raw = self.raw if isinstance(self.raw, list) else None
+        if raw is not None and len(raw) == 16 and all(isinstance(x, int) and 0 <= x <= 255 for x in raw):
             arr_name = varname + "_arr"
-            arr_str = ", ".join(str(x) for x in self.raw)
-            # s += f"    uint8_t {arr_name}[16] = {{ {arr_str} }};\n"
+            arr_str = ", ".join(str(int(x) & 0xFF) for x in raw)
             if ctx:
                 ctx.alloc_variable(arr_name + "[16]", "uint8_t", f"{{ {arr_str} }}")
             s += f"    memcpy({varname}.raw, {arr_name}, 16);\n"
-        # 如果两个都没提供，只memset为全0（前面已做，无需再加）
+            return s
+
+        # 兜底：保留全 0（已 memset）
         return s
+
+
+# class IbvGID(Attr):
+#     FIELD_LIST = ["raw", "src_var"]
+#     MUTABLE_FIELDS = ["raw", "src_var"]
+
+#     def __init__(self, raw=None, src_var=None):
+#         self.raw = raw  # 16字节list， list后面需要想想能不能mutate
+#         self.src_var = ConstantValue(src_var)  # C++已有变量名，比如 "existing_gid"
+
+#     @classmethod
+#     def random_mutation(cls):
+#         return cls(raw=[random.randint(0, 255) for _ in range(16)])
+
+#     def to_cxx(self, varname, ctx=None):
+#         if ctx:
+#             ctx.alloc_variable(varname, "union ibv_gid")
+#         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
+#         if self.src_var:
+#             # 直接用已有变量整体赋值
+#             # s += f"    {varname} = {self.src_var};\n"
+#             s += f"    memcpy(&{varname}, &{self.src_var}, sizeof({varname}));\n"
+#         elif self.raw:
+#             arr_name = varname + "_arr"
+#             arr_str = ", ".join(str(x) for x in self.raw)
+#             # s += f"    uint8_t {arr_name}[16] = {{ {arr_str} }};\n"
+#             if ctx:
+#                 ctx.alloc_variable(arr_name + "[16]", "uint8_t", f"{{ {arr_str} }}")
+#             s += f"    memcpy({varname}.raw, {arr_name}, 16);\n"
+#         # 如果两个都没提供，只memset为全0（前面已做，无需再加）
+#         return s
 
 
 class IbvGlobalRoute(Attr):
