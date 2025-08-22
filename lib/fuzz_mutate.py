@@ -384,6 +384,77 @@ def _mk_min_mw_bind(live, rng):
     return IbvMwBind(bind_info=bind_info), mr_name
 
 
+# ==== Minimal builders (复用你已有的 ibv_all 聚合) ====
+def _mk_min_recv_wr():
+    from lib.ibv_all import IbvRecvWR, IbvSge
+
+    return IbvRecvWR(num_sge=1, sg_list=[IbvSge(addr=0x2000, length=32, lkey=0x5678)])
+
+
+def _mk_min_srq_init():
+    from lib.ibv_all import IbvSrqAttr, IbvSrqInitAttr
+
+    # 你的 CreateSRQ 里要求 IbvSrqInitAttr(srq_context, attr=IbvSrqAttr(...))
+    return IbvSrqInitAttr(srq_context=None, attr=IbvSrqAttr(max_wr=1, max_sge=1, srq_limit=0))
+
+
+def _mk_min_wq_init(pd_name: str, cq_name: str):
+    from lib.ibv_all import IbvWQInitAttr
+
+    # 你在 verbs.CreateWQ.CONTRACT 里会追溯 wq_attr_obj.pd / cq
+    return IbvWQInitAttr(pd=pd_name, cq=cq_name, wq_type="IBV_WQT_RQ", max_wr=1, max_sge=1)
+
+
+def _mk_min_ah_attr():
+    from lib.ibv_all import IbvAHAttr
+
+    # 不带 GRH，走本地 lid 路线（更稳）
+    return IbvAHAttr(is_global=0, port_num=1, dlid=1)
+
+
+def _mk_min_flow_attr():
+    from lib.ibv_all import IbvFlowAttr
+
+    # 用最小规则，驱动支持不同；这里给一个保守模板（你那边 IbvFlowAttr 已实现 to_cxx）
+    return IbvFlowAttr()  # 若需要，可在 ibv_all 里加 random/minimal 填充
+
+
+# ---- QP init（CreateQP 用）----
+def _mk_min_qp_init(send_cq: str, recv_cq: str):
+    from lib.ibv_all import IbvQPCap, IbvQPInitAttr
+
+    return IbvQPInitAttr(
+        qp_type="IBV_QPT_RC",
+        send_cq=send_cq,
+        recv_cq=recv_cq,
+        cap=IbvQPCap(max_send_wr=1, max_recv_wr=1, max_send_sge=1, max_recv_sge=1),
+    )
+
+
+# ---- CQ attr（ModifyCQ 用）----
+def _mk_min_cq_attr():
+    from lib.ibv_all import IbvCQAttr  # 若你的聚合模块里类名不同，改这里
+
+    # 常见最低变更：只改 cqe/cq_cap 或 moderation（按你的 IbvCQAttr 定义来）
+    return IbvCQAttr(cq_count=1, cq_period=0)  # 示例：moderation 1 event/0 usec
+
+
+# ---- MW alloc 的最小形态 ----
+def _mk_min_alloc_mw(pd_name: str):
+    from .verbs import AllocMW
+
+    # 若你的 AllocMW 需要 mw_type，按 verbs.py 调整
+    return AllocMW(pd=pd_name, mw=f"mw_{random.randrange(1 << 16)}", mw_type="IBV_MW_TYPE_1")
+
+
+# ---- DM alloc 的最小形态 ----
+def _mk_min_alloc_dm():
+    from .verbs import AllocDM
+
+    # 视你的 verbs.py 签名而定：很多实现是 ctx_name + length + align
+    return AllocDM(ctx_name="ctx", dm=f"dm_{random.randrange(1 << 16)}", length=0x2000, align=64)
+
+
 # ========================= Live / factories / requires-filler =========================
 def _live_before(verbs: List[VerbCall], i: int) -> set[tuple[str, str]]:
     live = set()
@@ -403,7 +474,7 @@ def _live_before(verbs: List[VerbCall], i: int) -> set[tuple[str, str]]:
 def _default_factories():
     from lib.ibv_all import IbvQPCap, IbvQPInitAttr
 
-    from .verbs import AllocPD, CreateCQ, CreateQP, RegMR
+    from .verbs import AllocDM, AllocPD, CreateCQ, CreateQP, RegMR
 
     def mk_pd(ctx, name):
         return AllocPD(pd=name)
@@ -423,7 +494,11 @@ def _default_factories():
     def mk_mr(ctx, name):
         return RegMR(pd="pd0", mr=name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE")
 
-    return {"pd": mk_pd, "cq": mk_cq, "qp": mk_qp, "mr": mk_mr}
+    def mk_dm(ctx, name):
+        # 若你的 AllocDM 允许自定义名字 dm=name，就用 name；否则忽略 name。
+        return AllocDM(ctx_name="ctx", dm=name, length=0x2000, align=64)
+
+    return {"pd": mk_pd, "cq": mk_cq, "qp": mk_qp, "mr": mk_mr, "dm": mk_dm}
 
 
 def _ensure_requires_before(verbs: List[VerbCall], i: int, v_new: VerbCall, *, factories=None, max_chain=8) -> bool:
@@ -718,19 +793,50 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
     from lib.ibv_all import IbvQPAttr  # 你已聚合的话
 
     from .verbs import (
+        AllocDM,
+        AllocMW,
+        AllocPD,
         AttachMcast,
         BindMW,
+        CreateAH,
         CreateCQ,
-        ModifyQP,
+        CreateFlow,
+        CreateQP,
+        CreateSRQ,
+        CreateWQ,
+        DestroyAH,
+        DestroyFlow,
+        DestroySRQ,
+        DestroyWQ,
+        FreeDM,
+        ModifyCQ,
+        ModifySRQ,
         PollCQ,
         PostRecv,
         PostSend,
-        RegDmaBufMR,
-        RegMR,
+        PostSRQRecv,
+        QueryQP,
+        QuerySRQ,
+        RegDmaBufMR,  # 注意类名大小写
+        RegMR,  # 如需补链
+        ReqNotifyCQ,
+        ReRegMR,
     )
 
     def live_set():
         return _live_before(verbs, i)
+
+    def pick_rnames(kind):
+        xs = [n for (t, n) in live_set() if t == kind]
+        return xs
+
+    def pick(kind):
+        xs = [n for (t, n) in live_set() if t == kind]
+        return rng.choice(xs) if xs else None
+
+    # def pick(kind):
+    #     # return pick_rnames(kind) or [f"{kind}_{rng.randrange(1 << 16)}"]
+    #     return pick_rnames(kind)
 
     def pick_qp_name():
         qps = [n for (t, n) in live_set() if t == "qp"]
@@ -832,8 +938,132 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
     def build_dealloc_mw(ctx, rng, live):
         return _build_destroy_of_type(rng, verbs, i, "mw")
 
+    # ---------- SRQ ----------
+    def build_create_srq(ctx, rng, live):
+        pds = pick_rnames("pd")
+        if not pds:
+            return None
+        pd = rng.choice(pds)
+        return CreateSRQ(pd=pd, srq=f"srq_{rng.randrange(1 << 16)}", srq_init_obj=_mk_min_srq_init())
+
+    def build_post_srq_recv(ctx, rng, live):
+        srqs = pick_rnames("srq")
+        if not srqs:
+            return None
+        from lib.ibv_all import IbvRecvWR
+
+        return PostSRQRecv(srq=rng.choice(srqs), wr_obj=_mk_min_recv_wr())
+
+    def build_modify_srq(ctx, rng, live):
+        srqs = pick_rnames("srq")
+        if not srqs:
+            return None
+        # 你的 ModifySRQ 支持 IbvSrqAttr + mask（verbs 里定义了 attr_mask: IBV_SRQ_ATTR_*）
+        from lib.ibv_all import IbvSrqAttr
+
+        return ModifySRQ(
+            srq=rng.choice(srqs), attr_obj=IbvSrqAttr(max_wr=1, srq_limit=0), attr_mask="IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT"
+        )
+
+    # ---------- WQ ----------
+    def build_create_wq(ctx, rng, live):
+        pds = pick_rnames("pd")
+        cqs = pick_rnames("cq")
+        if not (pds and cqs):
+            return None
+        pd, cq = rng.choice(pds), rng.choice(cqs)
+        return CreateWQ(ctx_name="ctx", wq=f"wq_{rng.randrange(1 << 16)}", wq_attr_obj=_mk_min_wq_init(pd, cq))
+
+    # ---------- AH ----------
+    def build_create_ah(ctx, rng, live):
+        pds = pick_rnames("pd")
+        if not pds:
+            return None
+        return CreateAH(pd=rng.choice(pds), ah=f"ah_{rng.randrange(1 << 16)}", attr_obj=_mk_min_ah_attr())
+
+    # ---------- Flow ----------
+    def build_create_flow(ctx, rng, live):
+        qps = pick_rnames("qp")
+        if not qps:
+            return None
+        return CreateFlow(qp=rng.choice(qps), flow=f"flow_{rng.randrange(1 << 16)}", flow_attr_obj=_mk_min_flow_attr())
+
+    # ---------- CQ notify ----------
+    def build_req_notify_cq(ctx, rng, live):
+        cqs = pick_rnames("cq")
+        if not cqs:
+            return None
+        return ReqNotifyCQ(cq=rng.choice(cqs), solicited_only=rng.choice([0, 1]))
+
+    # ---------- 查询类 ----------
+    def build_query_qp(ctx, rng, live):
+        qps = pick_rnames("qp")
+        if not qps:
+            return None
+        return QueryQP(qp=rng.choice(qps), attr_mask="IBV_QP_STATE | IBV_QP_PORT | IBV_QP_PKEY_INDEX")
+
+    def build_query_srq(ctx, rng, live):
+        srqs = pick_rnames("srq")
+        if not srqs:
+            return None
+        return QuerySRQ(srq=rng.choice(srqs))
+
+    # --- AllocPD: 直接产一个 PD ---
+    def build_alloc_pd(ctx, rng, live):
+        return AllocPD(pd=f"pd_{rng.randrange(1 << 16)}")
+
+    # --- CreateQP: 需要 pd/cq，init_attr_obj 引用已有 cq（缺就补链）---
+    def build_create_qp(ctx, rng, live):
+        pd = pick("pd") or "pd0"
+        send_cq = pick("cq") or "cq0"
+        recv_cq = pick("cq") or send_cq
+        init = _mk_min_qp_init(send_cq, recv_cq)
+        return CreateQP(pd=pd, qp=f"qp_{rng.randrange(1 << 16)}", init_attr_obj=init)
+
+    # --- ModifyCQ: 改调度/容量等（按你的 IbvCQAttr 定义）---
+    def build_modify_cq(ctx, rng, live):
+        cq = pick("cq")
+        if not cq:
+            return None
+        return ModifyCQ(cq=cq, attr_obj=_mk_min_cq_attr(), attr_mask="IBV_CQ_MODERATION")
+
+    # --- AllocMW: 需要 pd，产出 mw ---
+    def build_alloc_mw(ctx, rng, live):
+        pd = pick("pd")
+        if not pd:
+            return None
+        return _mk_min_alloc_mw(pd)
+
+    # --- AllocDM / FreeDM: 产出/释放 dm ---
+    def build_alloc_dm(ctx, rng, live):
+        return _mk_min_alloc_dm()
+
+    def build_free_dm(ctx, rng, live):
+        dms = [n for (t, n) in live_set() if t == "dm"]
+        if not dms:
+            return None
+        return FreeDM(dm=rng.choice(dms))
+
+    # --- ReRegMR: 需要已存在 mr & pd（flags 简化一版）---
+    def build_rereg_mr(ctx, rng, live):
+        mr = pick("mr")
+        pd = pick("pd")
+        if not (mr and pd):
+            return None
+        # 例：只变更 access/length；flags 视你的 verbs.py 定义
+        length = rng.choice([1024, 4096, 8192])
+        return ReRegMR(
+            mr=mr,
+            pd=pd,
+            addr="buf0",
+            length=length,
+            access="IBV_ACCESS_LOCAL_WRITE",
+            flags="IBV_REREG_MR_CHANGE_TRANSLATION | IBV_REREG_MR_CHANGE_ACCESS",
+        )
+
     # ------ choice 精确选择（便于脚本/调试） ------
     dispatch = {
+        # 你已有的：
         "modify_qp": build_modify_qp,
         "post_send": build_post_send,
         "poll_cq": build_poll_cq,
@@ -849,6 +1079,23 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         "dealloc_pd": build_dealloc_pd,
         "dereg_mr": build_dereg_mr,
         "dealloc_mw": build_dealloc_mw,
+        # 新增：
+        "create_srq": build_create_srq,
+        "post_srq_recv": build_post_srq_recv,
+        "modify_srq": build_modify_srq,
+        "create_wq": build_create_wq,
+        "create_ah": build_create_ah,
+        "create_flow": build_create_flow,
+        "req_notify_cq": build_req_notify_cq,
+        "query_qp": build_query_qp,
+        "query_srq": build_query_srq,
+        "alloc_pd": build_alloc_pd,
+        "create_qp": build_create_qp,
+        "modify_cq": build_modify_cq,
+        "alloc_mw": build_alloc_mw,
+        "alloc_dm": build_alloc_dm,
+        "free_dm": build_free_dm,
+        "rereg_mr": build_rereg_mr,
     }
 
     if choice:
@@ -867,6 +1114,13 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         (build_bind_mw, "mw"),
         (build_attach_mcast, "qp"),
         # (build_reg_dmabuf_mr, "mr"),  # 如果想多产出 MR，可以打开
+        (build_alloc_pd, "pd"),
+        (build_create_qp, "qp"),
+        (build_modify_cq, "cq"),
+        (build_alloc_mw, "mw"),
+        (build_alloc_dm, "dm"),
+        (build_free_dm, "dm"),
+        (build_rereg_mr, "mr"),
     ]
     return rng.choice(candidates)
 
