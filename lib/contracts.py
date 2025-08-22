@@ -254,7 +254,7 @@ class ContractTable:
         rec = self._store.get(key)
         if not rec:
             raise ContractError(f"transition target not found: {rtype} {name}")
-        if from_state is not None and rec.state is not from_state:
+        if from_state is not None and rec.state is not from_state and rec.state is not to_state:
             raise ContractError(
                 f"illegal transition for {rtype} {name}: {rec.state.name} -> {to_state.name}, expected from {from_state.name}"
             )

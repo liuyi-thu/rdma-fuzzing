@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from termcolor import colored
+
 import lib.contracts as contracts
 import lib.fuzz_mutate as fuzz_mutate
 import lib.ibv_all as ibv_all
 import lib.verbs as verbs
-from lib.debug_dump import snapshot_verbs, dump_verbs, diff_verb_snapshots, summarize_verb_list, summarize_verb
-from termcolor import colored
-
+from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
 
 # Allow users to override the module name via env var (default: "verbs").
 # VERBS_MODULE = os.environ.get("VERBS_MODULE", "lib.verbs")
@@ -94,7 +94,7 @@ def _mk_cq(name="cq0"):
 def _mk_mr(pd, buf="buf[0]", length=1024, name="mr0", flags=None):
     if flags is None:
         flags = "IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE"
-    v = verbs.RegMR(pd=pd, buf=buf, length=length, mr=name, flags=flags)
+    v = verbs.RegMR(pd=pd, addr=buf, length=length, mr=name, access=flags)
     return v
 
 
@@ -223,28 +223,43 @@ if __name__ == "__main__":
         _mk_dereg_mr("MR0"),
     ]
     random.seed(42)  # for reproducibility
-    for i in range(len(original_verb_list)):
-        print(colored(f"=== Mutation Iteration {i} ===", "blue"))
-        rng = random.Random(42)  # for reproducibility
-        ctx = FakeCtx()
-        verb_list = list(original_verb_list)  # make a copy
-        for v in verb_list:
-            v.apply(ctx)
-        print(colored("=== VERBS SUMMARY (before) ===", "green"))
-        print(
-            summarize_verb_list(verbs=verb_list, deep=True, highlight=i)
-        )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
-        mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
-        mutator.mutate(verb_list, i)
-
-        ctx = FakeCtx()
-        print(colored("=== VERBS SUMMARY (after) ===", "green"))
-        print(summarize_verb_list(verbs=verb_list, deep=True))  # 如果想看 before 的一行摘要：传入反序列化前的
-
-        try:
+    CHOICES = [
+        "destroy_qp",
+        "destroy_cq",
+        "dealloc_pd",
+        "dereg_mr",
+    ]
+    for choice in CHOICES:
+        print(colored(f"=== Mutation Choice: {choice} ===", "red"))
+        for i in range(len(original_verb_list)):
+            print(colored(f"=== Mutation Iteration {i} ===", "blue"))
+            rng = random.Random(42)  # for reproducibility
+            ctx = FakeCtx()
+            verb_list = list(original_verb_list)  # make a copy
             for v in verb_list:
                 v.apply(ctx)
-        except Exception as e:
-            print(colored(f"Error during apply: {e}", "red"))
-            print(summarize_verb(v, deep=True))  # 如果想看某个 verb 的一行摘要：传入反序列化前的原 verb
-        print()
+            print(colored("=== VERBS SUMMARY (before) ===", "green"))
+            print(
+                summarize_verb_list(verbs=verb_list, deep=True, highlight=i)
+            )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
+            mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
+            # mutator.mutate(verb_list, i, "insert")
+            flag = mutator.mutate_insert(verb_list, i, choice=choice)
+
+            ctx = FakeCtx()
+            print(colored("=== VERBS SUMMARY (after) ===", "green"))
+            if flag:
+                print(
+                    summarize_verb_list(verbs=verb_list, deep=True, highlight=i, color="green")
+                )  # 如果想看 before 的一行摘要：传入反序列化前的
+            else:
+                print(summarize_verb_list(verbs=verb_list, deep=True))
+
+            try:
+                for v in verb_list:
+                    v.apply(ctx)
+            except Exception as e:
+                print(colored(f"Error during apply: {e}", "red"))
+                print(summarize_verb(v, deep=True))  # 如果想看某个 verb 的一行摘要：传入反序列化前的原 verb
+                exit(1)
+            print()

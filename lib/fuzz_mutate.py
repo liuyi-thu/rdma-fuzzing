@@ -6,8 +6,11 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from termcolor import colored
+
+from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
+
 from .verbs import VerbCall
-from lib.debug_dump import snapshot_verbs, dump_verbs, diff_verb_snapshots, summarize_verb_list, summarize_verb
 
 try:
     from .contracts import ContractError, ContractTable, State
@@ -289,7 +292,8 @@ def _extract_edges_recursive(root, obj, visited: set):
             if rtype and name:
                 pro.append((rtype, name))
         for tr in getattr(contract, "transitions", []) or []:
-            if str(getattr(tr, "to_state", None)).upper() == "DESTROYED":
+            # if str(getattr(tr, "to_state", None)).upper() == "DESTROYED":
+            if getattr(tr, "to_state", None) == State.DESTROYED:
                 rtype = str(getattr(tr, "rtype", "") or "")
                 name_attr = getattr(tr, "name_attr", "") or ""
                 name = _resolve_name_for_spec(root, obj, name_attr)
@@ -350,6 +354,34 @@ def mk_min_ah_attr(*, use_grh=False):
         return IbvAHAttr(
             grh=mk_min_grh(), dlid=1, sl=None, src_path_bits=None, static_rate=None, is_global=True, port_num=1
         )
+
+
+# ==== 新增：最小 WR/SGE 构造 ====
+def _mk_min_recv_wr():
+    from lib.ibv_all import IbvRecvWR, IbvSge
+
+    sge = IbvSge(addr=0x2000, length=32, lkey=0x5678)
+    return IbvRecvWR(num_sge=1, sg_list=[sge])
+
+
+def _mk_min_send_wr():
+    from lib.ibv_all import IbvSendWR, IbvSge
+
+    sge = IbvSge(addr=0x1000, length=16, lkey=0x1234)
+    return IbvSendWR(opcode="IBV_WR_SEND", num_sge=1, sg_list=[sge])
+
+
+def _mk_min_mw_bind(live, rng):
+    """
+    返回 (mw_bind_obj, mr_name)。若现场没有 MR，则生成一个占位名并交给 requires-filler 去补链。
+    """
+    from lib.ibv_all import IbvMwBind, IbvMwBindInfo
+
+    # 选一个现场 MR；没有就造一个占位名（让 requires-filler 去补 Register）
+    mr_live = [n for (t, n) in live if t == "mr"]
+    mr_name = rng.choice(mr_live) if mr_live else f"mr_{rng.randrange(1 << 16)}"
+    bind_info = IbvMwBindInfo(mr=mr_name, addr=0x0, length=0x1000, mw_access_flags=0)  # 最小配置
+    return IbvMwBind(bind_info=bind_info), mr_name
 
 
 # ========================= Live / factories / requires-filler =========================
@@ -458,6 +490,17 @@ ALLOW_ATTRS_BY_STATE = {
 }
 
 
+def build_modify_qp_out(verbs, i: int, qp_name: str, rng):
+    if rng.random() < 0.5:
+        res = build_modify_qp_safe_chain(verbs, i, qp_name, rng)
+        if res:
+            return res
+        else:
+            return build_modify_qp_stateless(verbs, i, qp_name, rng)
+    else:
+        return build_modify_qp_stateless(verbs, i, qp_name, rng)
+
+
 def build_modify_qp_safe_chain(verbs, i: int, qp_name: str, rng) -> List[VerbCall]:
     from lib.ibv_all import IbvQPAttr
 
@@ -532,60 +575,300 @@ def build_modify_qp_stateless(verbs, i: int, qp_name: str, rng) -> Optional[Verb
     return ModifyQP(qp=qp_name, attr_obj=IbvQPAttr(**kwargs), attr_mask=attr_mask)
 
 
-# ========================= Insertion templates =========================
-def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int):
-    from lib.ibv_all import IbvSendWR, IbvSge
+# ---- 判断是否为 Destroy verb，并提取 DESTROYED 目标 ----
+def is_destroy_verb(v) -> bool:
+    tr = getattr(v.__class__, "CONTRACT", None)
+    if not tr:
+        return v.__class__.__name__.startswith(("Destroy", "Dealloc", "Dereg"))
+    for t in getattr(tr, "transitions", []) or []:
+        # to_state = str(getattr(t, "to_state", "")).upper()
+        # if to_state == "DESTROYED":
+        to_state = getattr(t, "to_state", None)
+        if to_state == State.DESTROYED:
+            return True
+    return False
 
-    from .verbs import CreateCQ, ModifyQP, PollCQ, PostSend, RegMR
+
+def destroyed_targets(v) -> set[tuple[str, str]]:
+    """
+    返回本 verb 将置为 DESTROYED 的 {(rtype, name)} 集合。
+    优先用 CONTRACT.transitions；否则按类名猜测（兜底）。
+    """
+    outs = set()
+    tr = getattr(v.__class__, "CONTRACT", None)
+    if tr:
+        for t in getattr(tr, "transitions", []) or []:
+            to_state = getattr(t, "to_state", None)
+            if to_state == State.DESTROYED:
+                rtype = getattr(t, "rtype", None)
+                name_attr = getattr(t, "name_attr", None)
+                if rtype and name_attr:
+                    name = _unwrap(_get_dotted(v, name_attr))
+                    if name:
+                        outs.add((str(rtype), str(name)))
+    if outs:
+        return outs
+
+    # 兜底：依据类名映射推断
+    name = v.__class__.__name__
+    if name == "DestroyQP":
+        outs.add(("qp", str(_unwrap(getattr(v, "qp", None)))))
+    elif name == "DestroyCQ":
+        outs.add(("cq", str(_unwrap(getattr(v, "cq", None)))))
+    elif name == "DeallocPD":
+        outs.add(("pd", str(_unwrap(getattr(v, "pd", None)))))
+    elif name == "DeregMR":
+        outs.add(("mr", str(_unwrap(getattr(v, "mr", None)))))
+    elif name == "DeallocMW":
+        outs.add(("mw", str(_unwrap(getattr(v, "mw", None)))))
+    elif name == "DestroyAH":
+        outs.add(("ah", str(_unwrap(getattr(v, "ah", None)))))
+    elif name == "DestroyFlow":
+        outs.add(("flow", str(_unwrap(getattr(v, "flow", None)))))
+    elif name == "DestroyWQ":
+        outs.add(("wq", str(_unwrap(getattr(v, "wq", None)))))
+    elif name == "DestroySRQ":
+        outs.add(("srq", str(_unwrap(getattr(v, "srq", None)))))
+    elif name == "DestroyCompChannel":
+        outs.add(("channel", str(_unwrap(getattr(v, "channel", None)))))
+    elif name == "DeallocTD":
+        outs.add(("td", str(_unwrap(getattr(v, "td", None)))))
+    return {(t, n) for (t, n) in outs if t and n}
+
+
+# ---- Destroy 插入模板 ----
+def _build_destroy_of_type(rng, verbs, i, rtype: str):
+    """
+    从 live 集合里挑选一个 rtype 资源，构造相应 Destroy verb。
+    若该类型在现场没有实例，返回 None。
+    """
+    live = _live_before(verbs, i)
+    cand = [n for (t, n) in live if t == rtype]
+    if not cand:
+        return None
+
+    name = rng.choice(cand)
+
+    # 映射：rtype -> (Class, param_name)
+    from .verbs import (
+        DeallocMW,
+        DeallocPD,
+        DeallocTD,
+        DeregMR,
+        DestroyAH,
+        DestroyCompChannel,
+        DestroyCQ,
+        DestroyFlow,
+        DestroyQP,
+        DestroySRQ,
+        DestroyWQ,
+    )
+
+    mapping = {
+        "qp": (DestroyQP, "qp"),
+        "cq": (DestroyCQ, "cq"),
+        "pd": (DeallocPD, "pd"),
+        "mr": (DeregMR, "mr"),
+        "mw": (DeallocMW, "mw"),
+        "ah": (DestroyAH, "ah"),
+        "flow": (DestroyFlow, "flow"),
+        "wq": (DestroyWQ, "wq"),
+        "srq": (DestroySRQ, "srq"),
+        "channel": (DestroyCompChannel, "channel"),
+        "td": (DeallocTD, "td"),
+    }
+    if rtype not in mapping:
+        return None
+
+    cls, param = mapping[rtype]
+    kwargs = {param: name}
+    return cls(**kwargs)
+
+
+def build_destroy_generic(ctx, rng, live, verbs, i):
+    """
+    优先销毁“叶子资源”，减少大范围连锁影响；
+    若无叶子，就退化为销毁任一 live 资源（不包括 device 等全局）。
+    """
+    # 优先级从“叶子”到“根”：
+    order = [
+        "mw",
+        "mr",
+        "ah",
+        "flow",
+        "wq",
+        "srq",  # 叶子优先
+        "qp",
+        "cq",
+        "channel",
+        "td",
+        "pd",  # 最后考虑 PD（破坏力最大）
+    ]
+    rng.shuffle(order)
+
+    for rt in order:
+        v = _build_destroy_of_type(rng, verbs, i, rt)
+        if v is not None:
+            return v
+    return None
+
+
+# ========================= Insertion templates =========================
+def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, choice: str = None):
+    from lib.ibv_all import IbvQPAttr  # 你已聚合的话
+
+    from .verbs import (
+        AttachMcast,
+        BindMW,
+        CreateCQ,
+        ModifyQP,
+        PollCQ,
+        PostRecv,
+        PostSend,
+        RegDmaBufMR,
+        RegMR,
+    )
+
+    def live_set():
+        return _live_before(verbs, i)
 
     def pick_qp_name():
-        qps = [n for (t, n) in _live_before(verbs, i) if t == "qp"]
+        qps = [n for (t, n) in live_set() if t == "qp"]
         return rng.choice(qps) if qps else None
 
     def pick_cq_name():
-        cqs = [n for (t, n) in _live_before(verbs, i) if t == "cq"]
+        cqs = [n for (t, n) in live_set() if t == "cq"]
         return rng.choice(cqs) if cqs else None
 
     def pick_pd_name():
-        pds = [n for (t, n) in _live_before(verbs, i) if t == "pd"]
+        pds = [n for (t, n) in live_set() if t == "pd"]
         return rng.choice(pds) if pds else None
 
+    # 1) ModifyQP：复用你已有的有/无状态策略
     def build_modify_qp(ctx, rng, live):
         qp = pick_qp_name()
         if not qp:
             return None
-        return (
-            build_modify_qp_safe_chain(verbs, i, qp, rng)
-            if rng.random() < 0.6
-            else build_modify_qp_stateless(verbs, i, qp, rng)
-        )
+        return build_modify_qp_out(verbs, i, qp, rng)  # 你现有的包装
 
+    # 2) PostSend：最小 WR（1 SGE）
     def build_post_send(ctx, rng, live):
         qp = pick_qp_name()
         if not qp:
             return None
-        sge = IbvSge(addr=0x1000, length=16, lkey=0x1234)
-        wr = IbvSendWR(opcode="IBV_WR_SEND", num_sge=1, sg_list=[sge])
+        wr = _mk_min_send_wr()
         return PostSend(qp=qp, wr_obj=wr)
 
+    # 3) PollCQ
     def build_poll_cq(ctx, rng, live):
         cq = pick_cq_name()
         return None if not cq else PollCQ(cq=cq, num_entries=1)
 
+    # 4) RegMR（绑定已有 PD）
     def build_reg_mr(ctx, rng, live):
         pd = pick_pd_name()
-        return (
-            None
-            if not pd
-            else RegMR(
-                pd=pd, mr=f"mr_{rng.randrange(1 << 16)}", addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE"
-            )
-        )
+        if not pd:
+            return None
+        mr_name = f"mr_{rng.randrange(1 << 16)}"
+        return RegMR(pd=pd, mr=mr_name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE")
 
+    # 5) CreateCQ（纯创建）
     def build_create_cq(ctx, rng, live):
         return CreateCQ(cq=f"cq_{rng.randrange(1 << 16)}", cqe=16, comp_vector=0, channel="NULL")
 
-    return rng.choice([build_modify_qp, build_post_send, build_poll_cq, build_reg_mr, build_create_cq])
+    # 6) **PostRecv**（最小 WR：1 SGE）
+    def build_post_recv(ctx, rng, live):
+        qp = pick_qp_name()
+        if not qp:
+            return None
+        wr = _mk_min_recv_wr()
+        return PostRecv(qp=qp, wr_obj=wr)
+
+    # 7) **BindMW**（绑定已有 MR，产出 MW）
+    def build_bind_mw(ctx, rng, live):
+        qp = pick_qp_name()
+        if not qp:
+            return None
+        mw_name = f"mw_{rng.randrange(1 << 16)}"
+        mw_bind_obj, mr_name = _mk_min_mw_bind(live_set(), rng)
+        # BindMW 的 CONTRACT: 需要 qp 和 mw_bind_obj.bind_info.mr；产出 mw
+        # （没有 MR 时，_ensure_requires_before 会补建 RegMR）
+        return BindMW(qp=qp, mw=mw_name, mw_bind_obj=mw_bind_obj)
+
+    # 8) **AttachMcast**（最小 gid/lid）
+    def build_attach_mcast(ctx, rng, live):
+        qp = pick_qp_name()
+        if not qp:
+            return None
+        # 用最小 GID 变量名（假设你的 ctx 里会有 gid 变量，或者后续你可以在 factories 里补一个定义 GID 的 helper）
+        gid_var = "gid0"
+        return AttachMcast(qp=qp, gid=gid_var, lid=0)
+
+    # 9) （可选）**RegDmaBufMR**（需要 pd）
+    def build_reg_dmabuf_mr(ctx, rng, live):
+        pd = pick_pd_name()
+        if not pd:
+            return None
+        mr_name = f"mr_{rng.randrange(1 << 16)}"
+        # 随便给一个小范围
+        return RegDmaBufMR(pd=pd, mr=mr_name, offset=0, length=0x2000, iova=0, fd=3, access="IBV_ACCESS_LOCAL_WRITE")
+
+    # 新增：销毁类模板（支持点名 destroy_XXX，也支持 generic）
+    def build_destroy(ctx, rng, live):
+        return build_destroy_generic(ctx, rng, live, verbs, i)
+
+    def build_destroy_qp(ctx, rng, live):
+        return _build_destroy_of_type(rng, verbs, i, "qp")
+
+    def build_destroy_cq(ctx, rng, live):
+        return _build_destroy_of_type(rng, verbs, i, "cq")
+
+    def build_dealloc_pd(ctx, rng, live):
+        return _build_destroy_of_type(rng, verbs, i, "pd")
+
+    def build_dereg_mr(ctx, rng, live):
+        return _build_destroy_of_type(rng, verbs, i, "mr")
+
+    def build_dealloc_mw(ctx, rng, live):
+        return _build_destroy_of_type(rng, verbs, i, "mw")
+
+    # ------ choice 精确选择（便于脚本/调试） ------
+    dispatch = {
+        "modify_qp": build_modify_qp,
+        "post_send": build_post_send,
+        "poll_cq": build_poll_cq,
+        "reg_mr": build_reg_mr,
+        "create_cq": build_create_cq,
+        "post_recv": build_post_recv,
+        "bind_mw": build_bind_mw,
+        "attach_mcast": build_attach_mcast,
+        "reg_dmabuf_mr": build_reg_dmabuf_mr,
+        "destroy": build_destroy,
+        "destroy_qp": build_destroy_qp,
+        "destroy_cq": build_destroy_cq,
+        "dealloc_pd": build_dealloc_pd,
+        "dereg_mr": build_dereg_mr,
+        "dealloc_mw": build_dealloc_mw,
+    }
+
+    if choice:
+        if choice not in dispatch:
+            raise ValueError(f"Unknown insertion template: {choice}")
+        return dispatch[choice]
+
+    # 默认：混合分布（你可根据实验效果调整比例）
+    candidates = [
+        (build_modify_qp, "qp"),
+        (build_post_send, "qp"),
+        (build_post_recv, "qp"),
+        (build_poll_cq, "cq"),
+        (build_reg_mr, "mr"),
+        (build_create_cq, "cq"),
+        (build_bind_mw, "mw"),
+        (build_attach_mcast, "qp"),
+        # (build_reg_dmabuf_mr, "mr"),  # 如果想多产出 MR，可以打开
+    ]
+    return rng.choice(candidates)
 
 
 # ========================= Mutator =========================
@@ -611,15 +894,21 @@ class ContractAwareMutator:
         return True
 
     # —— 插入变异（有/无状态 ModifyQP 等） ——
-    def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None) -> bool:
+    def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
         if not verbs:
             return False
         rng = self.rng
         i = rng.randrange(0, len(verbs) + 1) if idx is None else idx
-        builder = _pick_insertion_template(rng, verbs, i)
+        builder = _pick_insertion_template(rng, verbs, i, choice)
         new_v = builder(None, rng, _live_before(verbs, i))
         if new_v is None:
+            print(colored("No valid insertion generated", "red"))
             return False
+        else:
+            if isinstance(new_v, list):
+                print("new verbs:", [summarize_verb(v, deep=True) for v in new_v])
+            else:
+                print("new verb:", summarize_verb(new_v, deep=True))
         ins_list = new_v if isinstance(new_v, list) else [new_v]
 
         # 插入前补依赖
@@ -627,6 +916,19 @@ class ContractAwareMutator:
             return False
 
         verbs[i:i] = ins_list
+        print("inserted verbs:", [summarize_verb(v, deep=True) for v in ins_list])
+
+        # --- 若插入了 Destroy verb：对后续依赖者做前向切片清理 ---
+        lost = set()
+        for nv in ins_list:
+            if is_destroy_verb(nv):
+                print("destroy verb inserted:", summarize_verb(nv, deep=True))
+                lost |= destroyed_targets(nv)
+        print("lost:", lost)
+        if lost:
+            impact = compute_forward_impact(verbs, i + 1, lost)
+            for k in sorted(impact, reverse=True):
+                verbs.pop(k)
 
         # dry-run & repair
         MAX_FIX, fixes, k = 16, 0, 0
@@ -671,7 +973,7 @@ class ContractAwareMutator:
                         verbs[k:k] = chain
                         repaired = True
 
-                elif kind in (ErrKind.DANGLING_DESTROY, ErrKind.DOUBLE_DESTROY):
+                elif kind in (ErrKind.DANGLING_DESTROY, ErrKind.DOUBLE_DESTROY):  # TODO: 这种error是没有实现过的
                     verbs.pop(k)
                     repaired = True
 
@@ -691,9 +993,17 @@ class ContractAwareMutator:
         return True
 
     # —— 总入口：可路由到不同策略 ——
-    def mutate(self, verbs: List[VerbCall], idx: Optional[int]) -> bool:
-        r = self.rng.random()
-        if r < 0.5:
-            return self.mutate_insert(verbs, idx)
+    def mutate(self, verbs: List[VerbCall], idx: Optional[int], choice: str = None) -> bool:
+        if choice:
+            if choice == "insert":
+                return self.mutate_insert(verbs, idx)
+            elif choice == "delete":
+                return self.mutate_delete(verbs, idx)
+            else:
+                raise ValueError(f"Unknown mutation choice: {choice}")
         else:
-            return self.mutate_delete(verbs, idx)
+            r = self.rng.random()
+            if r < 0.5:
+                return self.mutate_insert(verbs, idx)
+            else:
+                return self.mutate_delete(verbs, idx)

@@ -5070,15 +5070,15 @@ class RegMR(VerbCall):
         self,
         pd: str = None,
         mr: str = None,
-        buf: str = None,
+        addr: str = None,
         length: int = None,
-        flags: str = None,
+        access: str = None,
     ):
         self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
         self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
-        self.buf = ConstantValue(buf or "buf")  # Default buffer variable name
+        self.addr = ConstantValue(addr or "buf")  # Default buffer variable name
         self.length = IntValue(length or 4096)  # Default length
-        self.flags = FlagValue(flags or "IBV_ACCESS_LOCAL_WRITE", flag_type="IBV_ACCESS_FLAGS_ENUM")
+        self.access = FlagValue(access or "IBV_ACCESS_LOCAL_WRITE", flag_type="IBV_ACCESS_FLAGS_ENUM")
         self.tracker = None
         self.required_resources = []
         self.allocated_resources = []
@@ -5103,18 +5103,18 @@ class RegMR(VerbCall):
         kv = _parse_kv(info)
         pd = kv.get("pd", "pd[0]")
         mr = kv.get("mr", "unknown")
-        flags = kv.get("flags", "IBV_ACCESS_LOCAL_WRITE")
-        return cls(pd=pd, mr=mr, flags=flags, ctx=ctx)
+        access = kv.get("access", "IBV_ACCESS_LOCAL_WRITE")
+        return cls(pd=pd, mr=mr, access=access, ctx=ctx)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         pd_name = coerce_str(self.pd)
         mr_name = coerce_str(self.mr)
-        buf = ensure_identifier(self.buf)  # 若当成 C 变量名使用
+        addr = ensure_identifier(self.buf)  # 若当成 C 变量名使用
         length = coerce_int(self.length)
-        flags = coerce_str(self.flags)
+        access = coerce_str(self.access)
         return f"""
     /* ibv_reg_mr */
-    {mr_name} = ibv_reg_mr({pd_name}, {buf}, {length}, {flags});
+    {mr_name} = ibv_reg_mr({pd_name}, {addr}, {length}, {access});
     if (!{mr_name}) {{
         fprintf(stderr, "Failed to register memory region\\n");
         return -1;

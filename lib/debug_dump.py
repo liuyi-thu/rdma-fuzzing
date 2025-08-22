@@ -333,6 +333,8 @@ def _fmt_scalar(x: Any) -> str:
 
 
 def summarize_verb(v: Any, max_fields: int = 6, *, deep: bool = False) -> str:
+    if not v:
+        return "∅"
     name = v.__class__.__name__
     parts = []
 
@@ -378,12 +380,12 @@ def summarize_verb(v: Any, max_fields: int = 6, *, deep: bool = False) -> str:
     return f"{name}(" + ", ".join(parts) + extra + ")"
 
 
-def summarize_verb_list(verbs: List[Any], *, deep: bool = False, highlight: int = None) -> str:
+def summarize_verb_list(verbs: List[Any], *, deep: bool = False, highlight: int = None, color: str = "red") -> str:
     lines = []
     for i, v in enumerate(verbs):
         if i == highlight:
             # lines.append(f"\033[93m>[{i:02d}] {summarize_verb(v, deep=deep)}\033[0m")
-            lines.append(colored(f">[{i:02d}] {summarize_verb(v, deep=deep)}", "red"))
+            lines.append(colored(f">[{i:02d}] {summarize_verb(v, deep=deep)}", color))
         else:
             lines.append(f"[{i:02d}] {summarize_verb(v, deep=deep)}")
     return "\n".join(lines)

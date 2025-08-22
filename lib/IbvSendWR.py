@@ -167,32 +167,90 @@ class IbvBindMwInfo(Attr):
 
 
 # 进一步建模struct ibv_mw_bind_info:
-class IbvMwBindInfo(Attr):
-    FIELD_LIST = ["addr", "length", "mw_access_flags"]
-    MUTABLE_FIELDS = FIELD_LIST
+# class IbvMwBindInfo(Attr):
+#     FIELD_LIST = ["addr", "length", "mw_access_flags"]
+#     MUTABLE_FIELDS = FIELD_LIST
 
-    def __init__(self, addr=None, length=None, mw_access_flags=None):
-        self.addr = IntValue(addr, 2**64 - 1) if addr is not None else None
-        self.length = IntValue(length, 2**32 - 1) if length is not None else None
-        self.mw_access_flags = (
-            FlagValue(mw_access_flags, "IBV_ACCESS_FLAGS_ENUM") if mw_access_flags is not None else None
+#     def __init__(self, addr=None, length=None, mw_access_flags=None):
+#         self.addr = IntValue(addr, 2**64 - 1) if addr is not None else None
+#         self.length = IntValue(length, 2**32 - 1) if length is not None else None
+#         self.mw_access_flags = (
+#             FlagValue(mw_access_flags, "IBV_ACCESS_FLAGS_ENUM") if mw_access_flags is not None else None
+#         )
+
+#     @classmethod
+#     def random_mutation(cls):
+#         return cls(
+#             addr=random.randint(0, 2**64 - 1),
+#             length=random.randint(0, 2**32 - 1),
+#             mw_access_flags=random.randint(0, 0xFFFF),
+#         )
+
+#     def to_cxx(self, varname, ctx=None):
+#         if ctx:
+#             ctx.alloc_variable(varname, "struct ibv_mw_bind_info")
+#         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
+#         for f in self.FIELD_LIST:
+#             v = getattr(self, f)
+#             if v is not None:
+#                 s += emit_assign(varname, f, v)
+#         return s
+
+
+class IbvMwBindInfo(Attr):
+    FIELD_LIST = ["mr", "addr", "length", "mw_access_flags"]
+    MUTABLE_FIELDS = ["mr", "addr", "length", "mw_access_flags"]
+
+    def __init__(self, mr=None, addr=None, length=None, mw_access_flags=None):
+        self.mr = OptionalValue(
+            # ConstantValue(mr) if mr is not None else None, factory=lambda: ConstantValue("NULL")
+            ResourceValue(mr, resource_type="mr") if mr is not None else None,
+        )  # C++已有变量名或NULL
+        self.addr = OptionalValue(
+            IntValue(addr) if addr is not None else None, factory=lambda: IntValue(random.randint(0x1000, 0xFFFFF000))
         )
+        self.length = OptionalValue(
+            IntValue(length) if length is not None else None,
+            factory=lambda: IntValue(random.choice([0x1000, 0x2000, 0x8000])),
+        )
+        self.mw_access_flags = OptionalValue(
+            FlagValue(mw_access_flags, flag_type="IBV_ACCESS_FLAGS_ENUM") if mw_access_flags is not None else None,
+            factory=lambda: FlagValue(random.choice([0, 1, 0xF, 0x1F]), flag_type="IBV_ACCESS_FLAGS_ENUM"),
+        )
+        self.tracker = None
+        self.required_resources = []  # 用于跟踪所需的资源
 
     @classmethod
     def random_mutation(cls):
         return cls(
-            addr=random.randint(0, 2**64 - 1),
-            length=random.randint(0, 2**32 - 1),
-            mw_access_flags=random.randint(0, 0xFFFF),
+            mr=None,  # 实际上应该从mr_map中随机获取一个，不然100%要挂
+            addr=random.randint(0x1000, 0xFFFFF000),
+            length=random.choice([0x1000, 0x2000, 0x8000]),
+            mw_access_flags=random.choice([0, 1, 0xF, 0x1F]),
         )
 
-    def to_cxx(self, varname, ctx=None):
+    def apply(self, ctx: CodeGenContext):
+        """Apply this bind info to the context, allocating a new variable if needed."""
+        self.required_resources = []
+        self.tracker = ctx.tracker if ctx is not None else None
+        if self.tracker:
+            self.tracker.use("mr", self.mr.get_value())
+            self.required_resources.append({"type": "mr", "name": self.mr.get_value(), "position": "mr"})
+
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
+        """Get all required resources recursively."""
+        resources = self.required_resources.copy()
+        return resources
+
+    def to_cxx(self, varname, ctx: CodeGenContext = None):
         if ctx:
             ctx.alloc_variable(varname, "struct ibv_mw_bind_info")
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
-        for f in self.FIELD_LIST:
+        for f in ["addr", "length", "mw_access_flags", "mr"]:
             v = getattr(self, f)
-            if v is not None:
+            if not v:
+                continue
+            else:
                 s += emit_assign(varname, f, v)
         return s
 
