@@ -694,6 +694,92 @@ class OptionalValue(Value):
     #     pass
 
 
+# value.py
+
+import re
+
+
+class DeferredValue:
+    """
+    表示“运行时（exec 时）才从外部解析器拿到”的值。
+    - key:    逻辑键，如 "remote.QP[0].qpn" / "local.MR[0].lkey"
+    - c_type: 目标C类型，"uint32_t" | "uint64_t" | "const char *" 等
+    - source: 解析方式，当前固定用 runtime_resolver: rr_u32/rr_u64/rr_str
+    - default: 兜底值（解析失败时的默认；一般不用）
+    """
+
+    __slots__ = ("key", "c_type", "source", "default")
+
+    def __init__(self, key: str, c_type: str = "uint32_t", source: str = "runtime", default=None):
+        self.key = key
+        self.c_type = c_type
+        self.source = source
+        self.default = default
+
+    # === 供 orchestrator/mutator 使用的统一接口 ===
+    def is_none(self) -> bool:
+        # 对外表现为“有值”（只是延迟取），避免 OptionalValue 把它当空
+        return False
+
+    def get_value(self):
+        # 返回自身即可；mutator 不应直接取字面量
+        return self
+
+    def mutate(self, *args, **kwargs) -> bool:
+        # 不对延迟值做随机变异；structure-level 的 on/off 由 OptionalValue 负责
+        return False
+
+    def __str__(self) -> str:
+        return f"Deferred({self.c_type}:{self.key})"
+
+    # === 代码生成：把自身展开为 C 端取值逻辑 ===
+    def to_cxx(self, varname: str, ctx=None) -> str:
+        """
+        生成：
+          <c_type> <varname>;
+          <varname> = rr_u32("remote.QP[0].qpn");  // 例如
+        并要求编译单元已包含 runtime_resolver.h
+        """
+        if ctx:
+            ctx.alloc_variable(varname, self.c_type)
+        getter = _rr_getter_for_ctype(self.c_type)
+        s = ""
+        if self.source == "runtime":
+            s += f'    {varname} = {getter}("{self.key}");\n'
+        else:
+            # 预留其它 source 的扩展点
+            s += f"    /* TODO: load {self.c_type} {varname} from {self.source}:{self.key} */\n"
+            if self.default is not None:
+                s += f"    {varname} = ({self.c_type})({self.default});\n"
+            else:
+                # 给个零值兜底，避免未初始化警告
+                s += f"    {varname} = ({self.c_type})(0);\n"
+        return s
+
+
+def _rr_getter_for_ctype(c_type: str) -> str:
+    """将 C 类型映射到运行时解析器函数名。"""
+    t = c_type.strip().replace(" ", "").lower()
+    if t in ("uint32_t", "unsignedint", "u32", "uint32t"):
+        return "rr_u32"
+    if t in ("uint64_t", "unsignedlong", "unsignedlonglong", "u64", "uint64t"):
+        return "rr_u64"
+    if t in ("constchar*", "char*", "constchar *", "char *"):
+        return "rr_str"
+    # 默认为 u32，可按需扩展
+    return "rr_u32"
+
+
+# --- 帮助函数：识别/解包延迟值（供 emit_assign / contracts 使用） ---
+def is_deferred(x) -> bool:
+    return isinstance(x, DeferredValue)
+
+
+def unwrap_runtime(x):
+    # OptionalValue(inner=DeferredValue) 的场景下使用
+    return x.value if hasattr(x, "value") and isinstance(x.value, DeferredValue) else x
+
+
 if __name__ == "__main__":
     # Example usage
     # int_value = IntValue(10, range=(0, 20))
@@ -735,7 +821,15 @@ if __name__ == "__main__":
     #     print(f"Item {i}: {item}")
     # print(len(list_value))  # Should print the length of the list
 
-    opt_int = OptionalValue(None, factory=lambda: IntValue(0))
-    opt_int.init()  # Initialize the OptionalValue
-    print(opt_int)
-    print(opt_int.value)
+    # opt_int = OptionalValue(None, factory=lambda: IntValue(0))
+    # opt_int.init()  # Initialize the OptionalValue
+    # print(opt_int)
+    # print(opt_int.value)
+    defv = DeferredValue("remote.QP[0].qpn", "uint32_t")
+    print(defv)
+    print(defv.to_cxx("qpn"))
+    opt_defv = OptionalValue(None, factory=lambda: DeferredValue("local.MR[0].lkey", "uint32_t"))
+    opt_defv.init()
+    print(opt_defv)
+    print(opt_defv.value)
+    print(opt_defv.to_cxx("lkey"))
