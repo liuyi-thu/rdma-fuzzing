@@ -5,7 +5,10 @@ try:
 except ImportError:
     from codegen_context import CodeGenContext
 
-from .contracts import Contract, InstantiatedContract
+try:
+    from .contracts import Contract, InstantiatedContract
+except ImportError:
+    from contracts import Contract, InstantiatedContract
 
 # ===== 在文件开头加一个全局开关和工具函数 =====
 DEBUG = False  # 改成 True 就能打开所有调试信息

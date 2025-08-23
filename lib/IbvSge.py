@@ -16,9 +16,9 @@ except ImportError:
     from utils import emit_assign  # for direct script debugging
 
 try:
-    from .value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+    from .value import ConstantValue, DeferredValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
 except ImportError:
-    from value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+    from value import ConstantValue, DeferredValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
 
 
 class IbvSge(Attr):
@@ -26,9 +26,21 @@ class IbvSge(Attr):
     MUTABLE_FIELDS = FIELD_LIST
 
     def __init__(self, addr=None, length=None, lkey=None):
-        self.addr = OptionalValue(IntValue(addr) if addr is not None else None, factory=lambda: IntValue(0))
+        # self.addr = OptionalValue(IntValue(addr) if addr is not None else None, factory=lambda: IntValue(0))
+        self.addr = OptionalValue(
+            DeferredValue.from_id("local.MR", addr, "addr", "uint64_t") if addr is not None else None,
+            factory=lambda: DeferredValue.from_id("local.MR", None, "addr", "uint64_t"),
+        )  # TODO: may cause errors
         self.length = OptionalValue(IntValue(length) if length is not None else None, factory=lambda: IntValue(0))
-        self.lkey = OptionalValue(IntValue(lkey) if lkey is not None else None, factory=lambda: IntValue(0))
+        # self.length = OptionalValue(
+        #     DeferredValue.from_id("local.MR", length, "length", "uint32_t") if length is not None else None,
+        #     factory=lambda: DeferredValue.from_id("local.MR", None, "length", "uint32_t"),
+        # )
+        # self.lkey = OptionalValue(IntValue(lkey) if lkey is not None else None, factory=lambda: IntValue(0))
+        self.lkey = OptionalValue(
+            DeferredValue.from_id("local.MR", lkey, "lkey", "uint32_t") if lkey is not None else None,
+            factory=lambda: DeferredValue.from_id("local.MR", None, "lkey", "uint32_t"),
+        )
 
     @classmethod
     def random_mutation(cls):
@@ -49,8 +61,11 @@ class IbvSge(Attr):
 
 if __name__ == "__main__":
     # For debugging purposes, you can run this file directly to see the output
-    sge = IbvSge.random_mutation()
+    # sge = IbvSge.random_mutation()
+    # print(sge.to_cxx("sge_instance", ctx=None))
+    # for i in range(1000):
+    #     sge.mutate()
+    #     print(sge.to_cxx(f"sge_instance_{i}", ctx=None))
+
+    sge = IbvSge(addr=0x123456, length=1024, lkey=0xABCDEF)
     print(sge.to_cxx("sge_instance", ctx=None))
-    for i in range(1000):
-        sge.mutate()
-        print(sge.to_cxx(f"sge_instance_{i}", ctx=None))

@@ -26,9 +26,27 @@ except ImportError:
     from utils import emit_assign  # for direct script debugging
 
 try:
-    from .value import ConstantValue, EnumValue, FlagValue, IntValue, ListValue, OptionalValue, ResourceValue
+    from .value import (
+        ConstantValue,
+        DeferredValue,
+        EnumValue,
+        FlagValue,
+        IntValue,
+        ListValue,
+        OptionalValue,
+        ResourceValue,
+    )
 except ImportError:
-    from value import ConstantValue, EnumValue, FlagValue, IntValue, ListValue, OptionalValue, ResourceValue
+    from value import (
+        ConstantValue,
+        DeferredValue,
+        EnumValue,
+        FlagValue,
+        IntValue,
+        ListValue,
+        OptionalValue,
+        ResourceValue,
+    )
 
 IBV_WR_OPCODE_ENUM = {
     0: "IBV_WR_RDMA_WRITE",
@@ -53,8 +71,13 @@ class IbvRdmaInfo(Attr):
     MUTABLE_FIELDS = FIELD_LIST
 
     def __init__(self, remote_addr=None, rkey=None):
-        self.remote_addr = IntValue(remote_addr, 2**64 - 1) if remote_addr is not None else None
-        self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
+        # self.remote_addr = IntValue(remote_addr, 2**64 - 1) if remote_addr is not None else None
+        # self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
+        self.remote_addr = (
+            DeferredValue.from_id("remote.MR", remote_addr, "addr", "uint64_t") if remote_addr is not None else None
+        )
+        self.rkey = DeferredValue.from_id("remote.MR", rkey, "rkey", "uint32_t") if rkey is not None else None
+        # TODO: 这里没使用OptionalValue
 
     @classmethod
     def random_mutation(cls):
@@ -76,10 +99,12 @@ class IbvAtomicInfo(Attr):
     MUTABLE_FIELDS = FIELD_LIST
 
     def __init__(self, remote_addr=None, compare_add=None, swap=None, rkey=None):
-        self.remote_addr = IntValue(remote_addr, 2**64 - 1) if remote_addr is not None else None
         self.compare_add = IntValue(compare_add, 2**64 - 1) if compare_add is not None else None
         self.swap = IntValue(swap, 2**64 - 1) if swap is not None else None
-        self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
+        self.remote_addr = (
+            DeferredValue.from_id("remote.MR", remote_addr, "addr", "uint64_t") if remote_addr is not None else None
+        )
+        self.rkey = DeferredValue.from_id("remote.MR", rkey, "rkey", "uint32_t") if rkey is not None else None
 
     @classmethod
     def random_mutation(cls):

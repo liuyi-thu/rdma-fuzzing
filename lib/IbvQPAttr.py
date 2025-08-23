@@ -143,8 +143,14 @@ class IbvQPAttr(Attr):
         self.sq_psn = OptionalValue(
             IntValue(sq_psn) if sq_psn is not None else None, factory=lambda: IntValue(0)
         )  # 默认值为0zx
+        # self.dest_qp_num = OptionalValue(
+        #     IntValue(dest_qp_num) if dest_qp_num is not None else None, factory=lambda: IntValue(0)
+        # )
         self.dest_qp_num = OptionalValue(
-            IntValue(dest_qp_num) if dest_qp_num is not None else None, factory=lambda: IntValue(0)
+            DeferredValue.from_id("remote.QP", dest_qp_num, "qpn", "uint32_t") if dest_qp_num is not None else None,
+            factory=lambda: DeferredValue.from_id(
+                "remote.QP", None, "qpn", "uint32_t"
+            ),  # TBD: this will cause an error.
         )
         self.qp_access_flags = OptionalValue(
             FlagValue(qp_access_flags, flag_type="IBV_ACCESS_FLAGS_ENUM") if qp_access_flags is not None else None,
@@ -266,10 +272,12 @@ class IbvQPAttr(Attr):
 
 
 if __name__ == "__main__":
-    attr = IbvQPAttr.random_mutation()
+    # attr = IbvQPAttr.random_mutation()
+    # print(attr.to_cxx("qp_attr"))
+    # for i in range(10000):
+    #     attr = IbvQPAttr.random_mutation()
+    #     print(attr.to_cxx(f"qp_attr_{i}"))
+    #     if i % 1000 == 0:
+    #         print(f"Generated {i} random QP attributes.")
+    attr = IbvQPAttr(dest_qp_num=0x123456)  # DeferredValue.from_id("remote.QP", None, None, "uint32_t")
     print(attr.to_cxx("qp_attr"))
-    for i in range(10000):
-        attr = IbvQPAttr.random_mutation()
-        print(attr.to_cxx(f"qp_attr_{i}"))
-        if i % 1000 == 0:
-            print(f"Generated {i} random QP attributes.")
