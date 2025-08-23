@@ -443,32 +443,6 @@ class IbvSendWR(Attr):
                 )
             return head
 
-    # @classmethod
-    # def random_mutation(cls):
-    #     sg_list = [IbvSge.random_mutation() for _ in range(random.choice([0, 1, 2, 4]))]
-    #     opcode_val = random.choice(list(IBV_WR_OPCODE_ENUM.keys()))
-    #     # 针对opcode生成相应union字段
-    #     fields = {}
-    #     if opcode_val in (1, 3):  # *_WITH_IMM
-    #         fields['imm_data'] = random.randint(0, 0xffffffff)
-    #     if opcode_val == 7:  # *_INV
-    #         fields['invalidate_rkey'] = random.randint(0, 0xffffffff)
-    #     if opcode_val in (0, 1, 4):  # RDMA相关
-    #         fields['rdma'] = IbvRdmaInfo.random_mutation()
-    #     if opcode_val in (5, 6, 15):  # ATOMIC
-    #         fields['atomic'] = IbvAtomicInfo.random_mutation()
-    #     if opcode_val == 2:  # UD
-    #         fields['ud'] = IbvUdInfo.random_mutation()
-    #     # 其他union略
-    #     return cls(
-    #         wr_id=random.randint(0, 2**64-1),
-    #         sg_list=sg_list,
-    #         num_sge=len(sg_list),
-    #         opcode=opcode_val,
-    #         send_flags=random.randint(0, 0xffff),
-    #         **fields
-    #     )
-
     def to_cxx(self, varname, ctx=None):
         if ctx:
             ctx.alloc_variable(varname, "struct ibv_send_wr")

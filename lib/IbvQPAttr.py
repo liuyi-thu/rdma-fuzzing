@@ -26,9 +26,9 @@ except ImportError:
     from utils import emit_assign  # for direct script debugging
 
 try:
-    from .value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+    from .value import ConstantValue, DeferredValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
 except ImportError:
-    from value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+    from value import ConstantValue, DeferredValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
 
 
 class IbvQPAttr(Attr):
