@@ -95,7 +95,7 @@ def test_bind_mw_minimal_apply_and_codegen():
     _alloc_pd_cq(ctx, "pd0", "cq0")
     _create_min_qp(ctx, "pd0", "cq0", "qp0")
     # allocate an MR for bind target
-    reg = verbs.RegMR(pd="pd0", mr="mr0", buf="buf0", length=4096, flags="IBV_ACCESS_LOCAL_WRITE")
+    reg = verbs.RegMR(pd="pd0", mr="mr0", addr="addr0", length=4096, access="IBV_ACCESS_LOCAL_WRITE")
     reg.apply(ctx)
     bind_info = IbvMwBindInfo(mr="mr0", addr=0x1000, length=0x1000, mw_access_flags=0)
     bind_obj = IbvMwBind(wr_id=1, send_flags=0, bind_info=bind_info)

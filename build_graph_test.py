@@ -261,5 +261,5 @@ if __name__ == "__main__":
             except Exception as e:
                 print(colored(f"Error during apply: {e}", "red"))
                 print(summarize_verb(v, deep=True))  # 如果想看某个 verb 的一行摘要：传入反序列化前的原 verb
-                exit(1)
+                exit()
             print()

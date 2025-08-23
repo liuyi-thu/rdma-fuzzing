@@ -300,7 +300,7 @@ def test_bind_mw_minimal_apply_and_codegen():
     _mk_pd(ctx, "pd0")
     _mk_cq(ctx, "cq0")
     _mk_min_qp(ctx, "pd0", "cq0", "qp0")
-    verbs.RegMR(pd="pd0", mr="mr0", buf="buf0", length=4096, flags="IBV_ACCESS_LOCAL_WRITE").apply(ctx)
+    verbs.RegMR(pd="pd0", mr="mr0", addr="addr0", length=4096, access="IBV_ACCESS_LOCAL_WRITE").apply(ctx)
     IbvMwBind = _load("IbvMwBind", "lib.IbvMwBind")
     IbvMwBindInfo = _load("IbvMwBindInfo", "lib.IbvMwBind")
     if IbvMwBind is None or IbvMwBindInfo is None:
@@ -451,7 +451,7 @@ def test_mutation_advise_mr_smoke():
 def test_mutation_reg_mr_smoke():
     ctx = FakeCtx()
     _mk_pd(ctx, "pd0")
-    v = verbs.RegMR(pd="pd0", mr="mr0", buf="buf", length=64, flags="IBV_ACCESS_LOCAL_WRITE")
+    v = verbs.RegMR(pd="pd0", mr="mr0", addr="addr", length=64, access="IBV_ACCESS_LOCAL_WRITE")
     v.apply(ctx)
     _mutate_all_fields(v)
     code = v.generate_c(ctx)

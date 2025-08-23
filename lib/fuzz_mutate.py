@@ -57,10 +57,28 @@ class FakeCtx:
         self.tracker = _FakeTracker()
         self.ib_ctx = ib_ctx
         self._vars = []
-        self.contracts = ContractTable()
+        # 统一的 contracts：如果 ContractTable 不可用，则注入一个 dummy
+        if ContractTable is not None:
+            self.contracts = ContractTable()
+        else:
+
+            class _DummyContracts:
+                def apply_contract(self, verb, contract):
+                    pass
+
+                def snapshot(self):
+                    return {}
+
+            self.contracts = _DummyContracts()
 
     def alloc_variable(self, name, ty, init=None):
         self._vars.append((name, ty, init))
+
+
+# ---- 临时 dry-run：按顺序 apply 一串 verbs 到 ctx，失败抛 ContractError ----
+def _apply_slice(ctx, seq):
+    for v in seq:
+        v.apply(ctx)
 
 
 # ========================= Helpers (unwrap/dotted) =========================
@@ -97,6 +115,162 @@ def listify(x) -> List[Any]:
     if isinstance(x, (list, tuple)):
         return list(x)
     return [x]
+
+
+# ---- 计算 Destroy 造成的前向影响（你已有实现就复用）----
+def _lost_from_ins(ins_list):
+    lost = set()
+    for nv in ins_list:
+        if is_destroy_verb(nv):
+            lost |= destroyed_targets(nv)
+    return lost
+
+
+def _trim_forward_on_lost(verbs, start_idx, lost):
+    if not lost:
+        return
+    impact = compute_forward_impact(verbs, start_idx, lost)
+    for k in sorted(impact, reverse=True):
+        verbs.pop(k)
+
+
+# # ---- 全局搜索可行插入位置 ----
+# def _find_feasible_positions(verbs, ins_list, *, try_trim_on_destroy=True) -> list[int]:
+#     """
+#     返回所有可行插入位置 pos，使得：
+#       apply(verbs[:pos]); apply(ins_list); apply(verbs[pos:]) 可成功
+#     若 ins_list 包含 destroy，且 try_trim_on_destroy=True，则允许先对 suffix 做“前向切片清理”再验证。
+#     """
+#     feasible = []
+#     n = len(verbs)
+#     for pos in range(n + 1):
+#         # 前缀
+#         ctx = FakeCtx()
+#         try:
+#             _apply_slice(ctx, verbs[:pos])
+#         except Exception:
+#             continue
+
+#         # 待插入段
+#         ctx_mid = FakeCtx()
+#         # 为了简化（tracker/contract 状态延续），这里直接用同一个 ctx 连续 apply 即可
+#         ctx_mid = ctx
+#         try:
+#             _apply_slice(ctx_mid, ins_list)
+#         except Exception:
+#             continue
+
+#         # 后缀：先直接尝试整条；如果失败且 destroy 可清理，则做一次清理再试
+#         suffix = verbs[pos:]
+#         ctx_tail = FakeCtx()
+#         ctx_tail = ctx_mid
+#         try:
+#             _apply_slice(ctx_tail, suffix)
+#             feasible.append(pos)
+#             continue
+#         except Exception:
+#             # 后缀直接失败，尝试 destroy 清理路径
+#             if not try_trim_on_destroy:
+#                 continue
+#             lost = _lost_from_ins(ins_list)
+#             if not lost:
+#                 continue
+#             # 构造一个“临时序列”，对 suffix 做剪枝再验证
+#             tmp = verbs[:pos] + list(ins_list) + verbs[pos:]
+#             _trim_forward_on_lost(tmp, pos + len(ins_list), lost)
+#             ctx_full = FakeCtx()
+#             try:
+#                 _apply_slice(ctx_full, tmp)
+#                 feasible.append(pos)
+#             except Exception:
+#                 continue
+
+#     return feasible
+
+
+def _check_feasible_position(verbs, ins_list, idx, *, try_trim_on_destroy=True):
+    n = len(verbs)
+    pos = idx
+    print("pos:", pos)
+    # 前缀
+    ctx = FakeCtx()
+    try:
+        _apply_slice(ctx, verbs[:pos])
+    except Exception as e:
+        print(e)
+        return False
+
+    # 待插入段
+    ctx_mid = FakeCtx()
+    # 为了简化（tracker/contract 状态延续），这里直接用同一个 ctx 连续 apply 即可
+    ctx_mid = ctx
+    try:
+        _apply_slice(ctx_mid, ins_list)
+    except Exception as e:
+        print(e)
+        return False
+
+    # 后缀：先直接尝试整条；如果失败且 destroy 可清理，则做一次清理再试
+    suffix = verbs[pos:]
+    ctx_tail = FakeCtx()
+    ctx_tail = ctx_mid
+    try:
+        _apply_slice(ctx_tail, suffix)
+        return True
+    except Exception as e:
+        print(e)
+        # 后缀直接失败，尝试 destroy 清理路径
+        if not try_trim_on_destroy:
+            return False
+        lost = _lost_from_ins(ins_list)
+        if not lost:
+            return False
+        # 构造一个“临时序列”，对 suffix 做剪枝再验证
+        tmp = verbs[:pos] + list(ins_list) + verbs[pos:]
+        _trim_forward_on_lost(tmp, pos + len(ins_list), lost)
+        ctx_full = FakeCtx()
+        try:
+            _apply_slice(ctx_full, tmp)
+            return True
+        except Exception:
+            return False
+
+
+# ---- 位置选择策略：best / append / prepend / random ----
+# def _choose_insert_pos(rng, feasible: list[int], *, place: str = "best") -> int | None:
+#     if not feasible:
+#         return None
+#     place = (place or "best").lower()
+#     if place == "append":
+#         return max(feasible)
+#     if place == "prepend":
+#         return min(feasible)
+#     if place == "random":
+#         return rng.choice(feasible)
+#     # "best": 偏向靠后，若有多个并列也可随机挑一个靠后的
+#     m = max(feasible)
+#     # 也可加一点小抖动：在 top-K 里随机
+#     topk = [p for p in feasible if p >= m - 2]  # 允许在最后 3 个点内随机
+#     return rng.choice(topk) if topk else m
+
+
+def _choose_insert_pos(
+    feasible: list[tuple[int, list[VerbCall]]], rng: random.Random, *, place: str = "best"
+) -> tuple[int, list[VerbCall]] | None:
+    """在一组 (pos, ins_list) 中选择一个，返回 (pos, ins_list) 或 None。"""
+    if not feasible:
+        return None
+    place = (place or "best").lower()
+    if place == "append":
+        return max(feasible, key=lambda x: x[0])
+    if place == "prepend":
+        return min(feasible, key=lambda x: x[0])
+    if place == "random":
+        return rng.choice(feasible)
+    # "best": 偏向靠后，最后 2~3 个位置里随机一个，避免过度偏置同一点
+    m = max(p for p, _ in feasible)
+    tail = [pair for pair in feasible if pair[0] >= m - 2]
+    return rng.choice(tail) if tail else max(feasible, key=lambda x: x[0])
 
 
 # ========================= Error classification =========================
@@ -242,10 +416,6 @@ def _iter_children_fields(obj):
         for f in (getattr(obj.__class__, "FIELD_LIST", []) or [])
         if f not in getattr(obj.__class__, "MUTABLE_FIELDS", [])
     ]
-    # if not fields:
-    #     fields = list(getattr(obj, "__dict__", {}).keys())
-    if not fields:
-        fileds = []
     seen = set()
     for name in fields:
         if name in seen:
@@ -385,12 +555,6 @@ def _mk_min_mw_bind(live, rng):
 
 
 # ==== Minimal builders (复用你已有的 ibv_all 聚合) ====
-def _mk_min_recv_wr():
-    from lib.ibv_all import IbvRecvWR, IbvSge
-
-    return IbvRecvWR(num_sge=1, sg_list=[IbvSge(addr=0x2000, length=32, lkey=0x5678)])
-
-
 def _mk_min_srq_init():
     from lib.ibv_all import IbvSrqAttr, IbvSrqInitAttr
 
@@ -433,10 +597,15 @@ def _mk_min_qp_init(send_cq: str, recv_cq: str):
 
 # ---- CQ attr（ModifyCQ 用）----
 def _mk_min_cq_attr():
-    from lib.ibv_all import IbvCQAttr  # 若你的聚合模块里类名不同，改这里
+    from lib.ibv_all import (
+        IbvModerateCQ,
+        IbvModifyCQAttr,  # 若你的聚合模块里类名不同，改这里
+    )
 
     # 常见最低变更：只改 cqe/cq_cap 或 moderation（按你的 IbvCQAttr 定义来）
-    return IbvCQAttr(cq_count=1, cq_period=0)  # 示例：moderation 1 event/0 usec
+    return IbvModifyCQAttr(
+        attr_mask=0, moderate=IbvModerateCQ(cq_count=1, cq_period=1)
+    )  # 示例：moderation 1 event/0 usec
 
 
 # ---- MW alloc 的最小形态 ----
@@ -449,10 +618,14 @@ def _mk_min_alloc_mw(pd_name: str):
 
 # ---- DM alloc 的最小形态 ----
 def _mk_min_alloc_dm():
+    from lib.ibv_all import IbvAllocDmAttr  # 若你的 IbvAllocDmAttr 有不同字段，按需调整
+
     from .verbs import AllocDM
 
     # 视你的 verbs.py 签名而定：很多实现是 ctx_name + length + align
-    return AllocDM(ctx_name="ctx", dm=f"dm_{random.randrange(1 << 16)}", length=0x2000, align=64)
+    return AllocDM(
+        ctx_name="ctx", dm=f"dm_{random.randrange(1 << 16)}", attr_obj=IbvAllocDmAttr(length=0x2000, log_align_req=64)
+    )
 
 
 # ========================= Live / factories / requires-filler =========================
@@ -472,7 +645,7 @@ def _live_before(verbs: List[VerbCall], i: int) -> set[tuple[str, str]]:
 
 
 def _default_factories():
-    from lib.ibv_all import IbvQPCap, IbvQPInitAttr
+    from lib.ibv_all import IbvAllocDmAttr, IbvQPCap, IbvQPInitAttr
 
     from .verbs import AllocDM, AllocPD, CreateCQ, CreateQP, RegMR
 
@@ -495,8 +668,7 @@ def _default_factories():
         return RegMR(pd="pd0", mr=name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE")
 
     def mk_dm(ctx, name):
-        # 若你的 AllocDM 允许自定义名字 dm=name，就用 name；否则忽略 name。
-        return AllocDM(ctx_name="ctx", dm=name, length=0x2000, align=64)
+        return AllocDM(dm=name, attr_obj=IbvAllocDmAttr(length=0x2000, log_align_req=64))
 
     return {"pd": mk_pd, "cq": mk_cq, "qp": mk_qp, "mr": mk_mr, "dm": mk_dm}
 
@@ -868,7 +1040,8 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
     # 3) PollCQ
     def build_poll_cq(ctx, rng, live):
         cq = pick_cq_name()
-        return None if not cq else PollCQ(cq=cq, num_entries=1)
+        # return None if not cq else PollCQ(cq=cq, num_entries=1)
+        return None if not cq else PollCQ(cq=cq)
 
     # 4) RegMR（绑定已有 PD）
     def build_reg_mr(ctx, rng, live):
@@ -1025,7 +1198,8 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         cq = pick("cq")
         if not cq:
             return None
-        return ModifyCQ(cq=cq, attr_obj=_mk_min_cq_attr(), attr_mask="IBV_CQ_MODERATION")
+        # return ModifyCQ(cq=cq, attr_obj=_mk_min_cq_attr(), attr_mask="IBV_CQ_MODERATION")
+        return ModifyCQ(cq=cq, attr_obj=_mk_min_cq_attr())
 
     # --- AllocMW: 需要 pd，产出 mw ---
     def build_alloc_mw(ctx, rng, live):
@@ -1126,127 +1300,13 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
 
 
 # ========================= Mutator =========================
+
+
 class ContractAwareMutator:
-    def __init__(self, rng: Optional[random.Random] = None, *, cfg: MutatorConfig | None = None):
+    def __init__(self, rng: random.Random | None = None, *, cfg: MutatorConfig | None = None):
         self.rng = rng or random.Random()
         self.cfg = cfg or MutatorConfig()
 
-    # —— 删除变异（保留你的思路；若已有实现可直接替换/合并） ——
-    def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
-        if not verbs:
-            return False
-        idx = self.rng.randrange(len(verbs)) if idx_ is None else idx_
-        victim = verbs[idx]
-        del verbs[idx]
-        # 级联清理：删除受其 produces 影响的后续
-        req, pro, _ = verb_edges_recursive(victim)
-        # print(req, pro)
-        lost = set(pro)
-        impact = compute_forward_impact(verbs, idx, lost)
-        for k in sorted(impact, reverse=True):
-            verbs.pop(k)
-        return True
-
-    # —— 插入变异（有/无状态 ModifyQP 等） ——
-    def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
-        if not verbs:
-            return False
-        rng = self.rng
-        i = rng.randrange(0, len(verbs) + 1) if idx is None else idx
-        builder = _pick_insertion_template(rng, verbs, i, choice)
-        new_v = builder(None, rng, _live_before(verbs, i))
-        if new_v is None:
-            print(colored("No valid insertion generated", "red"))
-            return False
-        else:
-            if isinstance(new_v, list):
-                print("new verbs:", [summarize_verb(v, deep=True) for v in new_v])
-            else:
-                print("new verb:", summarize_verb(new_v, deep=True))
-        ins_list = new_v if isinstance(new_v, list) else [new_v]
-
-        # 插入前补依赖
-        if not all(_ensure_requires_before(verbs, i, v) for v in ins_list):
-            return False
-
-        verbs[i:i] = ins_list
-        print("inserted verbs:", [summarize_verb(v, deep=True) for v in ins_list])
-
-        # --- 若插入了 Destroy verb：对后续依赖者做前向切片清理 ---
-        lost = set()
-        for nv in ins_list:
-            if is_destroy_verb(nv):
-                print("destroy verb inserted:", summarize_verb(nv, deep=True))
-                lost |= destroyed_targets(nv)
-        print("lost:", lost)
-        if lost:
-            impact = compute_forward_impact(verbs, i + 1, lost)
-            for k in sorted(impact, reverse=True):
-                verbs.pop(k)
-
-        # dry-run & repair
-        MAX_FIX, fixes, k = 16, 0, 0
-        while k < len(verbs):
-            try:
-                ctx = FakeCtx()
-                for j in range(0, k + 1):
-                    verbs[j].apply(ctx)
-                k += 1
-                continue
-            except ContractError as e:
-                kind, info = classify_contract_error(str(e))
-                repaired = False
-
-                if kind == ErrKind.MISSING_RESOURCE:
-                    repaired = _ensure_requires_before(verbs, k, verbs[k])
-                    if not repaired:
-                        # 回退本次插入
-                        for v in ins_list:
-                            try:
-                                verbs.remove(v)
-                            except ValueError:
-                                pass
-                        return False
-
-                elif kind == ErrKind.ILLEGAL_TRANSITION and info.get("rtype") == "qp":
-                    # 注意：这里使用 expect_from（修复了原实现里写成 from 的问题）
-                    path = _qp_path(info.get("expect_from"), info.get("to"))
-                    if path:
-                        from lib.ibv_all import IbvQPAttr
-
-                        from .verbs import ModifyQP
-
-                        chain = [
-                            ModifyQP(
-                                qp=info.get("name"),
-                                attr_obj=IbvQPAttr(qp_state=f"IBV_QPS_{st}"),
-                                attr_mask="IBV_QP_STATE",
-                            )
-                            for st in path
-                        ]
-                        verbs[k:k] = chain
-                        repaired = True
-
-                elif kind in (ErrKind.DANGLING_DESTROY, ErrKind.DOUBLE_DESTROY):  # TODO: 这种error是没有实现过的
-                    verbs.pop(k)
-                    repaired = True
-
-                if not repaired:
-                    # 未识别：回退插入
-                    for v in ins_list:
-                        try:
-                            verbs.remove(v)
-                        except ValueError:
-                            pass
-                    return False
-
-                fixes += 1
-                if fixes > MAX_FIX:
-                    return False
-                continue
-        return True
-
-    # —— 总入口：可路由到不同策略 ——
     def mutate(self, verbs: List[VerbCall], idx: Optional[int], choice: str = None) -> bool:
         if choice:
             if choice == "insert":
@@ -1261,3 +1321,366 @@ class ContractAwareMutator:
                 return self.mutate_insert(verbs, idx)
             else:
                 return self.mutate_delete(verbs, idx)
+
+    def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
+        if not verbs:
+            return False
+        idx = self.rng.randrange(len(verbs)) if idx_ is None else idx_
+        victim = verbs[idx]
+        del verbs[idx]
+        lost = set(verb_edges_recursive(victim)[1])  # produces
+        impact = compute_forward_impact(verbs, idx, lost)
+        for k in sorted(impact, reverse=True):
+            verbs.pop(k)
+        return True
+
+    def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
+        """
+        先生成候选 ins_list，再在候选位置中寻找可行点插入：
+        1) 位置列表：若 idx 指定则只用该点，否则扫描 [0..len].
+        2) 为每个位置 i：
+            - 用“全局 live”先尝试生成；若 None 再用“pos live”补试一次
+            - 用 _check_feasible_position(verbs, ins_list, i, try_trim_on_destroy=True) 做干运行判定
+        3) 用 _choose_insert_pos(feasible, rng, place="best") 从可行集中选一个 (pos, ins_list)
+        4) 插入 + destroy 前向切片清理 + 最终一次干运行校验
+        """
+        if not verbs:
+            return False
+
+        rng = self.rng
+        candidate_indices = [idx] if idx is not None else list(range(len(verbs) + 1))
+        feasible: List[Tuple[int, List[VerbCall]]] = []
+
+        # 可选：安静/详细输出
+        verbose = getattr(getattr(self, "cfg", None), "verbose", False)
+        if verbose:
+            print("=== VERBS (before) ===")
+            for j, v in enumerate(verbs):
+                print(f"[{j:02d}] {summarize_verb(v, deep=True)}")
+
+        # 1) 收集可行位置
+        for i in candidate_indices:
+            if verbose:
+                print(f"Trying to insert at index {i}")
+
+            # 1.1 选模板
+            builder = _pick_insertion_template(rng, verbs, i, choice)
+            build_fn = builder if callable(builder) else builder[0]
+
+            # 1.2 先用“全局 live”生成；失败再用“当前位置 live”补试一次
+            ins_list: Optional[List[VerbCall]] = None
+            global_live = _live_before(verbs, len(verbs))
+            cand = build_fn(None, rng, global_live)
+            if cand is None:
+                pos_live = _live_before(verbs, i)
+                cand = build_fn(None, rng, pos_live)
+
+            if cand is None:
+                if verbose:
+                    print("  -> no candidate generated at this position")
+                continue
+
+            ins_list = cand if isinstance(cand, list) else [cand]
+            if verbose:
+                for nv in ins_list:
+                    print("  + new:", summarize_verb(nv, deep=True))
+
+            # 1.3 在该位置做可行性干运行检查（允许 destroy 清理后判定）
+            if not _check_feasible_position(verbs, ins_list, i, try_trim_on_destroy=True):
+                if verbose:
+                    print("  -> not feasible at this position")
+                continue
+
+            feasible.append((i, ins_list))
+
+        # 2) 从可行集合中选一个位置（偏向靠后）
+        choice_pair = _choose_insert_pos(feasible, rng, place="best")
+        if not choice_pair:
+            if verbose:
+                print("No feasible insertion point found.")
+            return False
+
+        pos, ins_list = choice_pair
+
+        # 3) 真插入 + destroy 前向切片清理
+        verbs[pos:pos] = ins_list
+        lost = _lost_from_ins(ins_list)
+        if lost:
+            _trim_forward_on_lost(verbs, pos + len(ins_list), lost)
+
+        # 4) 最终一次干运行校验
+        ctx = FakeCtx()
+        try:
+            _apply_slice(ctx, verbs)
+            if verbose:
+                print("=== VERBS (after) ===")
+                for j, v in enumerate(verbs):
+                    print(f"[{j:02d}] {summarize_verb(v, deep=True)}")
+            return True
+        except ContractError:
+            # 理论上不应触发（pos 源自可行集），但回退以保证幂等
+            del verbs[pos : pos + len(ins_list)]
+            if verbose:
+                print("Final dry-run failed; reverted insertion.")
+            return False
+
+
+# class ContractAwareMutator:
+#     def __init__(self, rng: Optional[random.Random] = None, *, cfg: MutatorConfig | None = None):
+#         self.rng = rng or random.Random()
+#         self.cfg = cfg or MutatorConfig()
+
+#     # —— 删除变异（保留你的思路；若已有实现可直接替换/合并） ——
+#     def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
+#         if not verbs:
+#             return False
+#         idx = self.rng.randrange(len(verbs)) if idx_ is None else idx_
+#         victim = verbs[idx]
+#         del verbs[idx]
+#         # 级联清理：删除受其 produces 影响的后续
+#         req, pro, _ = verb_edges_recursive(victim)
+#         # print(req, pro)
+#         lost = set(pro)
+#         impact = compute_forward_impact(verbs, idx, lost)
+#         for k in sorted(impact, reverse=True):
+#             verbs.pop(k)
+#         return True
+
+#     def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
+#         if not verbs:
+#             return False
+#         rng = self.rng
+#         candidate_indices = list(range(len(verbs) + 1)) if idx is None else [idx]
+#         feasible = []
+#         print("old verbs:", [summarize_verb(v, deep=True) for v in verbs])
+#         for i in candidate_indices:
+#             print(f"Trying to insert at index {i}")
+#             # 1) 先选模板 & 生成 ins_list
+#             builder = _pick_insertion_template(rng, verbs, i, choice)
+#             build_fn = builder if callable(builder) else builder[0]
+#             # 为了避免“位置相关的 live_set 影响生成”，这里先用全局 live 来生成；若模板强依赖 pos，可以在失败时回退到旧逻辑
+#             global_live = _live_before(verbs, len(verbs))
+#             new_v = build_fn(None, rng, global_live)
+#             if new_v is None:
+#                 # print(colored("No valid insertion generated", "red"))
+#                 continue
+#             else:
+#                 if isinstance(new_v, list):
+#                     print("new verbs:", [summarize_verb(v, deep=True) for v in new_v])
+#                 else:
+#                     print("new verb:", summarize_verb(new_v, deep=True))
+#             ins_list = new_v if isinstance(new_v, list) else [new_v]
+#             if not _check_feasible_position(verbs, ins_list, i):
+#                 print(colored("Insertion not feasible at this position", "red"))
+#                 continue
+#             feasible.append((i, ins_list))
+
+#         # pos, ins_list = 0, 0
+#         # print("sss:", _choose_insert_pos(feasible, rng, place="best"))
+#         choice = _choose_insert_pos(feasible, rng, place="best")
+#         if not choice:
+#             return False
+#         pos, ins_list = choice
+#         verbs[pos:pos] = ins_list
+
+#         lost = _lost_from_ins(ins_list)
+#         if lost:
+#             _trim_forward_on_lost(verbs, pos + len(ins_list), lost)
+
+#         ctx = FakeCtx()
+#         try:
+#             _apply_slice(ctx, verbs)
+#             return True
+#         except ContractError:
+#             # 不该出现：因为 pos 来自可行集；但以防 race/并发改写，回退
+#             del verbs[pos : pos + len(ins_list)]
+#             return False
+
+#     # # —— 插入变异（有/无状态 ModifyQP 等） ——
+#     def mutate_insert_3(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
+#         if not verbs:
+#             return False
+#         rng = self.rng
+#         i = rng.randrange(0, len(verbs) + 1) if idx is None else idx
+#         print(f"Inserting at index {i}")  # TODO: 这里存在一个矛盾，是先选位置还是先选种类，一般来说应该是先选位置
+#         # 1) 先选模板 & 生成 ins_list
+#         builder = _pick_insertion_template(rng, verbs, i, choice)
+#         build_fn = builder if callable(builder) else builder[0]
+#         # 为了避免“位置相关的 live_set 影响生成”，这里先用全局 live 来生成；若模板强依赖 pos，可以在失败时回退到旧逻辑
+#         global_live = _live_before(verbs, len(verbs))  # 全部 live
+#         new_v = build_fn(None, rng, global_live)
+#         if new_v is None:
+#             print(colored("No valid insertion generated", "red"))
+#             return False
+#         else:
+#             if isinstance(new_v, list):
+#                 print("new verbs:", [summarize_verb(v, deep=True) for v in new_v])
+#             else:
+#                 print("new verb:", summarize_verb(new_v, deep=True))
+#         ins_list = new_v if isinstance(new_v, list) else [new_v]
+
+#         # 插入前补依赖
+#         if not all(_ensure_requires_before(verbs, i, v) for v in ins_list):
+#             return False
+
+#         verbs[i:i] = ins_list
+#         print("inserted verbs:", [summarize_verb(v, deep=True) for v in ins_list])
+
+#         # --- 若插入了 Destroy verb：对后续依赖者做前向切片清理 ---
+#         lost = set()
+#         for nv in ins_list:
+#             if is_destroy_verb(nv):
+#                 print("destroy verb inserted:", summarize_verb(nv, deep=True))
+#                 lost |= destroyed_targets(nv)
+#         print("lost:", lost)
+#         if lost:
+#             impact = compute_forward_impact(verbs, i + 1, lost)
+#             for k in sorted(impact, reverse=True):
+#                 verbs.pop(k)
+
+#         # dry-run & repair
+#         MAX_FIX, fixes, k = 16, 0, 0
+#         while k < len(verbs):
+#             try:
+#                 ctx = FakeCtx()
+#                 for j in range(0, k + 1):
+#                     verbs[j].apply(ctx)
+#                 k += 1
+#                 continue
+#             except ContractError as e:
+#                 kind, info = classify_contract_error(str(e))
+#                 repaired = False
+
+#                 if kind == ErrKind.MISSING_RESOURCE:
+#                     repaired = _ensure_requires_before(verbs, k, verbs[k])
+#                     if not repaired:
+#                         # 回退本次插入
+#                         for v in ins_list:
+#                             try:
+#                                 verbs.remove(v)
+#                             except ValueError:
+#                                 pass
+#                         return False
+
+#                 elif kind == ErrKind.ILLEGAL_TRANSITION and info.get("rtype") == "qp":
+#                     # 注意：这里使用 expect_from（修复了原实现里写成 from 的问题）
+#                     path = _qp_path(info.get("expect_from"), info.get("to"))
+#                     if path:
+#                         from lib.ibv_all import IbvQPAttr
+
+#                         from .verbs import ModifyQP
+
+#                         chain = [
+#                             ModifyQP(
+#                                 qp=info.get("name"),
+#                                 attr_obj=IbvQPAttr(qp_state=f"IBV_QPS_{st}"),
+#                                 attr_mask="IBV_QP_STATE",
+#                             )
+#                             for st in path
+#                         ]
+#                         verbs[k:k] = chain
+#                         repaired = True
+
+#                 elif kind in (ErrKind.DANGLING_DESTROY, ErrKind.DOUBLE_DESTROY):  # TODO: 这种error是没有实现过的
+#                     verbs.pop(k)
+#                     repaired = True
+
+#                 if not repaired:
+#                     # 未识别：回退插入
+#                     for v in ins_list:
+#                         try:
+#                             verbs.remove(v)
+#                         except ValueError:
+#                             pass
+#                     return False
+
+#                 fixes += 1
+#                 if fixes > MAX_FIX:
+#                     return False
+#                 continue
+#         return True
+
+#     def mutate_insert_2(
+#         self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None, *, place: str = "best"
+#     ) -> bool:
+#         """
+#         方案 C：先生成 new verbs，再在全序列中寻找一个“可行位置”插入。
+#         - idx：若指定，仍按固定位置尝试（不搜索）。为 None 时启用全局搜索。
+#         - place：对可行位置的选点策略（best/append/prepend/random）
+#         """
+#         if not verbs:
+#             return False
+#         rng = self.rng
+
+#         # 1) 先选模板 & 生成 ins_list
+#         builder = _pick_insertion_template(rng, verbs, 0 if idx is None else idx, choice)
+#         build_fn = builder if callable(builder) else builder[0]
+#         # 为了避免“位置相关的 live_set 影响生成”，这里先用全局 live 来生成；若模板强依赖 pos，可以在失败时回退到旧逻辑
+#         global_live = _live_before(verbs, len(verbs))  # 全部 live
+#         new_v = build_fn(None, rng, global_live)
+#         if new_v is None:
+#             return False
+#         ins_list = new_v if isinstance(new_v, list) else [new_v]
+
+#         # 2) 找可行位置
+#         if idx is None:
+#             feasible = _find_feasible_positions(verbs, ins_list, try_trim_on_destroy=True)
+#             pos = _choose_insert_pos(rng, feasible, place=place)
+#             if pos is None:
+#                 # 回退：旧逻辑（随机尝试若干位置）
+#                 tries = min(8, len(verbs) + 1)
+#                 for _ in range(max(1, tries)):
+#                     i = rng.randrange(0, len(verbs) + 1)
+#                     new_live = _live_before(verbs, i)
+#                     new_v = build_fn(None, rng, new_live)
+#                     if new_v is None:
+#                         continue
+#                     ins_list = new_v if isinstance(new_v, list) else [new_v]
+#                     verbs[i:i] = ins_list
+#                     # destroy 前向清理
+#                     lost = _lost_from_ins(ins_list)
+#                     if lost:
+#                         _trim_forward_on_lost(verbs, i + len(ins_list), lost)
+#                     # 干运行全集
+#                     try:
+#                         ctx = FakeCtx()
+#                         _apply_slice(ctx, verbs)
+#                         return True
+#                     except ContractError:
+#                         del verbs[i : i + len(ins_list)]
+#                         continue
+#                 return False
+#         else:
+#             # 指定固定位置：不搜索，直接用 idx
+#             pos = idx
+
+#         # 3) 真插入 + destroy 清理 + 最终一次干运行验证
+#         verbs[pos:pos] = ins_list
+#         lost = _lost_from_ins(ins_list)
+#         if lost:
+#             _trim_forward_on_lost(verbs, pos + len(ins_list), lost)
+
+#         ctx = FakeCtx()
+#         try:
+#             _apply_slice(ctx, verbs)
+#             return True
+#         except ContractError:
+#             # 不该出现：因为 pos 来自可行集；但以防 race/并发改写，回退
+#             del verbs[pos : pos + len(ins_list)]
+#             return False
+
+#     # —— 总入口：可路由到不同策略 ——
+#     def mutate(self, verbs: List[VerbCall], idx: Optional[int], choice: str = None) -> bool:
+#         if choice:
+#             if choice == "insert":
+#                 return self.mutate_insert(verbs, idx)
+#             elif choice == "delete":
+#                 return self.mutate_delete(verbs, idx)
+#             else:
+#                 raise ValueError(f"Unknown mutation choice: {choice}")
+#         else:
+#             r = self.rng.random()
+#             if r < 0.5:
+#                 return self.mutate_insert(verbs, idx)
+#             else:
+#                 return self.mutate_delete(verbs, idx)

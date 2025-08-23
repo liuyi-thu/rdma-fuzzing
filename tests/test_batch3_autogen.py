@@ -136,7 +136,7 @@ def test_alloc_dm_minimal():
         pytest.skip("IbvAllocDmAttr not found")
 
     ctx = FakeCtx()
-    # 最小构造：长度用一个小值，flags/comp_mask 缺省
+    # 最小构造：长度用一个小值，access/comp_mask 缺省
     attr = IbvAllocDmAttr(length=4096)
     v = verbs.AllocDM(dm="dm0", attr_obj=attr)
     v.apply(ctx)

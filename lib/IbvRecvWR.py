@@ -80,7 +80,7 @@ class IbvRecvWR(Attr):
             s += emit_assign(varname, "wr_id", self.wr_id)
         # sg_list
         if self.sg_list:
-            sge_array_var = varname + "_sges"
+            sge_array_var = str(varname) + "_sges"
             if ctx:
                 ctx.alloc_variable(sge_array_var + f"[{len(self.sg_list)}]", "struct ibv_sge")
             for idx, sge in enumerate(self.sg_list):

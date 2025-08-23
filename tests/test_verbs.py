@@ -83,9 +83,9 @@ def test_createcq_apply_and_codegen():
 
 def test_regmr_apply_and_codegen():
     ctx = FakeCtx()
-    v = verbs.RegMR(pd="pd0", mr="mr0", buf="buf", length=1024, flags="IBV_ACCESS_LOCAL_WRITE")
+    v = verbs.RegMR(pd="pd0", mr="mr0", addr="addr", length=1024, access="IBV_ACCESS_LOCAL_WRITE")
     # basic mutability exposure
-    assert set(v.get_mutable_params().keys()) >= {"pd", "mr", "buf", "length", "flags"}
+    assert set(v.get_mutable_params().keys()) >= {"pd", "mr", "addr", "length", "access"}
 
     v.apply(ctx)
     # uses pd and creates mr

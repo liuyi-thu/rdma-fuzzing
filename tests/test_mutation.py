@@ -137,7 +137,7 @@ def test_mutation_advise_mr_smoke():
 
 def test_mutation_reg_mr_smoke():
     ctx = FakeCtx()
-    v = verbs.RegMR(pd="pd0", mr="mr0", buf="buf", length=64, flags="IBV_ACCESS_LOCAL_WRITE")
+    v = verbs.RegMR(pd="pd0", mr="mr0", addr="addr", length=64, access="IBV_ACCESS_LOCAL_WRITE")
     v.apply(ctx)
     _mutate_all_fields(v)
     code = v.generate_c(ctx)

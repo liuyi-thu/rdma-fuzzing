@@ -85,6 +85,9 @@ class Value:
     def instantiate_contract(self):
         return None
 
+    def __add__(self, other):
+        return self.value + other if self.value is not None else other
+
 
 class IntValue(Value):
     def __init__(
@@ -679,6 +682,16 @@ class OptionalValue(Value):
             self.value.apply(ctx)
         else:
             debug_print("OptionalValue has no value or cannot be applied.")
+
+    # def __add__(self, other):
+    #     """Add another OptionalValue or Value to this one."""
+    #     # if isinstance(other, OptionalValue):
+    #     #     return OptionalValue(self.value + other.value, self.factory, self.mutable)
+    #     # elif isinstance(other, Value):
+    #     #     return OptionalValue(self.value + other, self.factory, self.mutable)
+    #     # else:
+    #     #     raise TypeError("Can only add OptionalValue or Value to OptionalValue")
+    #     pass
 
 
 if __name__ == "__main__":

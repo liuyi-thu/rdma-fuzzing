@@ -640,7 +640,8 @@ class AllocDM(VerbCall):
         transitions=[],
     )
 
-    def __init__(self, dm: str = None, attr_obj: IbvAllocDmAttr = None):
+    def __init__(self, ctx_name: str = None, dm: str = None, attr_obj: IbvAllocDmAttr = None):
+        # ctx_name 暂时不用
         self.dm = ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
         self.attr_obj = attr_obj
         self.attr_var = ConstantValue("dm_attr_" + self.dm.value) if dm else ConstantValue("dm_attr_dm")
@@ -5058,7 +5059,7 @@ class RegDmaBufMR(VerbCall):
 
 
 class RegMR(VerbCall):
-    MUTABLE_FIELDS = ["pd", "mr", "buf", "length", "flags"]
+    MUTABLE_FIELDS = ["pd", "mr", "addr", "length", "access"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
@@ -5109,7 +5110,7 @@ class RegMR(VerbCall):
     def generate_c(self, ctx: CodeGenContext) -> str:
         pd_name = coerce_str(self.pd)
         mr_name = coerce_str(self.mr)
-        addr = ensure_identifier(self.buf)  # 若当成 C 变量名使用
+        addr = ensure_identifier(self.addr)  # 若当成 C 变量名使用
         length = coerce_int(self.length)
         access = coerce_str(self.access)
         return f"""
