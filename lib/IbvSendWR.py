@@ -478,7 +478,7 @@ class IbvSendWR(Attr):
             if not val:
                 continue
             if field == "sg_list":
-                if isinstance(val, list) and len(val) > 0:
+                if len(val) > 0:
                     # 生成sge数组
                     for idx, sge in enumerate(val):
                         sge_var = f"{varname}_sge_{idx}"

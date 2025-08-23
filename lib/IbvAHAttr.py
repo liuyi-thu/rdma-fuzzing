@@ -20,9 +20,27 @@ except ImportError:
     from utils import emit_assign  # for direct script debugging
 
 try:
-    from .value import BoolValue, ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+    from .value import (
+        BoolValue,
+        ConstantValue,
+        DeferredValue,
+        EnumValue,
+        FlagValue,
+        IntValue,
+        OptionalValue,
+        ResourceValue,
+    )
 except ImportError:
-    from value import BoolValue, ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+    from value import (
+        BoolValue,
+        ConstantValue,
+        DeferredValue,
+        EnumValue,
+        FlagValue,
+        IntValue,
+        OptionalValue,
+        ResourceValue,
+    )
 
 IBV_QP_STATE_ENUM = {
     0: "IBV_QPS_RESET",
@@ -155,7 +173,11 @@ class IbvGlobalRoute(Attr):
     MUTABLE_FIELDS = ["dgid", "flow_label", "sgid_index", "hop_limit", "traffic_class"]
 
     def __init__(self, dgid=None, flow_label=None, sgid_index=None, hop_limit=None, traffic_class=None):
-        self.dgid = OptionalValue(dgid, factory=lambda: IbvGID())  # IbvGID instance, can be mutated
+        # self.dgid = OptionalValue(dgid, factory=lambda: IbvGID())  # IbvGID instance, can be mutated
+        self.dgid = OptionalValue(
+            DeferredValue.from_id("remote.QP", dgid, "gid", "const char *"),
+            factory=DeferredValue.from_id("remote.QP", None, "gid", "const char *"),
+        )  # TODO: may cause bugs; and gid cannot be assigned directly, to be fixed.
         self.flow_label = OptionalValue(
             IntValue(flow_label) if flow_label is not None else None, factory=lambda: IntValue()
         )  # not necessary
@@ -189,9 +211,11 @@ class IbvGlobalRoute(Attr):
             if not val:
                 continue
             if field == "dgid":
-                dgid_var = varname + "_dgid"
-                s += val.to_cxx(dgid_var, ctx)
-                s += f"    {varname}.dgid = {dgid_var};\n"
+                # dgid_var = varname + "_dgid"
+                # s += val.to_cxx(dgid_var, ctx)
+                # s += f"    {varname}.dgid = {dgid_var};\n"
+                # s += f"    memcpy({varname}.dgid, {val}, sizeof({varname}.dgid));\n"
+                s += f"    parse_gid_str({val}, {varname}.dgid);\n"
             else:
                 s += emit_assign(varname, field, val)
         return s
@@ -205,9 +229,13 @@ class IbvAHAttr(Attr):
         self, grh=None, dlid=None, sl=None, src_path_bits=None, static_rate=None, is_global=None, port_num=None
     ):
         self.grh = OptionalValue(grh, factory=lambda: IbvGlobalRoute())  # Global Route Header, can be mutated
+        # self.dlid = OptionalValue(
+        #     IntValue(dlid) if dlid is not None else None, factory=lambda: IntValue()
+        # )  # dlid is usually an integer
         self.dlid = OptionalValue(
-            IntValue(dlid) if dlid is not None else None, factory=lambda: IntValue()
-        )  # dlid is usually an integer
+            DeferredValue.from_id("remote.QP", dlid, "lid", "uint32_t"),
+            factory=DeferredValue.from_id("remote.QP", None, "lid", "uint32_t"),
+        )  # dlid is usually an integer # TODO: may cause bugs
         self.sl = OptionalValue(
             IntValue(sl) if sl is not None else None, factory=lambda: IntValue()
         )  # Service Level, can be mutated
@@ -220,9 +248,13 @@ class IbvAHAttr(Attr):
         self.is_global = OptionalValue(
             BoolValue(is_global) if is_global is not None else None, factory=lambda: BoolValue(False)
         )  # Is Global, default is False
+        # self.port_num = OptionalValue(
+        #     IntValue(port_num) if port_num is not None else None, factory=lambda: IntValue(1)
+        # )  # Port Number, default is 1
         self.port_num = OptionalValue(
-            IntValue(port_num) if port_num is not None else None, factory=lambda: IntValue(1)
-        )  # Port Number, default is 1
+            DeferredValue.from_id("remote.QP", dlid, "port_num", "uint32_t"),
+            factory=DeferredValue.from_id("remote.QP", None, "port_num", "uint32_t"),
+        )
 
     @classmethod
     def random_mutation(cls):
@@ -275,9 +307,12 @@ if __name__ == "__main__":
     # grh.mutate()  # Mutate the grh
     # print(grh.to_cxx("grh_mutated"))  # This will generate the
 
-    ah_attr = IbvAHAttr.random_mutation()
-    print(ah_attr.to_cxx("my_ah_attr_random"))
-    for i in range(10000):
-        ah_attr.mutate()  # Mutate the attributes
-    print("after mutation:")
-    print(ah_attr.to_cxx("my_ah_attr_random_mutated"))  #
+    # ah_attr = IbvAHAttr.random_mutation()
+    # print(ah_attr.to_cxx("my_ah_attr_random"))
+    # for i in range(10000):
+    #     ah_attr.mutate()  # Mutate the attributes
+    # print("after mutation:")
+    # print(ah_attr.to_cxx("my_ah_attr_random_mutated"))  #
+
+    globalRoute = IbvGlobalRoute(dgid="abc", flow_label=0, sgid_index=0, hop_limit=0, traffic_class=0)
+    print(globalRoute.to_cxx("my_global_route"))
