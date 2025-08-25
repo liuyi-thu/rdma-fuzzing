@@ -53,7 +53,8 @@
         "stdexcept": "cpp",
         "streambuf": "cpp",
         "cinttypes": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "unordered_set": "cpp"
     },
     "python.analysis.extraPaths": [
         "/home/liuyi/fuzzing-rdma/rdma-core/pyverbs"
