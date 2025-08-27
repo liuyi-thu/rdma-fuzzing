@@ -1680,12 +1680,17 @@ class CreateQP(VerbCall):
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         self.context = ctx  # TEMP
+        qp_name = str(self.qp)
+
         if self.context:
-            self.context.alloc_variable(str(self.qp), "struct ibv_qp *", "NULL")
+            self.context.alloc_variable(qp_name, "struct ibv_qp *", "NULL")
 
             self.srv_name = self.context.gen_var_name("srv", "")
-            qp_name = str(self.qp)
             self.context.make_qp_binding(qp_name, self.srv_name)
+            self.context.claim_pairs.append(
+                {"id": f"pair-{qp_name}-{self.srv_name}", "cli_id": qp_name, "srv_id": self.srv_name}
+            )
+            self.context.schedule_claim_qp_after(getattr(self, "_seq_index", 0), qp_name, qp_name, port=1, lid=0)
 
         if self.tracker:
             # Register the PD and QP addresses in the tracker
@@ -1744,27 +1749,6 @@ class CreateQP(VerbCall):
         fprintf(stderr, "Failed to create QP\\n");
         return -1;
     }}
-    
-    qps[qps_size++] = (PR_QP){{
-        .id = "{qp_name}",
-        .qpn = {qp_name}->qp_num,
-        .psn = 0,
-        .port = 1,
-        .lid = 0,
-        .gid = "" // will set below
-    }};
-    
-    snprintf(qps[qps_size-1].gid, sizeof(qps[qps_size-1].gid),
-                 "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
-                 {self.context.gid_var}.raw[0], {self.context.gid_var}.raw[1], {self.context.gid_var}.raw[2], {self.context.gid_var}.raw[3], {self.context.gid_var}.raw[4], {self.context.gid_var}.raw[5], {self.context.gid_var}.raw[6], {self.context.gid_var}.raw[7], {self.context.gid_var}.raw[8], {self.context.gid_var}.raw[9], {self.context.gid_var}.raw[10], {self.context.gid_var}.raw[11], {self.context.gid_var}.raw[12], {self.context.gid_var}.raw[13], {self.context.gid_var}.raw[14], {self.context.gid_var}.raw[15]);
-                 
-    prs[prs_size++] = (PR_Pair){{
-        .id = "pair-{qp_name}-{self.srv_name}",
-        .cli_id = "{qp_name}",
-        .srv_id = "{self.srv_name}"
-    }};
-    
-    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
 """
 
 
@@ -3745,6 +3729,8 @@ class ModifyQP(VerbCall):
     def apply(self, ctx: CodeGenContext):
         self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
+        self.context = ctx
+
         if self.tracker:
             # Register the QP address in the tracker
             self.tracker.use("qp", self.qp.value)
@@ -3754,23 +3740,20 @@ class ModifyQP(VerbCall):
         if hasattr(ctx, "contracts"):
             ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
         # 如果有 attr_obj，尝试替换其中的 remote 信息为 DeferredValue
-        if self.attr_obj:
-            self.attr_obj.bind_remote_qp(ctx.get_peer_qp_num(self.qp.value))
-            # self.attr_obj.dest_qp_num = DeferredValue.from_id(
-            #     "remote.QP", ctx.get_peer_qp_num(self.qp.value), "qpn", "uint32_t"
-            # )
-            # if self.attr_obj.ah_attr:
-            #     self.attr_obj.ah_attr.value.port_num = DeferredValue.from_id(
-            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "port", "uint32_t"
-            #     )
-            #     self.attr_obj.ah_attr.value.dlid = DeferredValue.from_id(
-            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "lid", "uint32_t"
-            #     )
-            #     self.attr_obj.ah_attr.value.grh.value.dgid = DeferredValue.from_id(
-            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "gid", "char*"
-            #     )
+        target = None
+        ao = getattr(self, "attr_obj", None)
+        if ao is not None and hasattr(ao, "qp_state"):
+            qs = getattr(ao, "qp_state")
+            qs = getattr(qs, "value", qs)
+            target = _QP_ENUM_TO_STATE.get(str(qs))
 
-        self.context = ctx
+        # if target in (State.RTR, State.RTS):
+        if target == State.RTR:
+            qp_name = str(self.qp)
+            srv_id = ctx.get_peer_id(qp_name)
+            pair_id = f"pair-{qp_name}-{srv_id}"
+            # 关键：在本条 ModifyQP 之前插 WAIT & 解析（就地）
+            ctx.schedule_wait_and_resolve_before(getattr(self, "_seq_index", 0), pair_id, qp_name, srv_id)
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3809,31 +3792,56 @@ class ModifyQP(VerbCall):
         )
         return cls(qp=qp, attr=attr_params, attr_mask=attr_mask)
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = str(self.qp)
-        # e.g., "_0" for qp[0]
-        attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
-        # attr_name = f"attr_modify_rtr{attr_suffix}"
-        attr_name = f"qp_attr{attr_suffix}"
-        # Convert the attr dict to C++ code
-        attr_lines = self.attr_obj.to_cxx(attr_name, ctx)
-        # mask_code = mask_fields_to_c(self.attr_mask)
-        mask_code = str(self.attr_mask)
-        wait_code = ""
+    # def generate_c(self, ctx: CodeGenContext) -> str:
+    #     qp_name = str(self.qp)
+    #     # e.g., "_0" for qp[0]
+    #     attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
+    #     # attr_name = f"attr_modify_rtr{attr_suffix}"
+    #     attr_name = f"qp_attr{attr_suffix}"
+    #     # Convert the attr dict to C++ code
+    #     attr_lines = self.attr_obj.to_cxx(attr_name, ctx)
+    #     # mask_code = mask_fields_to_c(self.attr_mask)
+    #     mask_code = str(self.attr_mask)
+    #     wait_code = ""
+    #     target = None
+    #     ao = getattr(self, "attr_obj", None) or getattr(self, "attr", None)
+    #     if ao is not None and hasattr(ao, "qp_state"):
+    #         qs = getattr(ao, "qp_state")
+    #         qs = getattr(qs, "value", qs)
+    #         target = _QP_ENUM_TO_STATE.get(str(qs))
+    #     if target == State.RTR:
+    #         wait_code = f'pr_wait_pair_state(BUNDLE_ENV, "pair-{self.qp}-{self.context.get_peer_qp_num(qp_name)}", "BOTH_RTS", /*timeout_ms=*/15000);'
+    #     return f"""
+    # {wait_code}
+    # memset(&{attr_name}, 0, sizeof({attr_name}));
+    # {attr_lines}
+    # ibv_modify_qp({qp_name}, &{attr_name}, {mask_code});
+    #     """
+    def generate_c(self, ctx):
+        qp = str(self.qp)
+        attr = f"qp_attr_{qp}"
+        s = f"    memset(&{attr},0,sizeof({attr}));\n" + self.attr_obj.to_cxx(attr, ctx)
         target = None
-        ao = getattr(self, "attr_obj", None) or getattr(self, "attr", None)
+        ao = getattr(self, "attr_obj", None)
         if ao is not None and hasattr(ao, "qp_state"):
             qs = getattr(ao, "qp_state")
             qs = getattr(qs, "value", qs)
             target = _QP_ENUM_TO_STATE.get(str(qs))
+
+        # if target in (State.RTR, State.RTS):
         if target == State.RTR:
-            wait_code = f'pr_wait_pair_state(BUNDLE_ENV, "pair-{self.qp}-{self.context.get_peer_qp_num(qp_name)}", "BOTH_RTS", /*timeout_ms=*/15000);'
-        return f"""
-    {wait_code}
-    memset(&{attr_name}, 0, sizeof({attr_name}));
-    {attr_lines}
-    ibv_modify_qp({qp_name}, &{attr_name}, {mask_code});
+            syms = ctx.remote_syms_for_qp(qp)  # {rqpn, rlid, rport, rgid}
+            s += f"""
+    {attr}.dest_qp_num = {syms["rqpn"]};
+    pr_parse_gid({syms["rgid"]}, {attr}.ah_attr.grh.dgid.raw);
+    {attr}.ah_attr.dlid     = {syms["rlid"]};
+    {attr}.ah_attr.port_num = {syms["rport"]};
+    {attr}.ah_attr.is_global = 1;
+    if (ibv_modify_qp({qp}, &{attr}, {self.attr_mask})) {{
+        fprintf(stderr,"ibv_modify_qp failed\\n"); return -1;
+    }}
         """
+        return s
 
 
 class ModifyQPRateLimit(VerbCall):
@@ -4390,19 +4398,6 @@ class PostSend(VerbCall):  # TODO: 修改varname
         self.tracker = None
         self.required_resources = []
 
-    def apply(self, ctx: CodeGenContext):
-        self.required_resources = []
-        self.tracker = ctx.tracker if ctx else None
-        if self.tracker:
-            # Register the QP address in the tracker
-            self.tracker.use("qp", self.qp.value)
-            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
-            # # # Register the WR object in the tracker if it exists
-            # if wr_obj:
-            #     self.tracker.use('wr_obj', wr_obj)
-        if hasattr(ctx, "contracts"):
-            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
-
     @classmethod
     def from_trace(cls, info, ctx):
         # info: 字符串或者dict，含qp/wr/bad_wr等参数
@@ -4412,10 +4407,22 @@ class PostSend(VerbCall):  # TODO: 修改varname
             wr_obj = kv["wr_obj"]
         return cls(qp=kv.get("qp"), wr=kv.get("wr"), bad_wr=kv.get("bad_wr"), wr_obj=wr_obj)
 
-    # def generate_c(self, ctx):
-    #     # ctx: CodeGenContext，负责变量声明/资源管理
-    #     qp_name = str(self.qp)
-    #     # e.g., "_0" for qp[0]
+    # def apply(self, ctx: CodeGenContext):
+    #     self.required_resources = []
+    #     self.tracker = ctx.tracker if ctx else None
+    #     if self.tracker:
+    #         # Register the QP address in the tracker
+    #         self.tracker.use("qp", self.qp.value)
+    #         self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
+    #         # # # Register the WR object in the tracker if it exists
+    #         # if wr_obj:
+    #         #     self.tracker.use('wr_obj', wr_obj)
+    #     if hasattr(ctx, "contracts"):
+    #         ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
+
+    # def generate_c(self, ctx: CodeGenContext) -> str:
+    #     qp_name = coerce_str(self.qp)
+    #     wr = unwrap(self.wr_obj)
     #     attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
     #     wr_name = f"wr{attr_suffix}"  # e.g., "wr_0"
     #     bad_wr_name = f"bad_wr{attr_suffix}"  # e.g., "bad_wr_0"
@@ -4429,12 +4436,6 @@ class PostSend(VerbCall):  # TODO: 修改varname
     #         ctx.alloc_variable(bad_wr_name, "struct ibv_send_wr *", "NULL")
     #     # 3. 生成ibv_post_send调用
     #     bad_wr_arg = f"&{bad_wr_name}" if bad_wr_name else "NULL"
-    #     # code += (
-    #     #     f"\n    int rc = ibv_post_send({self.qp}, "
-    #     #     f"&{self.wr}, {bad_wr_arg});\n"
-    #     #     f"    if (ibv_post_send({self.qp}, "
-    #     #     f"&{self.wr}, {bad_wr_arg})) {{ printf(\"ibv_post_send failed: %d\\n\", rc); }}\n"
-    #     # )
     #     return f"""
     # /* ibv_post_send */
     # {code}
@@ -4445,31 +4446,89 @@ class PostSend(VerbCall):  # TODO: 修改varname
     # }}
     # """
 
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_name = coerce_str(self.qp)
-        wr = unwrap(self.wr_obj)
-        attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
-        wr_name = f"wr{attr_suffix}"  # e.g., "wr_0"
-        bad_wr_name = f"bad_wr{attr_suffix}"  # e.g., "bad_wr_0"
-        code = ""
-        # 1. 声明send_wr结构体内容
-        if self.wr_obj is not None:
-            code += self.wr_obj.to_cxx(wr_name, ctx)
-        # 2. 声明bad_wr变量
-        if bad_wr_name:
-            # Register the bad work request pointer in the context
-            ctx.alloc_variable(bad_wr_name, "struct ibv_send_wr *", "NULL")
-        # 3. 生成ibv_post_send调用
-        bad_wr_arg = f"&{bad_wr_name}" if bad_wr_name else "NULL"
-        return f"""
-    /* ibv_post_send */
-    {code}
+    # lib/verbs.py —— PostSend.apply（示例）
+    def apply(self, ctx):
+        self.required_resources = []
+        self.tracker = ctx.tracker if ctx else None
+        if self.tracker:
+            # Register the QP address in the tracker
+            self.tracker.use("qp", self.qp.value)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
+            # # # Register the WR object in the tracker if it exists
+            # if wr_obj:
+            #     self.tracker.use('wr_obj', wr_obj)
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
-    if (ibv_post_send({qp_name}, &{wr_name}, {bad_wr_arg}) != 0) {{
-        fprintf(stderr, "Failed to post send work request\\n");
-        return -1;
-    }}
+        # ... tracker/contract 保持 ...
+        qp_name = str(self.qp)
+        wr = getattr(self, "wr_obj", None)
+        if wr and hasattr(wr, "rdma") and wr.rdma:
+            # 你需要一个映射：当前操作要用的远端 MR ID（例如由 wrapper 或 binding 决定）
+            remote_mr_id = getattr(wr.rdma, "remote_mr_id", None)
+            if remote_mr_id:
+                ctx.schedule_resolve_remote_mr_before(
+                    getattr(self, "_seq_index", 0),
+                    remote_mr_id,
+                    out_addr=f"raddr_{remote_mr_id}",
+                    out_rkey=f"rkey_{remote_mr_id}",
+                )
+        # 本地 MR（给 sge）也可解析
+        if wr and hasattr(wr, "sg_list") and wr.sg_list:
+            for sg in wr.sg_list:
+                local_mr_id = getattr(sg, "local_mr_id", None)
+                if local_mr_id:
+                    ctx.schedule_resolve_local_mr_before(
+                        getattr(self, "_seq_index", 0),
+                        local_mr_id,
+                        out_addr=f"laddr_{local_mr_id}",
+                        out_lkey=f"lkey_{local_mr_id}",
+                    )
+
+    # lib/verbs.py —— PostSend.generate_c（覆写 WR）
+    def generate_c(self, ctx):
+        qp = str(self.qp)
+        wrv = "wr_" + qp
+        s = f"\n    memset(&{wrv}, 0, sizeof({wrv}));\n"
+        s += self.wr_obj.to_cxx(wrv, ctx)
+        bad_wrv = "bad_" + wrv
+        if bad_wrv and ctx:
+            ctx.alloc_variable(bad_wrv, "struct ibv_send_wr *", "NULL")
+        wr = getattr(self, "wr_obj", None)
+        if wr and hasattr(wr, "sg_list") and wr.sg_list:
+            for i, sg in enumerate(wr.sg_list):
+                lid = getattr(sg, "local_mr_id", None)
+                s += f"""
+            // overwrite SGE with local MR
+            {wrv}_sge_{i}.addr = laddr_{lid};
+            {wrv}_sge_{i}.lkey = lkey_{lid};
+        """
+
+        #     # 覆写（示例：仅在检测到变量存在时）
+        #     rm = getattr(self.wr_obj, "rdma", None)
+        #     if rm and getattr(rm, "remote_mr_id", None):
+        #         rid = rm.remote_mr_id
+        #         s += f"""
+        #     // overwrite RDMA addr/rkey with resolved values
+        #     {wrv}.wr.rdma.remote_addr = raddr_{rid};
+        #     {wrv}.wr.rdma.rkey        = rkey_{rid};
+        # """
+        #     lm = getattr(self, "wr_obj", None)
+        #     if lm and getattr(lm, "local_mr_id", None):
+        #         lid = lm.local_mr_id
+        #         s += f"""
+        #     // overwrite SGE with local MR
+        #     {wrv}_sge_0.addr = laddr_{lid};
+        #     {wrv}_sge_0.lkey = lkey_{lid};
+        #     {wrv}.sg_list = &{wrv}_sge_0; {wrv}.num_sge = 1;
+        # """
+        s += f"""
+        struct ibv_send_wr* bad_{wrv} = NULL;
+        if (ibv_post_send({qp}, &{wrv}, &{bad_wrv})) {{
+            fprintf(stderr, "ibv_post_send failed\\n"); return -1;
+        }}
     """
+        return s
 
 
 class PostSRQRecv(VerbCall):
@@ -5169,8 +5228,11 @@ class RegMR(VerbCall):
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         self.context = ctx
+        mr_name = str(self.mr)
+
         if self.context:
-            self.context.alloc_variable(str(self.mr), "struct ibv_mr *", "NULL")
+            self.context.alloc_variable(mr_name, "struct ibv_mr *", "NULL")
+            self.context.schedule_claim_mr_after(getattr(self, "_seq_index", 0), mr_name, mr_name, str(self.length))
 
         if self.tracker:
             # Register the PD and MR addresses in the tracker
@@ -5205,14 +5267,7 @@ class RegMR(VerbCall):
         fprintf(stderr, "Failed to register memory region\\n");
         return -1;
     }}
-    
-    mrs[mrs_size++] = (PR_MR){{
-        .id = "{mr_name}",
-        .addr = (uint64_t)({mr_name}->addr),
-        .length = 1024,
-        .lkey = {mr_name}->lkey}};
-        
-    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+
     
 """
 

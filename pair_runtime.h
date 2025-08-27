@@ -16,6 +16,8 @@ extern "C"
 {
 #endif
 
+#define PR_GID_STRLEN 48
+
     // ---------------- Public PODs to describe local resources ----------------
     typedef struct
     {
@@ -74,6 +76,8 @@ extern "C"
     // ---------------- Small utilities ----------------
     // Parse colon-separated 16-byte GID string into out[16]; returns true on success.
     bool pr_parse_gid(const char *gid_str, uint8_t out16[16]);
+
+    bool pr_gid_to_str(const uint8_t in16[16], char *out_str, size_t out_len);
 
 #ifdef __cplusplus
 }

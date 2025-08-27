@@ -1,9 +1,11 @@
+from collections import defaultdict
 from typing import Dict
 
 try:
     from .objtracker import ObjectTracker
 except ImportError:
     from objtracker import ObjectTracker
+
 
 predefined_variables = {  # 全局变量，写在template里面的
     "ibv_qp": "struct ibv_qp",
@@ -63,7 +65,16 @@ class CodeGenContext:
         self.msg_buf_name = "bufs"
 
         self.alloc_variable(self.msg_buf_name, "char", None, "[1024][1024]")
-        self.bindings = {}  # local qp -> remote qp
+
+        self.claim_qps = []  # 仅用于可选的全局统计；实际 CLAIМ 用事件化方式
+        self.claim_mrs = []
+        self.claim_pairs = []  # [{id, cli_id, srv_id}]
+        self.bindings = {}  # {"qp0": "srv0"}
+        self.gid_var = "gid"
+
+        # 事件：在第 i 个 verb 之前/之后插入代码片段
+        self.events_before = defaultdict(list)  # i -> [str...]
+        self.events_after = defaultdict(list)  # i -> [str...]
 
     # ---- alloc helpers ----
     def alloc_variable(self, name, type, init_value=None, array_size=None):
@@ -127,10 +138,63 @@ class CodeGenContext:
                 return name
             idx += 1
 
-    def make_qp_binding(self, local_qp: str, remote_qp: str):
-        self.bindings[local_qp] = remote_qp
-
     def get_peer_qp_num(self, local_qp: str) -> str:
         if local_qp not in self.bindings:
             raise ValueError(f"No binding found for local QP '{local_qp}'")
         return self.bindings[local_qp]
+
+    # 绑定本地 QP → 远端 ID（例如 "qp0" → "srv0"）
+    def make_qp_binding(self, local_qp: str, remote_id: str):
+        self.bindings[local_qp] = remote_id
+
+    def get_peer_id(self, local_qp: str) -> str:
+        return self.bindings.get(local_qp, "srv0")
+
+    # ========= 便捷：在 verb 后就地 CLAIM =========
+    def schedule_claim_qp_after(self, idx: int, qp_id: str, qp_var: str, port: int = 1, lid: int = 0):
+        code = f"""
+    // CLAIM QP {qp_id}
+    qps[qps_size++] = (PR_QP){{ .id="{qp_id}", .qpn={qp_var}->qp_num, .psn=0, .port={port}, .lid={lid}, .gid="" }};
+    pr_gid_to_str({self.gid_var}.raw, qps[qps_size-1].gid, PR_GID_STRLEN);
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+"""
+        self.events_after[idx].append(code)
+
+    def schedule_claim_mr_after(self, idx: int, mr_id: str, mr_var: str, length_expr: str):
+        code = f"""
+    // CLAIM MR {mr_id}
+    mrs[mrs_size++] = (PR_MR){{ .id="{mr_id}", .addr=(uint64_t)({mr_var}->addr), .length={length_expr}, .lkey={mr_var}->lkey }};
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+"""
+        self.events_after[idx].append(code)
+
+    # ========= 便捷：在 verb 前就地 WAIT & 解析远端字段 =========
+    def schedule_wait_and_resolve_before(self, idx: int, pair_id: str, qp_name: str, srv_id: str):
+        rqpn = f"rqpn_{qp_name}"
+        rlid = f"rlid_{qp_name}"
+        rport = f"rport_{qp_name}"
+        rgid = f"rgid_{qp_name}"
+        self.alloc_variable(rqpn, "uint32_t")
+        self.alloc_variable(rlid, "uint32_t")
+        self.alloc_variable(rport, "uint32_t")
+        self.alloc_variable(rgid, "const char*")
+        code = f"""
+    // WAIT & RESOLVE for {pair_id}
+    if (!pr_wait_pair_state(BUNDLE_ENV, "{pair_id}", "BOTH_RTS", 15000)) {{
+        fprintf(stderr, "wait gate failed\\n"); return -1;
+    }}
+    {rqpn}  = rr_u32_by_id("remote.QP", "{srv_id}", "qpn");
+    {rlid}  = rr_u32_by_id("remote.QP", "{srv_id}", "lid");
+    {rport} = rr_u32_by_id("remote.QP", "{srv_id}", "port");
+    {rgid}  = rr_str_by_id("remote.QP", "{srv_id}", "gid");
+    pr_write_client_update_ready(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+"""
+        self.events_before[idx].append(code)
+
+    def remote_syms_for_qp(self, qp_name: str):
+        return {
+            "rqpn": f"rqpn_{qp_name}",
+            "rlid": f"rlid_{qp_name}",
+            "rport": f"rport_{qp_name}",
+            "rgid": f"rgid_{qp_name}",  # char*
+        }

@@ -248,7 +248,8 @@ class IbvQPAttr(Attr):
         if ctx:
             ctx.alloc_variable(varname, "struct ibv_qp_attr")
         # s = f"\n    struct ibv_qp_attr {varname};\n    memset(&{varname}, 0, sizeof({varname}));\n"
-        s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
+        # s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
+        s = ""
         # enum_fields = {
         #     'qp_state': IBV_QP_STATE_ENUM,
         #     'cur_qp_state': IBV_QP_STATE_ENUM,

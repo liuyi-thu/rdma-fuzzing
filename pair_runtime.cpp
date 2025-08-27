@@ -331,3 +331,21 @@ bool pr_resolve_remote_mr(const char *mr_id,
     }
     return false;
 }
+
+// 把16字节的GID数组转为字符串 "xx:xx:...:xx"
+bool pr_gid_to_str(const uint8_t in16[16], char *out_str, size_t out_len)
+{
+    if (!in16 || !out_str || out_len < 48)
+    {
+        // 16*2(hex)+15(colons)+1('\0') = 48
+        return false;
+    }
+    int n = snprintf(out_str, out_len,
+                     "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:"
+                     "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+                     in16[0], in16[1], in16[2], in16[3],
+                     in16[4], in16[5], in16[6], in16[7],
+                     in16[8], in16[9], in16[10], in16[11],
+                     in16[12], in16[13], in16[14], in16[15]);
+    return (n > 0 && n < (int)out_len);
+}

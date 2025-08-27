@@ -25,7 +25,7 @@ class IbvSge(Attr):
     FIELD_LIST = ["addr", "length", "lkey"]
     MUTABLE_FIELDS = FIELD_LIST
 
-    def __init__(self, addr=None, length=None, lkey=None):
+    def __init__(self, addr=None, length=None, lkey=None, local_mr_id=None):
         # self.addr = OptionalValue(IntValue(addr) if addr is not None else None, factory=lambda: IntValue(0))
         self.addr = OptionalValue(
             DeferredValue.from_id("local.MR", addr, "addr", "uint64_t") if addr is not None else None,
@@ -41,6 +41,7 @@ class IbvSge(Attr):
             DeferredValue.from_id("local.MR", lkey, "lkey", "uint32_t") if lkey is not None else None,
             factory=lambda: DeferredValue.from_id("local.MR", None, "lkey", "uint32_t"),
         )
+        self.local_mr_id = local_mr_id  # for resolving addr/length/lkey from MR # TODO: 还没有改成Value
 
     @classmethod
     def random_mutation(cls):
