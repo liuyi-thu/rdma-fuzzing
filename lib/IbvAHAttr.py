@@ -215,7 +215,7 @@ class IbvGlobalRoute(Attr):
                 # s += val.to_cxx(dgid_var, ctx)
                 # s += f"    {varname}.dgid = {dgid_var};\n"
                 # s += f"    memcpy({varname}.dgid, {val}, sizeof({varname}.dgid));\n"
-                s += f"    parse_gid_str({val}, {varname}.dgid);\n"
+                s += f"    pr_parse_gid({val}, {varname}.dgid.raw);\n"
             else:
                 s += emit_assign(varname, field, val)
         return s

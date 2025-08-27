@@ -94,6 +94,10 @@ class IbvQPInitAttr(Attr):
         """Apply this init attribute to the context, allocating a new variable if needed."""
         self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
+        # self.context = ctx  # TEMP
+        # if self.context:
+        #     self.context.alloc_variable(str(self), "struct ibv_qp_init_attr")
+
         if self.tracker:
             # if self.qp_context:
             #     self.tracker.use("qp", self.qp_context)

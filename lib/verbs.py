@@ -22,14 +22,7 @@ from .IbvTdInitAttr import IbvTdInitAttr
 from .IbvWQAttr import IbvWQAttr
 from .IbvWQInitAttr import IbvWQInitAttr
 from .IbvXRCDInitAttr import IbvXRCDInitAttr
-from .value import (
-    ConstantValue,
-    EnumValue,
-    FlagValue,
-    IntValue,
-    ListValue,
-    ResourceValue,
-)
+from .value import ConstantValue, DeferredValue, EnumValue, FlagValue, IntValue, ListValue, ResourceValue
 
 # verbs.py 顶部新增
 try:
@@ -901,11 +894,16 @@ class AllocPD(VerbCall):
         self.tracker = None
         self.required_resources = []
         self.allocated_resources = []  # 记录已分配的资源
+        self.context = None  # IBV context, e.g., ib_ctx
 
     def apply(self, ctx: CodeGenContext):
         self.required_resources = []
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        self.context = ctx  # binding context
+        if self.context:
+            self.context.alloc_variable(str(self.pd), "struct ibv_pd *", "NULL")
+
         if self.tracker:
             self.tracker.create("pd", self.pd.value)
 
@@ -926,7 +924,7 @@ class AllocPD(VerbCall):
         pd_name = self.pd
         return f"""
     /* ibv_alloc_pd */
-    {pd_name} = ibv_alloc_pd({ctx.ib_ctx});
+    {pd_name} = ibv_alloc_pd({self.context.ib_ctx});
     if (!{pd_name}) {{
         fprintf(stderr, "Failed to allocate protection domain\\n");
         return -1;
@@ -1424,6 +1422,10 @@ class CreateCQ(VerbCall):
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
         self.context = ctx  # TEMP
+
+        if self.context:
+            self.context.alloc_variable(str(self.cq), "struct ibv_cq *", "NULL")
+
         if self.tracker:
             # self.tracker.create('cq', cq, context=ctx)
             self.tracker.create("cq", self.cq.value)
@@ -1677,6 +1679,14 @@ class CreateQP(VerbCall):
         self.required_resources = []
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        self.context = ctx  # TEMP
+        if self.context:
+            self.context.alloc_variable(str(self.qp), "struct ibv_qp *", "NULL")
+
+            self.srv_name = self.context.gen_var_name("srv", "")
+            qp_name = str(self.qp)
+            self.context.make_qp_binding(qp_name, self.srv_name)
+
         if self.tracker:
             # Register the PD and QP addresses in the tracker
             self.tracker.use("pd", self.pd.value)
@@ -1725,6 +1735,7 @@ class CreateQP(VerbCall):
         if self.init_attr_obj is not None:
             code += self.init_attr_obj.to_cxx(attr_name, ctx)
         # 2. 声明QP变量
+
         return f"""
     /* ibv_create_qp */
     {code}
@@ -1733,6 +1744,27 @@ class CreateQP(VerbCall):
         fprintf(stderr, "Failed to create QP\\n");
         return -1;
     }}
+    
+    qps[qps_size++] = (PR_QP){{
+        .id = "{qp_name}",
+        .qpn = {qp_name}->qp_num,
+        .psn = 0,
+        .port = 1,
+        .lid = 0,
+        .gid = "" // will set below
+    }};
+    
+    snprintf(qps[qps_size-1].gid, sizeof(qps[qps_size-1].gid),
+                 "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+                 {self.context.gid_var}.raw[0], {self.context.gid_var}.raw[1], {self.context.gid_var}.raw[2], {self.context.gid_var}.raw[3], {self.context.gid_var}.raw[4], {self.context.gid_var}.raw[5], {self.context.gid_var}.raw[6], {self.context.gid_var}.raw[7], {self.context.gid_var}.raw[8], {self.context.gid_var}.raw[9], {self.context.gid_var}.raw[10], {self.context.gid_var}.raw[11], {self.context.gid_var}.raw[12], {self.context.gid_var}.raw[13], {self.context.gid_var}.raw[14], {self.context.gid_var}.raw[15]);
+                 
+    prs[prs_size++] = (PR_Pair){{
+        .id = "pair-{qp_name}-{self.srv_name}",
+        .cli_id = "{qp_name}",
+        .srv_id = "{self.srv_name}"
+    }};
+    
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
 """
 
 
@@ -2787,7 +2819,8 @@ class FreeDeviceList(VerbCall):
 
     MUTABLE_FIELDS = []
 
-    def __init__(self):
+    def __init__(self, dev_list: str = None):
+        self.dev_list = ConstantValue(dev_list or "dev_list")
         pass
 
     @classmethod  # dummy function
@@ -2795,8 +2828,12 @@ class FreeDeviceList(VerbCall):
         kv = _parse_kv(info)
         return cls()
 
+    def apply(self, ctx: CodeGenContext):
+        self.context = ctx
+        # self.context.dev_list = None
+
     def generate_c(self, ctx: CodeGenContext) -> str:
-        dev_list = ctx.dev_list
+        dev_list = self.dev_list
         return f"""
     /* ibv_free_device_list */
     ibv_free_device_list({dev_list});
@@ -3055,7 +3092,8 @@ class GetDeviceList(VerbCall):
 
     MUTABLE_FIELDS = []
 
-    def __init__(self):
+    def __init__(self, dev_list: str = "dev_list"):
+        self.dev_list = ConstantValue(dev_list or "dev_list")
         pass
 
     @classmethod
@@ -3064,13 +3102,18 @@ class GetDeviceList(VerbCall):
         kv = _parse_kv(info)
         return cls()
 
+    def apply(self, ctx: CodeGenContext):
+        if ctx:
+            # Register the device list variable in context
+            ctx.alloc_variable(self.dev_list, "struct ibv_device **")
+            ctx.dev_list = self.dev_list
+
     def generate_c(self, ctx: CodeGenContext) -> str:
-        dev_list = ctx.dev_list
-        num_devices = "num_devices"
+        # num_devices = "num_devices"
         return f"""
     /* ibv_get_device_list */
-    {dev_list} = ibv_get_device_list(NULL);
-    if (!{dev_list}) {{
+    {self.dev_list} = ibv_get_device_list(NULL);
+    if (!{self.dev_list}) {{
         fprintf(stderr, "Failed to get device list: %s\\n", strerror(errno));
         return -1;
     }}
@@ -3710,6 +3753,23 @@ class ModifyQP(VerbCall):
             # self.tracker.create('attr_modify_qp', f"qp_attr_{qp}")
         if hasattr(ctx, "contracts"):
             ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
+        # 如果有 attr_obj，尝试替换其中的 remote 信息为 DeferredValue
+        if self.attr_obj:
+            self.attr_obj.dest_qp_num = DeferredValue.from_id(
+                "remote.QP", ctx.get_peer_qp_num(self.qp.value), "qpn", "uint32_t"
+            )
+            if self.attr_obj.ah_attr:
+                self.attr_obj.ah_attr.value.port_num = DeferredValue.from_id(
+                    "remote.QP", ctx.get_peer_qp_num(self.qp.value), "port", "uint32_t"
+                )
+                self.attr_obj.ah_attr.value.dlid = DeferredValue.from_id(
+                    "remote.QP", ctx.get_peer_qp_num(self.qp.value), "lid", "uint32_t"
+                )
+                self.attr_obj.ah_attr.value.grh.value.dgid = DeferredValue.from_id(
+                    "remote.QP", ctx.get_peer_qp_num(self.qp.value), "gid", "char*"
+                )
+
+        self.context = ctx
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -3758,7 +3818,17 @@ class ModifyQP(VerbCall):
         attr_lines = self.attr_obj.to_cxx(attr_name, ctx)
         # mask_code = mask_fields_to_c(self.attr_mask)
         mask_code = str(self.attr_mask)
+        wait_code = ""
+        target = None
+        ao = getattr(self, "attr_obj", None) or getattr(self, "attr", None)
+        if ao is not None and hasattr(ao, "qp_state"):
+            qs = getattr(ao, "qp_state")
+            qs = getattr(qs, "value", qs)
+            target = _QP_ENUM_TO_STATE.get(str(qs))
+        if target == State.RTR:
+            wait_code = f'pr_wait_pair_state(BUNDLE_ENV, "pair-{self.qp}-{self.context.get_peer_qp_num(qp_name)}", "BOTH_RTS", /*timeout_ms=*/15000);'
         return f"""
+    {wait_code}
     memset(&{attr_name}, 0, sizeof({attr_name}));
     {attr_lines}
     ibv_modify_qp({qp_name}, &{attr_name}, {mask_code});
@@ -3969,9 +4039,10 @@ class OpenDevice(VerbCall):
 
     MUTABLE_FIELDS = ["device"]
 
-    def __init__(self, device: str = None):
+    def __init__(self, device: str = None, ctx_name: str = None):
         # Device name or variable, e.g., "dev_list[
         self.device = ConstantValue(device or "dev_list")
+        self.ctx_name = ConstantValue(ctx_name or "ctx")
         pass
 
     @classmethod
@@ -3979,9 +4050,14 @@ class OpenDevice(VerbCall):
         kv = _parse_kv(info)
         return cls()  # No special initialization needed from trace
 
+    def apply(self, ctx: CodeGenContext):
+        self.context = ctx
+        self.context.ib_ctx = self.ctx_name if ctx else "ctx"
+        self.context.alloc_variable(self.context.ib_ctx, "struct ibv_context *")
+
     def generate_c(self, ctx: CodeGenContext) -> str:
-        ib_ctx = ctx.ib_ctx
-        dev_list = ctx.dev_list  # Assuming correct allocation of device list
+        ib_ctx = self.context.ib_ctx if self.context else "ctx"
+        dev_list = self.context.dev_list  # Assuming correct allocation of device list
         return f"""
     /* ibv_open_device */
     {ib_ctx} = ibv_open_device({dev_list}[0]);
@@ -4486,10 +4562,16 @@ class QueryDeviceAttr(VerbCall):
     def from_trace(cls, info: str, ctx: CodeGenContext = None):
         return cls()
 
+    def apply(self, ctx: CodeGenContext):
+        self.context = ctx
+        if ctx:
+            ctx.alloc_variable(self.output, "struct ibv_device_attr")
+            ctx.dev_attr = str(self.output)  # Register in context for later use
+
     def generate_c(self, ctx: CodeGenContext) -> str:
-        dev_attr = ctx.dev_attr
-        if self.output is None:
-            self.output = dev_attr  # Use the context's device attribute variable
+        # dev_attr = ctx.dev_attr
+        # if self.output is None:
+        #     self.output = dev_attr  # Use the context's device attribute variable
         ib_ctx = ctx.ib_ctx
         return f"""
     /* ibv_query_device */
@@ -4616,9 +4698,10 @@ class QueryECE(VerbCall):
 class QueryGID(VerbCall):
     MUTABLE_FIELDS = ["port_num", "index"]
 
-    def __init__(self, port_num: int = None, index: int = None):
+    def __init__(self, port_num: int = None, index: int = None, gid_var: str = None):
         self.port_num = IntValue(port_num or 1)  # Default port number
         self.index = IntValue(index or 0)  # Default GID index
+        self.gid_var = ConstantValue(gid_var or "gid")  # Variable name for the GID output
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext):
@@ -4627,29 +4710,19 @@ class QueryGID(VerbCall):
         index = int(kv.get("index", "0"))
         return cls(port_num=port_num, index=index)
 
+    def apply(self, ctx: CodeGenContext):
+        self.context = ctx
+        if ctx:
+            ctx.alloc_variable(self.gid_var, "union ibv_gid")
+            ctx.gid_var = str(self.gid_var)  # Register in context for later use
+
     def generate_c(self, ctx: CodeGenContext) -> str:
-        gid_var = "my_gid"
         return f"""
     /* ibv_query_gid */
-    union ibv_gid {gid_var};
-    if (ibv_query_gid({ctx.ib_ctx}, {self.port_num}, {self.index}, &{gid_var})) {{
+    if (ibv_query_gid({self.context.ib_ctx}, {self.port_num}, {self.index}, &{self.gid_var})) {{
         fprintf(stderr, "Failed to query GID\\n");
         return -1;
     }}
-    struct metadata_global meta_global = {{
-        .lid = port_attr.lid,
-        .gid = {{my_gid.raw[0], my_gid.raw[1], my_gid.raw[2], my_gid.raw[3],
-                my_gid.raw[4], my_gid.raw[5], my_gid.raw[6], my_gid.raw[7],
-                my_gid.raw[8], my_gid.raw[9], my_gid.raw[10], my_gid.raw[11],
-                my_gid.raw[12], my_gid.raw[13], my_gid.raw[14], my_gid.raw[15]}}}};
-
-    char *json_str = serialize_metadata_global(&meta_global);
-    printf("[Controller] Global Metadata: %s\\n", json_str);
-    char buf[256];
-    snprintf(buf, sizeof(buf), "%s\\n", json_str);
-    send(sockfd, buf, strlen(buf), 0);
-    free(json_str);
-    send(sockfd, "END\\n", 4, 0); // 发送结束标志
 """
 
 
@@ -4752,20 +4825,26 @@ class QueryPortAttr(VerbCall):
 
     MUTABLE_FIELDS = ["port_num"]
 
-    def __init__(self, port_num: int = None):
+    def __init__(self, port_num: int = None, port_attr: str = None):
         self.port_num = IntValue(port_num or 1)  # Default port number
+        self.port_attr = ConstantValue(port_attr or "port_attr")  # Variable name for port attributes
 
     @classmethod
     def from_trace(cls, info: str, ctx: CodeGenContext = None):
         kv = _parse_kv(info)
         return cls(port_num=int(kv.get("port_num", "1")))
 
+    def apply(self, ctx: CodeGenContext):
+        self.context = ctx
+        if ctx:
+            ctx.alloc_variable(self.port_attr, "struct ibv_port_attr")
+            ctx.port_attr = str(self.port_attr)
+
     def generate_c(self, ctx: CodeGenContext) -> str:
-        ib_ctx = ctx.ib_ctx
-        port_attr = ctx.port_attr
+        ib_ctx = self.context.ib_ctx
         return f"""
     /* ibv_query_port */
-    if (ibv_query_port({ib_ctx}, {self.port_num}, &{port_attr})) {{
+    if (ibv_query_port({ib_ctx}, {self.port_num}, &{self.port_attr})) {{
         fprintf(stderr, "Failed to query port attributes\\n");
         return -1;
     }}
@@ -5088,6 +5167,10 @@ class RegMR(VerbCall):
         self.required_resources = []
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        self.context = ctx
+        if self.context:
+            self.context.alloc_variable(str(self.mr), "struct ibv_mr *", "NULL")
+
         if self.tracker:
             # Register the PD and MR addresses in the tracker
             self.tracker.use("pd", self.pd.value)
@@ -5110,7 +5193,8 @@ class RegMR(VerbCall):
     def generate_c(self, ctx: CodeGenContext) -> str:
         pd_name = coerce_str(self.pd)
         mr_name = coerce_str(self.mr)
-        addr = ensure_identifier(self.addr)  # 若当成 C 变量名使用
+        # addr = ensure_identifier(self.addr)  # 若当成 C 变量名使用
+        addr = coerce_str(self.addr)
         length = coerce_int(self.length)
         access = coerce_str(self.access)
         return f"""
@@ -5120,6 +5204,15 @@ class RegMR(VerbCall):
         fprintf(stderr, "Failed to register memory region\\n");
         return -1;
     }}
+    
+    mrs[mrs_size++] = (PR_MR){{
+        .id = "{mr_name}",
+        .addr = (uint64_t)({mr_name}->addr),
+        .length = 1024,
+        .lkey = {mr_name}->lkey}};
+        
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    
 """
 
 
