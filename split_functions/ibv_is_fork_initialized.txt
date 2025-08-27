@@ -1,9 +1,0 @@
-Function Name: ibv_is_fork_initialized
-Output:
-enum ibv_fork_status ibv_is_fork_initialized();
-enum ibv_fork_status {
-    IBV_FORK_DISABLED = 0,
-    IBV_FORK_ENABLED = 1,
-    IBV_FORK_UNNEEDED = 2,
-};
-

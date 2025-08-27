@@ -111,8 +111,8 @@ if __name__ == "__main__":
         v.apply(ctx)
     print(verbs)
     body = "".join(v.generate_c(ctx) for v in verbs)
-    template_dir = "."
-    template_name = "client_template_new.cpp.j2"
+    template_dir = "./templates"
+    template_name = "client.cpp.j2"
     env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
     tpl = env.get_template(template_name)
     rendered = tpl.render(
@@ -143,5 +143,5 @@ if __name__ == "__main__":
     #     variable_definitions=variable_definitions,
     # )
     # print(rendered)
-    with open("out.cpp", "w") as f:
+    with open("client.cpp", "w") as f:
         f.write(rendered)

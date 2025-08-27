@@ -3755,19 +3755,20 @@ class ModifyQP(VerbCall):
             ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
         # 如果有 attr_obj，尝试替换其中的 remote 信息为 DeferredValue
         if self.attr_obj:
-            self.attr_obj.dest_qp_num = DeferredValue.from_id(
-                "remote.QP", ctx.get_peer_qp_num(self.qp.value), "qpn", "uint32_t"
-            )
-            if self.attr_obj.ah_attr:
-                self.attr_obj.ah_attr.value.port_num = DeferredValue.from_id(
-                    "remote.QP", ctx.get_peer_qp_num(self.qp.value), "port", "uint32_t"
-                )
-                self.attr_obj.ah_attr.value.dlid = DeferredValue.from_id(
-                    "remote.QP", ctx.get_peer_qp_num(self.qp.value), "lid", "uint32_t"
-                )
-                self.attr_obj.ah_attr.value.grh.value.dgid = DeferredValue.from_id(
-                    "remote.QP", ctx.get_peer_qp_num(self.qp.value), "gid", "char*"
-                )
+            self.attr_obj.bind_remote_qp(ctx.get_peer_qp_num(self.qp.value))
+            # self.attr_obj.dest_qp_num = DeferredValue.from_id(
+            #     "remote.QP", ctx.get_peer_qp_num(self.qp.value), "qpn", "uint32_t"
+            # )
+            # if self.attr_obj.ah_attr:
+            #     self.attr_obj.ah_attr.value.port_num = DeferredValue.from_id(
+            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "port", "uint32_t"
+            #     )
+            #     self.attr_obj.ah_attr.value.dlid = DeferredValue.from_id(
+            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "lid", "uint32_t"
+            #     )
+            #     self.attr_obj.ah_attr.value.grh.value.dgid = DeferredValue.from_id(
+            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "gid", "char*"
+            #     )
 
         self.context = ctx
 

@@ -255,6 +255,13 @@ class IbvAHAttr(Attr):
             DeferredValue.from_id("remote.QP", dlid, "port_num", "uint32_t"),
             factory=DeferredValue.from_id("remote.QP", None, "port_num", "uint32_t"),
         )
+        self.remote_qp = None
+
+    def bind_remote_qp(self, remote_qp):
+        self.remote_qp = remote_qp
+        self.port_num = DeferredValue.from_id("remote.QP", remote_qp, "port", "uint32_t")
+        self.dlid = DeferredValue.from_id("remote.QP", remote_qp, "lid", "uint32_t")
+        self.grh.value.dgid = DeferredValue.from_id("remote.QP", remote_qp, "gid", "char*")
 
     @classmethod
     def random_mutation(cls):

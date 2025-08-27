@@ -205,6 +205,7 @@ class IbvQPAttr(Attr):
         self.rate_limit = OptionalValue(
             IntValue(rate_limit) if rate_limit is not None else None, factory=lambda: IntValue(0)
         )  # 默认值为0
+        self.remote_qp = None
 
     @classmethod
     def random_mutation(cls):
@@ -236,6 +237,12 @@ class IbvQPAttr(Attr):
             alt_timeout=random.choice([0, 1, 14, 30]),
             rate_limit=random.randint(0, 0xFFFFF),
         )
+
+    def bind_remote_qp(self, remote_qp):
+        self.remote_qp = remote_qp
+        self.dest_qp_num = DeferredValue.from_id("remote.QP", remote_qp, "qpn", "uint32_t")
+        if self.ah_attr.value and remote_qp:
+            self.ah_attr.value.bind_remote_qp(remote_qp)
 
     def to_cxx(self, varname, ctx=None):
         if ctx:
