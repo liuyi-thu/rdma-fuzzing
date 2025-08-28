@@ -1,4 +1,5 @@
 import random
+from abc import ABC, abstractmethod
 
 try:
     from objtracker import ObjectTracker
@@ -32,7 +33,7 @@ class Range:
         return self.min_value <= value <= self.max_value
 
 
-class Value:
+class Value(ABC):
     def __init__(self, value, mutable: bool = True):
         self.value = value
         self.mutable = mutable  # Indicates if the value can be mutated
@@ -51,7 +52,8 @@ class Value:
     def __hash__(self):
         return hash(self.value)
 
-    def mutate(self):
+    @abstractmethod
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
         raise NotImplementedError("Mutate method not implemented for Value class")
 
     def is_none(self):
@@ -95,32 +97,33 @@ class IntValue(Value):
         value: int | None = None,
         range: Range | list | None = None,
         step: int | None = None,
-        rng=None,
+        rng: random.Random = None,
         mutable=True,
     ):
         super().__init__(value, mutable)
         self.range = Range(0, range) if isinstance(range, int) else range
         self.step = step
-        self.rng = rng or random
+        # self.rng = rng or random
 
-    def mutate(self):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+        rng = rng or random
         if not self.mutable:
             debug_print("This IntValue is not mutable.")
             return
         if isinstance(self.range, Range):
             if self.step:  # 小步走，更利于“梯度式”探索
-                delta = self.rng.choice([-self.step, self.step])
+                delta = rng.choice([-self.step, self.step])
                 v = (self.value or 0) + delta
                 self.value = max(self.range.min_value, min(self.range.max_value, v))
             else:  # 整体重采样
-                self.value = self.rng.randint(self.range.min_value, self.range.max_value)
+                self.value = rng.randint(self.range.min_value, self.range.max_value)
         elif isinstance(self.range, list):  # 离散集合
             # 避免原地踏步
             candidates = [x for x in self.range if x != self.value] or self.range
-            self.value = self.rng.choice(candidates)
+            self.value = rng.choice(candidates)
         else:
             # 无约束：温和扰动
-            v = (self.value or 0) + self.rng.choice([-1, 1])
+            v = (self.value or 0) + rng.choice([-1, 1])
             self.value = max(0, v)
 
 
@@ -157,7 +160,7 @@ class BoolValue(Value):
     def __init__(self, value: bool = None, mutable: bool = True):
         super().__init__(value, mutable)
 
-    def mutate(self):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
         if not self.mutable:
             debug_print("This BoolValue is not mutable.")
             return
@@ -170,7 +173,7 @@ class ConstantValue(Value):
     def __init__(self, value: str = None):
         super().__init__(value)
 
-    def mutate(self):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
         # Constants do not change, so this method does nothing
         debug_print("ConstantValue does not mutate.")
         pass
@@ -301,7 +304,8 @@ class EnumValue(Value):
     #     debug_print(f"Available enums: {self.enums}")
     #     self.value = random.choice(self.enums)
     #     pass  # Implement actual mutation logic based on enum type
-    def mutate(self):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+        rng = rng or random
         if not self.mutable:
             debug_print("This EnumValue is not mutable.")
             return
@@ -309,7 +313,7 @@ class EnumValue(Value):
         if self.value in pool and len(pool) > 1:
             pool.remove(self.value)
         # （可选）按“邻近枚举”权重优先；这里给个简单实现
-        self.value = random.choice(pool)
+        self.value = rng.choice(pool)
 
 
 class FlagValue(Value):
@@ -422,11 +426,12 @@ class FlagValue(Value):
         else:
             raise ValueError(f"Flag type {flag_type} not found in FlagValue class.")
 
-    def mutate(self):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+        rng = rng or random
         if not self.mutable:
             return
-        k = random.randint(1, max(1, len(self.flags)))
-        picked = random.sample(self.flags, k=k)
+        k = rng.randint(1, max(1, len(self.flags)))
+        picked = rng.sample(self.flags, k=k)
         mask = 0
         for name in picked:
             mask |= self.map[name]
@@ -493,21 +498,54 @@ class ResourceValue(Value):
     #     else:
     #         debug_print("No ObjectTracker provided, cannot mutate ResourceValue.")
     #     pass
-    def mutate(
-        self, tracker: ObjectTracker = None, contracts=None, want_type: str | None = None, allow_destroyed=False
-    ):
+
+    # def mutate(
+    #     self, tracker: ObjectTracker = None, contracts=None, want_type: str | None = None, allow_destroyed=False
+    # ):
+    #     if not self.mutable:
+    #         debug_print("This ResourceValue is not mutable.")
+    #         return
+    #     if contracts is not None and hasattr(contracts, "snapshot"):
+    #         typ = want_type or self.resource_type
+    #         snap = contracts.snapshot()
+    #         cands = [name for (t, name), st in snap.items() if t == typ and (allow_destroyed or st != "DESTROYED")]
+    #         if cands:
+    #             self.value = random.choice([x for x in cands if x != self.value] or cands)
+    #             return
+    #     if tracker:
+    #         self.value = tracker.random_choose(self.resource_type, exclude=self.value)
+
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+        # TODO: 这里的实现其实是错误的，但是先这样凑合着用
         if not self.mutable:
             debug_print("This ResourceValue is not mutable.")
             return
-        if contracts is not None and hasattr(contracts, "snapshot"):
-            typ = want_type or self.resource_type
-            snap = contracts.snapshot()
-            cands = [name for (t, name), st in snap.items() if t == typ and (allow_destroyed or st != "DESTROYED")]
-            if cands:
-                self.value = random.choice([x for x in cands if x != self.value] or cands)
-                return
-        if tracker:
-            self.value = tracker.random_choose(self.resource_type, exclude=self.value)
+        required_type = self.resource_type
+        required_state = None
+        for item in contract.requires or []:
+            if item.rtype == required_type:
+                required_state = item.state
+                break
+        # print(required_state, required_type)
+        cands = []
+        for (t, name), st in (snap or {}).items():
+            print(t, name, st)
+            if t == required_type and (required_state is None or st == required_state):
+                cands.append(name)
+        print(cands)
+        if cands:
+            rng = rng or random
+            self.value = rng.choice([x for x in cands if x != self.value] or cands)
+            return
+        # if snap is not None and hasattr(snap, "snapshot"):
+        #     typ = self.resource_type
+        #     snap_dict = snap.snapshot()
+        #     cands = [name for (t, name), st in snap_dict.items() if t == typ and st != "DESTROYED"]
+        #     if cands:
+        #         rng = rng or random
+        #         self.value = rng.choice([x for x in cands if x != self.value] or cands)
+        #         return
+        pass
 
 
 class ListValue(Value):  # 能不能限定：列表的元素都一样；传入时知道元素类型，比如IbvSge
@@ -535,12 +573,13 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
 
         self.on_after_mutate = on_after_mutate
 
-    def mutate(self):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+        rng = rng or random
         if not self.mutable:
             debug_print("This ListValue is not mutable.")
             return
         # Choices: (1) add a new item, (2) remove an item, (3) mutate an existing item, (4) swap two items
-        mutation_choice = random.choice(self.MUTATION_CHOICES)
+        mutation_choice = rng.choice(self.MUTATION_CHOICES)
         debug_print(f"Mutating ListValue with choice: {mutation_choice}")
         if mutation_choice == "add_item":
             # Add a new item to the list
@@ -550,7 +589,7 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
         elif mutation_choice == "remove_item":
             # Remove an existing item from the list
             if self.value:
-                removed_item = random.choice(self.value)
+                removed_item = rng.choice(self.value)
                 self.value.remove(removed_item)
                 debug_print(f"Removed item: {removed_item}")
             else:
@@ -558,7 +597,7 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
         elif mutation_choice == "mutate_item":
             # Mutate an existing item in the list
             if self.value:
-                item_to_mutate = random.choice(self.value)
+                item_to_mutate = rng.choice(self.value)
                 if hasattr(item_to_mutate, "mutate"):
                     item_to_mutate.mutate()
                     debug_print(f"Mutated item: {item_to_mutate}")
@@ -569,7 +608,7 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
         elif mutation_choice == "swap_items":
             # Swap two items in the list
             if len(self.value) > 1:
-                idx1, idx2 = random.sample(range(len(self.value)), 2)
+                idx1, idx2 = rng.sample(range(len(self.value)), 2)
                 self.value[idx1], self.value[idx2] = self.value[idx2], self.value[idx1]
                 debug_print(f"Swapped items: {self.value[idx1]} and {self.value[idx2]}")
             else:
@@ -602,12 +641,13 @@ class OptionalValue(Value):
         self.value = value  # 类型: Value 或 None
         self.factory = factory  # 新建时用，比如 lambda: IntValue(...)
 
-    def mutate(self):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
         if not self.mutable:
             debug_print("This OptionalValue is not mutable.")
             return
         # 1/3概率变成None，1/3递归变异，1/3换新
-        r = random.random()
+        rng = rng or random
+        r = rng.random()
         if self.value is None:
             if self.factory:
                 self.value = self.factory()  # TODO: factory should return a Value type（重新生成一份新的？）

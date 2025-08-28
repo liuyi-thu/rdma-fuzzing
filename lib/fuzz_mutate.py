@@ -56,7 +56,8 @@ class FakeCtx:
     def __init__(self, ib_ctx="ctx"):
         self.tracker = _FakeTracker()
         self.ib_ctx = ib_ctx
-        self._vars = []
+        self.variables = {}
+        self.bindings = {}
         # 统一的 contracts：如果 ContractTable 不可用，则注入一个 dummy
         if ContractTable is not None:
             self.contracts = ContractTable()
@@ -71,8 +72,34 @@ class FakeCtx:
 
             self.contracts = _DummyContracts()
 
-    def alloc_variable(self, name, ty, init=None):
-        self._vars.append((name, ty, init))
+    def alloc_variable(self, name, type, init_value=None, array_size=None):
+        name = str(name)
+        if name in self.variables and type != self.variables[name][0]:
+            raise ValueError(f"Variable '{name}' already allocated, but with a different type {self.variables[name]}.")
+        else:
+            if name in self.variables:
+                # raise ValueError(f"Variable '{name}' already allocated.")
+                # support reuse
+                return False
+            else:
+                self.variables[name] = [type, init_value, array_size]
+                return True
+
+    def gen_var_name(self, prefix="var", sep="_"):
+        idx = 0
+        while True:
+            name = f"{prefix}{sep}{idx}"
+            if name not in self.variables:
+                return name
+            idx += 1
+
+    def make_qp_binding(self, local_qp: str, remote_qp: str):
+        self.bindings[local_qp] = remote_qp
+
+    def get_peer_qp_num(self, local_qp: str) -> str:
+        if local_qp not in self.bindings:
+            raise ValueError(f"No binding found for local QP '{local_qp}'")
+        return self.bindings[local_qp]
 
 
 # ---- 临时 dry-run：按顺序 apply 一串 verbs 到 ctx，失败抛 ContractError ----
@@ -367,6 +394,14 @@ def _qp_state_before(verbs, i: int, qp_name: str) -> str:
         verbs[j].apply(ctx)
     snap = ctx.contracts.snapshot() if hasattr(ctx, "contracts") else {}
     return snap.get(("qp", qp_name)) or "RESET"
+
+
+def _make_snapshot(verbs, i: int):
+    ctx = FakeCtx()
+    for j in range(0, i):
+        verbs[j].apply(ctx)
+    snap = ctx.contracts.snapshot() if hasattr(ctx, "contracts") else {}
+    return snap
 
 
 def _first_successor_target_after(verbs, i: int, qp_name: str):
@@ -1299,6 +1334,86 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
     return rng.choice(candidates)
 
 
+# ====== 工具：枚举嵌套可变路径 ======
+def _enumerate_mutable_objects(obj):
+    """
+    返回 [leaf_obj]，即所有可变叶子对象（Attr/Verb/Value等）
+    规则：
+      - 优先使用 Attr/Verb 的 MUTABLE_FIELDS / MUTABLE_FIELD_LIST
+      - OptionalValue/ListValue/ResourceValue 等 wrapper 继续深入其 .value / 内部元素
+    """
+    return [leaf for (_path, leaf) in _enumerate_mutable_paths(obj)]
+
+
+def _enumerate_mutable_paths(obj, prefix=""):
+    """
+    返回 [(path_str, leaf_obj)]，path 用点号表示，如 "attr_obj.qp_state"
+    规则：
+      - 优先使用 Attr/Verb 的 MUTABLE_FIELDS / MUTABLE_FIELD_LIST
+      - OptionalValue/ListValue/ResourceValue 等 wrapper 继续深入其 .value / 内部元素
+    """
+    # 1) 如果是你的 wrapper，递归 value
+    from lib.value import ConstantValue, EnumValue, FlagValue, IntValue, ListValue, OptionalValue, ResourceValue, Value
+
+    out = []
+    if obj is None or isinstance(obj, Value):  # Value有自己的mutate方法，故不用进一步深入（个人观点）
+        return out
+
+    def add(path, leaf):
+        out.append((path, leaf))
+
+    # Attr/Verb 带声明的可变字段
+    field_names = []
+    if hasattr(obj, "MUTABLE_FIELDS"):
+        field_names = getattr(obj, "MUTABLE_FIELDS") or []
+    elif hasattr(obj, "FIELD_LIST"):
+        field_names = getattr(obj, "FIELD_LIST") or []
+    elif hasattr(obj, "__dict__"):  # 兜底：无元数据时，把所有非私有属性作为候选
+        field_names = [k for k in obj.__dict__.keys() if not k.startswith("_")]
+
+    for fname in field_names:
+        if not hasattr(obj, fname):
+            continue
+        val = getattr(obj, fname)
+        path = f"{prefix}.{fname}" if prefix else fname
+
+        # None：可考虑 OptionalValue.factory 构建
+        if val is None:
+            add(path, None)
+            continue
+
+        # OptionalValue：既可以 mutate OptionalValue 本身，也可以深入其内部
+        if isinstance(val, OptionalValue):
+            add(path, val)  # 让上层有机会 flip present/absent
+            inner = val.value
+            if inner is not None:
+                # 向下挖
+                out.extend(_enumerate_mutable_paths(inner, path))
+            continue
+
+        # ListValue：可以变长/元素变异
+        if isinstance(val, ListValue):
+            add(path, val)
+            # 尝试深入每个元素
+            if isinstance(val.value, list):
+                for idx, elem in enumerate(val.value):
+                    out.extend(_enumerate_mutable_paths(elem, f"{path}[{idx}]"))
+            continue
+
+        # 简单 wrapper：Resource/Int/Enum/Flag/Constant
+        if isinstance(val, (ResourceValue, IntValue, EnumValue, FlagValue, ConstantValue)):
+            add(path, val)
+            continue
+
+        # 复杂 Attr/对象：递归
+        if hasattr(val, "__dict__"):
+            out.extend(_enumerate_mutable_paths(val, path))
+        else:
+            add(path, val)
+
+    return out
+
+
 # ========================= Mutator =========================
 
 
@@ -1424,263 +1539,78 @@ class ContractAwareMutator:
                 print("Final dry-run failed; reverted insertion.")
             return False
 
+    def mutate_param(self, verbs: List[VerbCall], idx: Optional[int] = None) -> bool:
+        if not verbs:
+            return False
+        rng = self.rng
+        if idx:
+            # i = idx if 0 <= idx < len(verbs) else len(verbs) - 1
+            v = verbs[idx]
+        else:
+            # 1) 随机选 verb
+            idx = rng.randrange(len(verbs))
+            v = verbs[idx]
+        # 2) 枚举可变路径
+        snap = _make_snapshot(verbs, idx)
+        contract = v.get_contract()
+        print("snap:", snap)
+        print("contract:", contract)
+        paths = _enumerate_mutable_paths(v)
+        if not paths:
+            return False
+        path, leaf = rng.choice(paths)
+        print(paths)
+        print(leaf)
+        leaf.mutate(snap=snap, contract=contract, rng=rng)
+        print(leaf)
 
-# class ContractAwareMutator:
-#     def __init__(self, rng: Optional[random.Random] = None, *, cfg: MutatorConfig | None = None):
-#         self.rng = rng or random.Random()
-#         self.cfg = cfg or MutatorConfig()
+        # # 3) 变异 leaf
+        # if leaf is None:
+        #     # None -> OptionalValue.factory 构建
+        #     from lib.value import OptionalValue
 
-#     # —— 删除变异（保留你的思路；若已有实现可直接替换/合并） ——
-#     def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
-#         if not verbs:
-#             return False
-#         idx = self.rng.randrange(len(verbs)) if idx_ is None else idx_
-#         victim = verbs[idx]
-#         del verbs[idx]
-#         # 级联清理：删除受其 produces 影响的后续
-#         req, pro, _ = verb_edges_recursive(victim)
-#         # print(req, pro)
-#         lost = set(pro)
-#         impact = compute_forward_impact(verbs, idx, lost)
-#         for k in sorted(impact, reverse=True):
-#             verbs.pop(k)
-#         return True
+        #     new_leaf = OptionalValue.factory(rng)
+        #     if new_leaf is None:
+        #         return False
+        #     _set_dotted(v, path, new_leaf)
+        #     return True
 
-#     def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
-#         if not verbs:
-#             return False
-#         rng = self.rng
-#         candidate_indices = list(range(len(verbs) + 1)) if idx is None else [idx]
-#         feasible = []
-#         print("old verbs:", [summarize_verb(v, deep=True) for v in verbs])
-#         for i in candidate_indices:
-#             print(f"Trying to insert at index {i}")
-#             # 1) 先选模板 & 生成 ins_list
-#             builder = _pick_insertion_template(rng, verbs, i, choice)
-#             build_fn = builder if callable(builder) else builder[0]
-#             # 为了避免“位置相关的 live_set 影响生成”，这里先用全局 live 来生成；若模板强依赖 pos，可以在失败时回退到旧逻辑
-#             global_live = _live_before(verbs, len(verbs))
-#             new_v = build_fn(None, rng, global_live)
-#             if new_v is None:
-#                 # print(colored("No valid insertion generated", "red"))
-#                 continue
-#             else:
-#                 if isinstance(new_v, list):
-#                     print("new verbs:", [summarize_verb(v, deep=True) for v in new_v])
-#                 else:
-#                     print("new verb:", summarize_verb(new_v, deep=True))
-#             ins_list = new_v if isinstance(new_v, list) else [new_v]
-#             if not _check_feasible_position(verbs, ins_list, i):
-#                 print(colored("Insertion not feasible at this position", "red"))
-#                 continue
-#             feasible.append((i, ins_list))
+        # from lib.value import ConstantValue, EnumValue, FlagValue, IntValue, ListValue, OptionalValue, ResourceValue
 
-#         # pos, ins_list = 0, 0
-#         # print("sss:", _choose_insert_pos(feasible, rng, place="best"))
-#         choice = _choose_insert_pos(feasible, rng, place="best")
-#         if not choice:
-#             return False
-#         pos, ins_list = choice
-#         verbs[pos:pos] = ins_list
-
-#         lost = _lost_from_ins(ins_list)
-#         if lost:
-#             _trim_forward_on_lost(verbs, pos + len(ins_list), lost)
-
-#         ctx = FakeCtx()
-#         try:
-#             _apply_slice(ctx, verbs)
-#             return True
-#         except ContractError:
-#             # 不该出现：因为 pos 来自可行集；但以防 race/并发改写，回退
-#             del verbs[pos : pos + len(ins_list)]
-#             return False
-
-#     # # —— 插入变异（有/无状态 ModifyQP 等） ——
-#     def mutate_insert_3(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
-#         if not verbs:
-#             return False
-#         rng = self.rng
-#         i = rng.randrange(0, len(verbs) + 1) if idx is None else idx
-#         print(f"Inserting at index {i}")  # TODO: 这里存在一个矛盾，是先选位置还是先选种类，一般来说应该是先选位置
-#         # 1) 先选模板 & 生成 ins_list
-#         builder = _pick_insertion_template(rng, verbs, i, choice)
-#         build_fn = builder if callable(builder) else builder[0]
-#         # 为了避免“位置相关的 live_set 影响生成”，这里先用全局 live 来生成；若模板强依赖 pos，可以在失败时回退到旧逻辑
-#         global_live = _live_before(verbs, len(verbs))  # 全部 live
-#         new_v = build_fn(None, rng, global_live)
-#         if new_v is None:
-#             print(colored("No valid insertion generated", "red"))
-#             return False
-#         else:
-#             if isinstance(new_v, list):
-#                 print("new verbs:", [summarize_verb(v, deep=True) for v in new_v])
-#             else:
-#                 print("new verb:", summarize_verb(new_v, deep=True))
-#         ins_list = new_v if isinstance(new_v, list) else [new_v]
-
-#         # 插入前补依赖
-#         if not all(_ensure_requires_before(verbs, i, v) for v in ins_list):
-#             return False
-
-#         verbs[i:i] = ins_list
-#         print("inserted verbs:", [summarize_verb(v, deep=True) for v in ins_list])
-
-#         # --- 若插入了 Destroy verb：对后续依赖者做前向切片清理 ---
-#         lost = set()
-#         for nv in ins_list:
-#             if is_destroy_verb(nv):
-#                 print("destroy verb inserted:", summarize_verb(nv, deep=True))
-#                 lost |= destroyed_targets(nv)
-#         print("lost:", lost)
-#         if lost:
-#             impact = compute_forward_impact(verbs, i + 1, lost)
-#             for k in sorted(impact, reverse=True):
-#                 verbs.pop(k)
-
-#         # dry-run & repair
-#         MAX_FIX, fixes, k = 16, 0, 0
-#         while k < len(verbs):
-#             try:
-#                 ctx = FakeCtx()
-#                 for j in range(0, k + 1):
-#                     verbs[j].apply(ctx)
-#                 k += 1
-#                 continue
-#             except ContractError as e:
-#                 kind, info = classify_contract_error(str(e))
-#                 repaired = False
-
-#                 if kind == ErrKind.MISSING_RESOURCE:
-#                     repaired = _ensure_requires_before(verbs, k, verbs[k])
-#                     if not repaired:
-#                         # 回退本次插入
-#                         for v in ins_list:
-#                             try:
-#                                 verbs.remove(v)
-#                             except ValueError:
-#                                 pass
-#                         return False
-
-#                 elif kind == ErrKind.ILLEGAL_TRANSITION and info.get("rtype") == "qp":
-#                     # 注意：这里使用 expect_from（修复了原实现里写成 from 的问题）
-#                     path = _qp_path(info.get("expect_from"), info.get("to"))
-#                     if path:
-#                         from lib.ibv_all import IbvQPAttr
-
-#                         from .verbs import ModifyQP
-
-#                         chain = [
-#                             ModifyQP(
-#                                 qp=info.get("name"),
-#                                 attr_obj=IbvQPAttr(qp_state=f"IBV_QPS_{st}"),
-#                                 attr_mask="IBV_QP_STATE",
-#                             )
-#                             for st in path
-#                         ]
-#                         verbs[k:k] = chain
-#                         repaired = True
-
-#                 elif kind in (ErrKind.DANGLING_DESTROY, ErrKind.DOUBLE_DESTROY):  # TODO: 这种error是没有实现过的
-#                     verbs.pop(k)
-#                     repaired = True
-
-#                 if not repaired:
-#                     # 未识别：回退插入
-#                     for v in ins_list:
-#                         try:
-#                             verbs.remove(v)
-#                         except ValueError:
-#                             pass
-#                     return False
-
-#                 fixes += 1
-#                 if fixes > MAX_FIX:
-#                     return False
-#                 continue
-#         return True
-
-#     def mutate_insert_2(
-#         self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None, *, place: str = "best"
-#     ) -> bool:
-#         """
-#         方案 C：先生成 new verbs，再在全序列中寻找一个“可行位置”插入。
-#         - idx：若指定，仍按固定位置尝试（不搜索）。为 None 时启用全局搜索。
-#         - place：对可行位置的选点策略（best/append/prepend/random）
-#         """
-#         if not verbs:
-#             return False
-#         rng = self.rng
-
-#         # 1) 先选模板 & 生成 ins_list
-#         builder = _pick_insertion_template(rng, verbs, 0 if idx is None else idx, choice)
-#         build_fn = builder if callable(builder) else builder[0]
-#         # 为了避免“位置相关的 live_set 影响生成”，这里先用全局 live 来生成；若模板强依赖 pos，可以在失败时回退到旧逻辑
-#         global_live = _live_before(verbs, len(verbs))  # 全部 live
-#         new_v = build_fn(None, rng, global_live)
-#         if new_v is None:
-#             return False
-#         ins_list = new_v if isinstance(new_v, list) else [new_v]
-
-#         # 2) 找可行位置
-#         if idx is None:
-#             feasible = _find_feasible_positions(verbs, ins_list, try_trim_on_destroy=True)
-#             pos = _choose_insert_pos(rng, feasible, place=place)
-#             if pos is None:
-#                 # 回退：旧逻辑（随机尝试若干位置）
-#                 tries = min(8, len(verbs) + 1)
-#                 for _ in range(max(1, tries)):
-#                     i = rng.randrange(0, len(verbs) + 1)
-#                     new_live = _live_before(verbs, i)
-#                     new_v = build_fn(None, rng, new_live)
-#                     if new_v is None:
-#                         continue
-#                     ins_list = new_v if isinstance(new_v, list) else [new_v]
-#                     verbs[i:i] = ins_list
-#                     # destroy 前向清理
-#                     lost = _lost_from_ins(ins_list)
-#                     if lost:
-#                         _trim_forward_on_lost(verbs, i + len(ins_list), lost)
-#                     # 干运行全集
-#                     try:
-#                         ctx = FakeCtx()
-#                         _apply_slice(ctx, verbs)
-#                         return True
-#                     except ContractError:
-#                         del verbs[i : i + len(ins_list)]
-#                         continue
-#                 return False
-#         else:
-#             # 指定固定位置：不搜索，直接用 idx
-#             pos = idx
-
-#         # 3) 真插入 + destroy 清理 + 最终一次干运行验证
-#         verbs[pos:pos] = ins_list
-#         lost = _lost_from_ins(ins_list)
-#         if lost:
-#             _trim_forward_on_lost(verbs, pos + len(ins_list), lost)
-
-#         ctx = FakeCtx()
-#         try:
-#             _apply_slice(ctx, verbs)
-#             return True
-#         except ContractError:
-#             # 不该出现：因为 pos 来自可行集；但以防 race/并发改写，回退
-#             del verbs[pos : pos + len(ins_list)]
-#             return False
-
-#     # —— 总入口：可路由到不同策略 ——
-#     def mutate(self, verbs: List[VerbCall], idx: Optional[int], choice: str = None) -> bool:
-#         if choice:
-#             if choice == "insert":
-#                 return self.mutate_insert(verbs, idx)
-#             elif choice == "delete":
-#                 return self.mutate_delete(verbs, idx)
-#             else:
-#                 raise ValueError(f"Unknown mutation choice: {choice}")
-#         else:
-#             r = self.rng.random()
-#             if r < 0.5:
-#                 return self.mutate_insert(verbs, idx)
-#             else:
-#                 return self.mutate_delete(verbs, idx)
+        # if isinstance(leaf, OptionalValue):
+        #     # flip present/absent；若 present，递归变异其 value
+        #     if rng.random() < 0.5:
+        #         # flip to absent
+        #         leaf.present = False
+        #         leaf.value = None
+        #         return True
+        #     else:
+        #         # mutate inner value (if any)
+        #         if leaf.value is None:
+        #             return False
+        #         inner_paths = _enumerate_mutable_paths(leaf.value)
+        #         if not inner_paths:
+        #             return False
+        #         inner_path, inner_leaf = rng.choice(inner_paths)
+        #         return self._mutate_value(inner_leaf, lambda newv: _set_dotted(leaf.value, inner_path, newv))
+        # elif isinstance(leaf, ListValue):
+        #     # 变长或变异元素
+        #     if rng.random() < 0.3 and len(leaf.value) > 0:
+        #         # 删除一个元素
+        #         idx = rng.randrange(len(leaf.value))
+        #         leaf.value.pop(idx)
+        #         return True
+        #     elif rng.random() < 0.6:
+        #         # 添加一个新元素（尝试用第一个元素的类型构造）
+        #         if not leaf.value:
+        #             return False
+        #         sample_elem = leaf.value[0]
+        #         new_elem = self._construct_sample(sample_elem, rng)
+        #         if new_elem is None:
+        #             return False
+        #         leaf.value.append(new_elem)
+        #         return True
+        #     else:
+        #         # 变异一个元素
+        #         if not leaf.value:
+        #             return

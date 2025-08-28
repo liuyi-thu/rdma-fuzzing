@@ -1,24 +1,52 @@
 import copy
 import json
 import os
+import random
 from typing import Dict, List
 
 from jinja2 import Environment, FileSystemLoader
+from termcolor import colored
 
+from lib import fuzz_mutate
 from lib.codegen_context import CodeGenContext
-from lib.ibv_all import IbvAHAttr, IbvGID, IbvGlobalRoute, IbvQPAttr, IbvQPCap, IbvQPInitAttr, IbvSendWR, IbvSge
+from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
+from lib.ibv_all import (
+    IbvAHAttr,
+    IbvAllocDmAttr,
+    IbvGID,
+    IbvGlobalRoute,
+    IbvModifyCQAttr,
+    IbvQPAttr,
+    IbvQPCap,
+    IbvQPInitAttr,
+    IbvRecvWR,
+    IbvSendWR,
+    IbvSge,
+    IbvSrqAttr,
+    IbvSrqInitAttr,
+)
 from lib.verbs import (
     AllocDM,
     AllocPD,
     CreateCQ,
     CreateQP,
     CreateSRQ,
+    DeallocPD,
+    DeregMR,
+    DestroyCQ,
+    DestroyQP,
+    DestroySRQ,
     FreeDeviceList,
+    FreeDM,
     GetDeviceList,
+    ModifyCQ,
     ModifyQP,
+    ModifySRQ,
     OpenDevice,
     PollCQ,
+    PostRecv,
     PostSend,
+    PostSRQRecv,
     QueryDeviceAttr,
     QueryGID,
     QueryPortAttr,
@@ -63,7 +91,11 @@ if __name__ == "__main__":
         QueryPortAttr(),
         QueryGID(),
         AllocPD(pd="pd0"),
+        AllocDM(dm="dm0", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
+        AllocDM(dm="dm1", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
+        CreateSRQ(pd="pd0", srq="srq0", srq_init_obj=IbvSrqInitAttr(attr=IbvSrqAttr())),  # --- IGNORE ---
         CreateCQ(cq="cq0"),
+        ModifyCQ(cq="cq0", attr_obj=IbvModifyCQAttr()),
         RegMR(
             pd="pd0",
             addr="bufs[0]",
@@ -123,6 +155,7 @@ if __name__ == "__main__":
             attr_mask="IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC",
             attr_obj=IbvQPAttr(qp_state="IBV_QPS_RTS", timeout=14, retry_cnt=7, rnr_retry=7, sq_psn=0, max_rd_atomic=1),
         ),
+        ModifySRQ(srq="srq0", attr_obj=IbvSrqAttr(max_wr=1024, max_sge=1)),
         # 这里可以添加更多的操作，比如发送数据等
         PostSend(
             qp="qp0",
@@ -134,8 +167,49 @@ if __name__ == "__main__":
                 sg_list=[IbvSge(addr="mr0", length="MSG_SIZE", lkey="mr0")],
             ),
         ),
-        # PollCQ(cq="cq0"),
+        PostRecv(
+            qp="qp0",
+            wr_obj=IbvRecvWR(
+                wr_id=1,
+                num_sge=1,
+                sg_list=[IbvSge(addr="mr0", length="MSG_SIZE", lkey="mr0")],
+            ),
+        ),
+        PostSRQRecv(
+            srq="srq0",
+            wr_obj=IbvRecvWR(
+                wr_id=1,
+                num_sge=1,
+                sg_list=[IbvSge(addr="mr0", length="MSG_SIZE", lkey="mr0")],
+            ),
+        ),
+        PollCQ(cq="cq0"),
+        DestroyQP(qp="qp0"),
+        DestroyCQ(cq="cq0"),
+        DestroySRQ(srq="srq0"),
+        DeregMR(mr="mr0"),
+        DeallocPD(pd="pd0"),
+        FreeDM(dm="dm0"),  # --- IGNORE ---
     ]
-    rendered = render(verbs)
-    with open("client.cpp", "w") as f:
-        f.write(rendered)
+    # for v in verbs:
+    #     # print(v.MUTABLE_FIELDS)
+    #     mutable = fuzz_mutate._enumerate_mutable_paths(v)
+
+    #     print(mutable)
+    rng = random.Random(42)
+    mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
+    # # mutated_verbs = mutator.mutate(verbs, max_mutations=5)
+    # i = rng.randrange(len(verbs))
+    i = len(verbs) - 1
+
+    # print(colored("=== VERBS SUMMARY (before) ===", "green"))
+    # print(
+    #     summarize_verb_list(verbs=verbs, deep=True, highlight=i)
+    # )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
+
+    mutated_verbs = mutator.mutate_param(verbs, idx=i)
+
+    # print(colored("=== VERBS SUMMARY (after) ===", "green"))
+    # print(
+    #     summarize_verb_list(verbs=verbs, deep=True, highlight=i, color="green")
+    # )  # 如果想看 before 的一行摘要：传入反序列化前的

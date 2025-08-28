@@ -635,7 +635,10 @@ class AllocDM(VerbCall):
 
     def __init__(self, ctx_name: str = None, dm: str = None, attr_obj: IbvAllocDmAttr = None):
         # ctx_name 暂时不用
-        self.dm = ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
+        if not dm:
+            raise ValueError("dm must be provided for AllocDM")
+        self.dm = ResourceValue(resource_type="dm", value=dm, mutable=False)
+
         self.attr_obj = attr_obj
         self.attr_var = ConstantValue("dm_attr_" + self.dm.value) if dm else ConstantValue("dm_attr_dm")
 
@@ -889,7 +892,9 @@ class AllocPD(VerbCall):
     )
 
     def __init__(self, pd: str = None):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        if not pd:
+            raise ValueError("pd must be provided for AllocPD")
+        self.pd = ResourceValue(resource_type="pd", value=pd, mutable=False)
 
         self.tracker = None
         self.required_resources = []
@@ -1408,10 +1413,9 @@ class CreateCQ(VerbCall):
         self.cq_context = ConstantValue(cq_context)
         self.channel = ConstantValue(channel)
         self.comp_vector = IntValue(comp_vector)
-        self.cq = (
-            ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
-        )  # CQ variable name, default is "unknown"
-
+        if not cq:
+            raise ValueError("cq must be provided for CreateCQ")
+        self.cq = ResourceValue(resource_type="cq", value=cq, mutable=False)
         self.tracker = None
         self.context = None
         self.required_resources = []
@@ -1662,12 +1666,10 @@ class CreateQP(VerbCall):
     )
 
     def __init__(self, pd: str = None, qp: str = None, init_attr_obj: IbvQPInitAttr = None):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.qp = (
-            ResourceValue(resource_type="qp", value=qp)
-            if qp
-            else ResourceValue(resource_type="qp", value=f"qp_{self.pd.value}")
-        )  # 默认生成 qp_<pd>
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else "NULL"
+        if not qp:
+            raise ValueError("qp must be provided for CreateQP")
+        self.qp = ResourceValue(resource_type="qp", value=qp, mutable=False)
         # QP变量名
         self.init_attr_obj = init_attr_obj  # IbvQPInitAttr实例（如自动生成/trace重放）
 
@@ -1915,12 +1917,10 @@ class CreateSRQ(VerbCall):
     )
 
     def __init__(self, pd: str = None, srq: str = None, srq_init_obj: IbvSrqInitAttr = None):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.srq = (
-            ResourceValue(resource_type="srq", value=srq)
-            if srq
-            else ResourceValue(resource_type="srq", value=f"srq_{self.pd.value}")
-        )  # 默认生成 srq_<pd>
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else "NULL"
+        if not srq:
+            raise ValueError("srq must be provided for CreateSRQ")
+        self.srq = ResourceValue(resource_type="srq", value=srq, mutable=False)
         self.srq_init_obj = srq_init_obj
 
         self.tracker = None
@@ -2210,9 +2210,9 @@ class DeallocPD(VerbCall):
     )
 
     def __init__(self, pd: str = None):
-        self.pd = (
-            ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        )  # 默认生成 pd
+        if not pd:
+            raise ValueError("pd must be provided for DeallocPD")
+        self.pd = ResourceValue(resource_type="pd", value=pd)
         self.tracker = None
         self.required_resources = []
 
@@ -2300,9 +2300,9 @@ class DeregMR(VerbCall):
     )
 
     def __init__(self, mr: str = None):
-        self.mr = (
-            ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
-        )  # 默认生成 mr
+        if not mr:
+            raise ValueError("mr must be provided for DeregMR")
+        self.mr = ResourceValue(resource_type="mr", value=mr)
         self.tracker = None
         self.required_resources = []
 
@@ -2443,9 +2443,9 @@ class DestroyCQ(VerbCall):
     )
 
     def __init__(self, cq: str = None):
-        self.cq = (
-            ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
-        )  # 默认生成 cq
+        if not cq:
+            raise ValueError("cq must be provided for DestroyCQ")
+        self.cq = ResourceValue(resource_type="cq", value=cq)
         self.tracker = None
         self.required_resources = []
 
@@ -2537,7 +2537,9 @@ class DestroyQP(VerbCall):
     )
 
     def __init__(self, qp: str = None):
-        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        if not qp:
+            raise ValueError("qp must be provided for DestroyQP")
+        self.qp = ResourceValue(resource_type="qp", value=qp)
         self.tracker = None
         self.required_resources = []
 
@@ -2605,9 +2607,9 @@ class DestroySRQ(VerbCall):
     )
 
     def __init__(self, srq: str = None):
-        self.srq = (
-            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
-        )  # 默认生成 srq
+        if not srq:
+            raise ValueError("srq must be provided for DestroySRQ")
+        self.srq = ResourceValue(resource_type="srq", value=srq)
         self.tracker = None
         self.required_resources = []
 
@@ -3630,9 +3632,9 @@ class ModifyCQ(VerbCall):
     CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None, attr_obj: IbvModifyCQAttr = None, attr_var: str = None):
-        self.cq = (
-            ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
-        )  # CQ address
+        if not cq:
+            raise ValueError("CQ name must be provided")
+        self.cq = ResourceValue(resource_type="cq", value=cq)
         self.attr_obj = attr_obj  # This can be a dict or an object with attributes
         # Default variable name for the CQ attributes
         # Variable name for the CQ attributes
@@ -3702,9 +3704,9 @@ class ModifyQP(VerbCall):
     # )
 
     def __init__(self, qp: str = None, attr_obj: IbvQPAttr = None, attr_mask: str = None):  # TODO: attr 需要检查
-        self.qp = (
-            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
-        )  # QP address
+        if not qp:
+            raise ValueError("QP name must be provided")
+        self.qp = ResourceValue(resource_type="qp", value=qp)
         self.attr_obj = attr_obj
         # e.g., "IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS"
         self.attr_mask = FlagValue(
@@ -3922,9 +3924,9 @@ class ModifySRQ(VerbCall):
         attr_obj: IbvSrqAttr = None,
         attr_mask: int = 0,
     ):
-        self.srq = (
-            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
-        )  # SRQ address
+        if not srq:
+            raise ValueError("SRQ name must be provided")
+        self.srq = ResourceValue(resource_type="srq", value=srq)
         # Default variable name for the SRQ attributes
         # Variable name for the SRQ attributes
         self.attr_var = ConstantValue(attr_var or f"srq_attr_{srq}")
@@ -4231,9 +4233,9 @@ class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数
     CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None):
-        self.cq = (
-            ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
-        )  # CQ address
+        if not cq:
+            raise ValueError("CQ name must be provided")
+        self.cq = ResourceValue(resource_type="cq", value=cq)
         self.tracker = None
         self.required_resources = []
 
@@ -4318,9 +4320,9 @@ class PostRecv(VerbCall):
         wr_var: str = None,
         bad_wr_var: str = None,
     ):
-        self.qp = (
-            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
-        )  # QP address
+        if not qp:
+            raise ValueError("QP name must be provided")
+        self.qp = ResourceValue(resource_type="qp", value=qp)
         self.wr_obj = wr_obj
         # Default variable name for the receive work request
         # Variable name for the receive work request
@@ -4385,7 +4387,9 @@ class PostSend(VerbCall):  # TODO: 修改varname
     CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
 
     def __init__(self, qp: str = None, wr_obj: IbvSendWR = None, wr_var=None, bad_wr_var=None):
-        self.qp = ResourceValue(resource_type="qp", value=qp)  # qp对象变量名或trace地址
+        if not qp:
+            raise ValueError("QP name must be provided")
+        self.qp = ResourceValue(resource_type="qp", value=qp)
         self.wr_obj = wr_obj  # IbvSendWR实例（用于自动生成WR内容）
         self.tracker = None
         self.required_resources = []
@@ -4492,9 +4496,9 @@ class PostSRQRecv(VerbCall):
         wr_var: str = None,
         bad_wr_var: str = None,
     ):
-        self.srq = (
-            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
-        )
+        if not srq:
+            raise ValueError("SRQ name must be provided")
+        self.srq = ResourceValue(resource_type="srq", value=srq)
         self.wr_obj = wr_obj
         # Default variable name for the receive work request
         self.wr_var = ConstantValue(wr_var or f"recv_wr_{srq}")
@@ -5155,8 +5159,12 @@ class RegMR(VerbCall):
         length: int = None,
         access: str = None,
     ):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        # if not pd or not mr:
+        #     raise ValueError("PD and MR name must be provided")
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else "NULL"
+        if not mr:
+            raise ValueError("MR name must be provided")
+        self.mr = ResourceValue(resource_type="mr", value=mr, mutable=False)
         self.addr = ConstantValue(addr or "buf")  # Default buffer variable name
         self.length = IntValue(length or 4096)  # Default length
         self.access = FlagValue(access or "IBV_ACCESS_LOCAL_WRITE", flag_type="IBV_ACCESS_FLAGS_ENUM")

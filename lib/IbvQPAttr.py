@@ -119,8 +119,8 @@ class IbvQPAttr(Attr):
         rate_limit=None,
     ):
         self.qp_state = OptionalValue(
-            EnumValue(qp_state, enum_type="IBV_QP_STATE_ENUM") if qp_state is not None else None,
-            factory=lambda: EnumValue(0, enum_type="IBV_QP_STATE_ENUM"),
+            EnumValue(qp_state, enum_type="IBV_QP_STATE_ENUM", mutable=False) if qp_state is not None else None,
+            factory=lambda: EnumValue(0, enum_type="IBV_QP_STATE_ENUM", mutable=False),
         )  # 默认值为IBV_QPS_RESET
         self.cur_qp_state = OptionalValue(
             EnumValue(cur_qp_state, enum_type="IBV_QP_STATE_ENUM") if cur_qp_state is not None else None,
