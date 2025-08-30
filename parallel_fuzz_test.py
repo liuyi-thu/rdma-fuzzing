@@ -3,8 +3,9 @@ import subprocess
 if __name__ == "__main__":
     # 定义不同的 seed 列表
     # seeds = [1, 2, 3, 4, 5]  # 你想要的不同 seed
-    seeds = range(6, 50)  # 你想要的不同 seed
+    seeds = range(201, 300)  # 你想要的不同 seed
     processes = []
+    rounds = 100  # 每个 seed 的测试轮数
 
     for seed in seeds:
         cmd = [
@@ -13,7 +14,7 @@ if __name__ == "__main__":
             "--seed",
             str(seed),
             "--rounds",
-            "1000",
+            str(rounds),
             "--out-dir",
             f"./debug/out_seed_{seed}",
         ]

@@ -650,6 +650,9 @@ class AllocDM(VerbCall):
         self.required_resources = []
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        if ctx:
+            ctx.alloc_variable(name=self.dm.value, type="struct ibv_dm *", array_size=None)
+
         if self.tracker:
             # Register the DM address in the tracker
             self.tracker.create("dm", self.dm.value)
@@ -712,6 +715,9 @@ class AllocMW(VerbCall):
         self.required_resources = []
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        if ctx:
+            ctx.alloc_variable(name=self.mw.value, type="struct ibv_mw *", array_size=None)
+
         if self.tracker:
             self.tracker.use("pd", self.pd.value)
             self.tracker.create("mw", self.mw.value, pd=self.pd.value)
@@ -1086,7 +1092,8 @@ class BindMW(VerbCall):
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             self.tracker.use("qp", self.qp.value)
-            self.tracker.create("mw", self.mw.value, qp=self.qp.value)
+            # self.tracker.create("mw", self.mw.value, qp=self.qp.value)
+            self.tracker.use("mw", self.mw.value)  # 确保MW被使用
 
             self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})
             self.allocated_resources.append(("mw", self.mw.value))  # 记录已分配的资源
@@ -1945,6 +1952,9 @@ class CreateSRQ(VerbCall):
         self.required_resources = []
         self.allocated_resources = []
         self.tracker = ctx.tracker if ctx else None
+        if ctx:
+            ctx.alloc_variable(name=self.srq.value, type="struct ibv_srq *", array_size=None)
+
         if self.tracker:
             # Register the PD and SRQ addresses in the tracker
             self.tracker.use("pd", self.pd.value)
@@ -3955,7 +3965,7 @@ class ModifySRQ(VerbCall):
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
             # Register the SRQ address in the tracker
-            self.tracker.use("srq", self.srq)
+            self.tracker.use("srq", self.srq.value)
             self.required_resources.append({"type": "srq", "name": self.srq.value, "position": "srq"})
             # # Register the SRQ attributes variable in the tracker
             # self.tracker.create('attr_var', self.attr_var)

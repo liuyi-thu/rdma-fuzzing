@@ -6,13 +6,13 @@ import traceback
 import argparse
 import logging
 import sys
+import pickle
+import dill
+
 from logging.handlers import RotatingFileHandler
-
 from typing import Dict, List
-
 from jinja2 import Environment, FileSystemLoader
 from termcolor import colored
-
 from lib import fuzz_mutate
 from lib.codegen_context import CodeGenContext
 from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
@@ -237,6 +237,8 @@ def run(args):
             logging.info("=== TEST ROUND %d ===", _round)
             mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
             mutated = mutator.mutate(verbs)
+            # pickle.dump(verbs, open(os.path.join(args.out_dir, f"verbs_seed_{seed}_round_{_round}.pkl"), "wb"))
+            dill.dump(verbs, open(os.path.join(args.out_dir, f"verbs_seed_{seed}_round_{_round}.pkl"), "wb"))
 
             logging.info("=== VERBS SUMMARY (after) ===")
             logging.info(
