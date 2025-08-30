@@ -60,7 +60,7 @@ from lib.verbs import (
     VerbCall,
 )
 
-
+PICKLE = False
 INITIAL_VERBS = [
     GetDeviceList("dev_list"),
     OpenDevice("dev_list"),
@@ -238,7 +238,8 @@ def run(args):
             mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
             mutated = mutator.mutate(verbs)
             # pickle.dump(verbs, open(os.path.join(args.out_dir, f"verbs_seed_{seed}_round_{_round}.pkl"), "wb"))
-            dill.dump(verbs, open(os.path.join(args.out_dir, f"verbs_seed_{seed}_round_{_round}.pkl"), "wb"))
+            if PICKLE:
+                dill.dump(verbs, open(os.path.join(args.out_dir, f"verbs_seed_{seed}_round_{_round}.pkl"), "wb"))
 
             logging.info("=== VERBS SUMMARY (after) ===")
             logging.info(

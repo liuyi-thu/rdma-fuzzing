@@ -12,7 +12,7 @@ from termcolor import colored
 
 from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
 
-from .verbs import VerbCall
+from .verbs import VerbCall, ModifyQP
 
 try:
     from .contracts import ContractError, ContractTable, State
@@ -1460,13 +1460,20 @@ class ContractAwareMutator:
                 return self.mutate_insert(verbs, idx)
             elif choice == "delete":
                 return self.mutate_delete(verbs, idx)
+            elif choice == "param":
+                return self.mutate_param(verbs, idx)
             else:
                 raise ValueError(f"Unknown mutation choice: {choice}")
         else:
             r = self.rng.random()
-            if r < 0.5:
+            if r < 0.33:
+                logging.debug("Mutate: insert")
                 return self.mutate_insert(verbs, idx)
+            elif r < 0.66:
+                logging.debug("Mutate: delete")
+                return self.mutate_delete(verbs, idx)
             else:
+                logging.debug("Mutate: param")
                 # return self.mutate_delete(verbs, idx)
                 return self.mutate_param(verbs, idx)
 
@@ -1475,8 +1482,13 @@ class ContractAwareMutator:
             return False
         idx = self.rng.randrange(len(verbs)) if idx_ is None else idx_
         victim = verbs[idx]
+        # TODO: hotfix，禁止删除ModifyQP
+        if isinstance(victim, ModifyQP):
+            return False
         del verbs[idx]
         lost = set(verb_edges_recursive(victim)[1])  # produces
+        # logging.debug("lost from delete:", lost)
+        # print("lost from delete:", lost)
         impact = compute_forward_impact(verbs, idx, lost)
         for k in sorted(impact, reverse=True):
             verbs.pop(k)
