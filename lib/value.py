@@ -1,5 +1,6 @@
 import random
 from abc import ABC, abstractmethod
+import logging
 
 try:
     from objtracker import ObjectTracker
@@ -13,8 +14,9 @@ DEBUG = True  # 改成 True 就能打开所有调试信息
 
 def debug_print(*args, **kwargs):
     """只在 DEBUG=True 时输出"""
-    if DEBUG:
-        print(*args, **kwargs)
+    # if DEBUG:
+    #     print(*args, **kwargs)
+    logging.debug(*args, **kwargs)
 
 
 class Range:

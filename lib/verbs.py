@@ -3720,7 +3720,7 @@ class ModifyQP(VerbCall):
     def __init__(self, qp: str = None, attr_obj: IbvQPAttr = None, attr_mask: str = None):  # TODO: attr 需要检查
         if not qp:
             raise ValueError("QP name must be provided")
-        self.qp = ResourceValue(resource_type="qp", value=qp)
+        self.qp = ResourceValue(resource_type="qp", value=qp, mutable=False)  # 以免破坏FSM链
         self.attr_obj = attr_obj
         # e.g., "IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS"
         self.attr_mask = FlagValue(

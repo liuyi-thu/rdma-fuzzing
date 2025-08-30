@@ -6,6 +6,7 @@ import re
 import traceback
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+import logging
 
 from termcolor import colored
 
@@ -490,7 +491,7 @@ def _extract_edges_recursive(root, obj, visited: set):
             rtype = str(getattr(rq, "rtype", "") or "")
             name_attr = getattr(rq, "name_attr", "") or ""
             name = _resolve_name_for_spec(root, obj, name_attr)
-            print("resolved:", rtype, name_attr, "->", name)
+            # print("resolved:", rtype, name_attr, "->", name)
             if rtype and name:
                 req.append((rtype, name))
         for pr in getattr(contract, "produces", []) or []:
@@ -1464,10 +1465,8 @@ class ContractAwareMutator:
         else:
             r = self.rng.random()
             if r < 0.5:
-                print("choice: insert")
                 return self.mutate_insert(verbs, idx)
             else:
-                print("choice: param")
                 # return self.mutate_delete(verbs, idx)
                 return self.mutate_param(verbs, idx)
 
@@ -1590,24 +1589,24 @@ class ContractAwareMutator:
             # 1) 随机选 verb
             idx = rng.randrange(len(verbs))
             v = verbs[idx]
-        print("mutate param idx:", idx)
+        # print("mutate param idx:", idx)
         # 2) 枚举可变路径
         snap = _make_snapshot(verbs, idx)
         contract = v.get_contract()
-        print("snap:", snap)
-        print("contract:", contract)
+        # print("snap:", snap)
+        # print("contract:", contract)
         paths = _enumerate_mutable_paths(v)
         if not paths:
             return False
         path, leaf = rng.choice(paths)
-        print(summarize_verb(v, deep=True))
-        print(path, leaf)
+        # print(summarize_verb(v, deep=True))
+        # print(path, leaf)
         leaf.mutate(snap=snap, contract=contract, rng=rng)
-        print(leaf)
-        print(type(leaf))
-        print()
+        # print(leaf)
+        # print(type(leaf))
+        # print()
         lost = destroyed_targets(v)
-        print("lost from param mutation:", lost)
+        # print("lost from param mutation:", lost)
         if lost:
             _trim_forward_on_lost(verbs, idx, lost)
 

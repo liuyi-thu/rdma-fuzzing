@@ -5,3 +5,4 @@ baks/
 verbs_*.c
 *.json
 responses_*/
+debug/

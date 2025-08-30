@@ -3,6 +3,11 @@ import json
 import os
 import random
 import traceback
+import argparse
+import logging
+import sys
+from logging.handlers import RotatingFileHandler
+
 from typing import Dict, List
 
 from jinja2 import Environment, FileSystemLoader
@@ -56,7 +61,197 @@ from lib.verbs import (
 )
 
 
-def render(verbs):
+INITIAL_VERBS = [
+    GetDeviceList("dev_list"),
+    OpenDevice("dev_list"),
+    FreeDeviceList(),
+    QueryDeviceAttr(),
+    QueryPortAttr(),
+    QueryGID(),
+    AllocPD(pd="pd0"),
+    AllocPD(pd="pd1"),
+    AllocDM(dm="dm0", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
+    AllocDM(dm="dm1", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
+    CreateSRQ(pd="pd0", srq="srq0", srq_init_obj=IbvSrqInitAttr(attr=IbvSrqAttr())),  # --- IGNORE ---
+    CreateCQ(cq="cq0"),
+    CreateCQ(cq="cq1"),
+    ModifyCQ(cq="cq0", attr_obj=IbvModifyCQAttr()),
+    RegMR(
+        pd="pd0",
+        addr="bufs[0]",
+        length=1024,
+        mr="mr0",
+        access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+    ),
+    RegMR(
+        pd="pd1",
+        addr="bufs[0]",
+        length=1024,
+        mr="mr1",
+        access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+    ),
+    CreateQP(
+        qp="qp0",
+        pd="pd0",
+        init_attr_obj=IbvQPInitAttr(
+            send_cq="cq0",
+            recv_cq="cq0",
+            cap=IbvQPCap(max_send_wr=1, max_recv_wr=1, max_send_sge=1, max_recv_sge=1),
+            qp_type="IBV_QPT_RC",
+            sq_sig_all=1,
+        ),
+    ),
+    ModifyQP(
+        qp="qp0",
+        attr_mask="IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
+        attr_obj=IbvQPAttr(
+            qp_state="IBV_QPS_INIT",
+            pkey_index=0,
+            port_num=1,
+            qp_access_flags="IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE",
+        ),
+    ),
+    ModifyQP(
+        qp="qp0",
+        attr_mask="IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER",
+        attr_obj=IbvQPAttr(
+            qp_state="IBV_QPS_RTR",
+            path_mtu="IBV_MTU_1024",
+            dest_qp_num="",  # DeferredValue
+            rq_psn=0,
+            max_dest_rd_atomic=1,
+            min_rnr_timer=12,
+            ah_attr=IbvAHAttr(
+                is_global=1,
+                dlid="",  # DeferredValue
+                sl=0,
+                src_path_bits=0,
+                port_num=1,
+                grh=IbvGlobalRoute(
+                    sgid_index=1,
+                    hop_limit=1,
+                    traffic_class=0,
+                    flow_label=0,
+                    dgid="",  # DeferredValue
+                ),
+            ),
+        ),
+    ),
+    ModifyQP(
+        qp="qp0",
+        attr_mask="IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC",
+        attr_obj=IbvQPAttr(qp_state="IBV_QPS_RTS", timeout=14, retry_cnt=7, rnr_retry=7, sq_psn=0, max_rd_atomic=1),
+    ),
+    ModifySRQ(srq="srq0", attr_obj=IbvSrqAttr(max_wr=1024, max_sge=1)),
+    # 这里可以添加更多的操作，比如发送数据等
+    PostSend(
+        qp="qp0",
+        wr_obj=IbvSendWR(
+            wr_id=1,
+            num_sge=1,
+            opcode="IBV_WR_SEND",
+            send_flags="IBV_SEND_SIGNALED",
+            sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
+        ),
+    ),
+    PostRecv(
+        qp="qp0",
+        wr_obj=IbvRecvWR(
+            wr_id=1,
+            num_sge=1,
+            sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
+        ),
+    ),
+    PostSRQRecv(
+        srq="srq0",
+        wr_obj=IbvRecvWR(
+            wr_id=1,
+            num_sge=1,
+            sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
+        ),
+    ),
+    PollCQ(cq="cq0"),
+    DestroyQP(qp="qp0"),
+    DestroyCQ(cq="cq0"),
+    DestroySRQ(srq="srq0"),
+    DeregMR(mr="mr0"),
+    DeallocPD(pd="pd0"),
+    FreeDM(dm="dm0"),  # --- IGNORE ---
+]
+
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
+    p.add_argument("--rounds", type=int, default=1000, help="Number of fuzzing rounds")
+    p.add_argument("--out-dir", type=str, default="./out", help="Output directory for generated files")
+    return p.parse_args()
+
+
+def setup_logging(log_file: str, to_console: bool = False, level=logging.INFO):
+    # 根 logger
+    logger = logging.getLogger()
+    logger.setLevel(level)
+
+    # 清理旧的 handler，避免重复添加
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+
+    # 文件轮转（50MB * 3份备份）
+    fh = RotatingFileHandler(log_file, mode="w", maxBytes=50 * 1024 * 1024, backupCount=3, encoding="utf-8")
+    # fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(process)d %(name)s: %(message)s")
+    fmt = logging.Formatter("%(message)s")
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
+    if to_console:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(fmt)
+        logger.addHandler(sh)
+
+    # 把 warnings.warn(...) 也导入 logging（归入 WARNING）
+    logging.captureWarnings(True)
+
+    # 把“未捕获异常”的 traceback 也写进日志
+    def _excepthook(exc_type, exc, tb):
+        logging.critical("Uncaught exception", exc_info=(exc_type, exc, tb))
+        # 仍然让默认行为继续（可选）。如果不想再打印到stderr，就注释掉下一行
+        sys.__excepthook__(exc_type, exc, tb)
+
+    sys.excepthook = _excepthook
+
+
+def run(args):
+    # 你的业务逻辑
+    logging.info("start fuzzing: seed=%s rounds=%s", args.seed, args.rounds)
+    # 示例：手动记录异常堆栈（捕获型）
+    try:
+        seed = args.seed
+        max_rounds = args.rounds
+
+        ctx = CodeGenContext()
+        verbs: list[VerbCall] = INITIAL_VERBS
+        rng = random.Random(seed)
+        logging.info("Initial verbs:\n%s", summarize_verb_list(verbs=verbs, deep=True))
+        for _round in range(max_rounds):
+            logging.info("=== TEST ROUND %d ===", _round)
+            mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
+            mutated = mutator.mutate(verbs)
+
+            logging.info("=== VERBS SUMMARY (after) ===")
+            logging.info(
+                summarize_verb_list(verbs=verbs, deep=True) + "\n"
+            )  # 如果想看 before 的一行摘要：传入反序列化前的
+
+        # f.close()
+
+        pass
+    except Exception:
+        logging.exception("Exception during fuzzing loop")  # 带完整 traceback
+        raise  # 继续抛出也行，交给上面的 excepthook 再记一遍
+
+
+def render(verbs, ctx):
     for v in verbs:
         v.apply(ctx)
     print(verbs)
@@ -83,161 +278,16 @@ def render(verbs):
 
 
 if __name__ == "__main__":
-    ctx = CodeGenContext()
-    verbs: list[VerbCall] = [
-        GetDeviceList("dev_list"),
-        OpenDevice("dev_list"),
-        FreeDeviceList(),
-        QueryDeviceAttr(),
-        QueryPortAttr(),
-        QueryGID(),
-        AllocPD(pd="pd0"),
-        AllocPD(pd="pd1"),
-        AllocDM(dm="dm0", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
-        AllocDM(dm="dm1", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
-        CreateSRQ(pd="pd0", srq="srq0", srq_init_obj=IbvSrqInitAttr(attr=IbvSrqAttr())),  # --- IGNORE ---
-        CreateCQ(cq="cq0"),
-        CreateCQ(cq="cq1"),
-        ModifyCQ(cq="cq0", attr_obj=IbvModifyCQAttr()),
-        RegMR(
-            pd="pd0",
-            addr="bufs[0]",
-            length=1024,
-            mr="mr0",
-            access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
-        ),
-        RegMR(
-            pd="pd1",
-            addr="bufs[0]",
-            length=1024,
-            mr="mr1",
-            access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
-        ),
-        CreateQP(
-            qp="qp0",
-            pd="pd0",
-            init_attr_obj=IbvQPInitAttr(
-                send_cq="cq0",
-                recv_cq="cq0",
-                cap=IbvQPCap(max_send_wr=1, max_recv_wr=1, max_send_sge=1, max_recv_sge=1),
-                qp_type="IBV_QPT_RC",
-                sq_sig_all=1,
-            ),
-        ),
-        ModifyQP(
-            qp="qp0",
-            attr_mask="IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
-            attr_obj=IbvQPAttr(
-                qp_state="IBV_QPS_INIT",
-                pkey_index=0,
-                port_num=1,
-                qp_access_flags="IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE",
-            ),
-        ),
-        ModifyQP(
-            qp="qp0",
-            attr_mask="IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER",
-            attr_obj=IbvQPAttr(
-                qp_state="IBV_QPS_RTR",
-                path_mtu="IBV_MTU_1024",
-                dest_qp_num="",  # DeferredValue
-                rq_psn=0,
-                max_dest_rd_atomic=1,
-                min_rnr_timer=12,
-                ah_attr=IbvAHAttr(
-                    is_global=1,
-                    dlid="",  # DeferredValue
-                    sl=0,
-                    src_path_bits=0,
-                    port_num=1,
-                    grh=IbvGlobalRoute(
-                        sgid_index=1,
-                        hop_limit=1,
-                        traffic_class=0,
-                        flow_label=0,
-                        dgid="",  # DeferredValue
-                    ),
-                ),
-            ),
-        ),
-        ModifyQP(
-            qp="qp0",
-            attr_mask="IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC",
-            attr_obj=IbvQPAttr(qp_state="IBV_QPS_RTS", timeout=14, retry_cnt=7, rnr_retry=7, sq_psn=0, max_rd_atomic=1),
-        ),
-        ModifySRQ(srq="srq0", attr_obj=IbvSrqAttr(max_wr=1024, max_sge=1)),
-        # 这里可以添加更多的操作，比如发送数据等
-        PostSend(
-            qp="qp0",
-            wr_obj=IbvSendWR(
-                wr_id=1,
-                num_sge=1,
-                opcode="IBV_WR_SEND",
-                send_flags="IBV_SEND_SIGNALED",
-                sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
-            ),
-        ),
-        PostRecv(
-            qp="qp0",
-            wr_obj=IbvRecvWR(
-                wr_id=1,
-                num_sge=1,
-                sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
-            ),
-        ),
-        PostSRQRecv(
-            srq="srq0",
-            wr_obj=IbvRecvWR(
-                wr_id=1,
-                num_sge=1,
-                sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
-            ),
-        ),
-        PollCQ(cq="cq0"),
-        DestroyQP(qp="qp0"),
-        DestroyCQ(cq="cq0"),
-        DestroySRQ(srq="srq0"),
-        DeregMR(mr="mr0"),
-        DeallocPD(pd="pd0"),
-        FreeDM(dm="dm0"),  # --- IGNORE ---
-    ]
-    # for v in verbs:
-    #     # print(v.MUTABLE_FIELDS)
-    #     mutable = fuzz_mutate._enumerate_mutable_paths(v)
+    args = parse_args()
+    os.makedirs(args.out_dir, exist_ok=True)
+    log_file = os.path.join(args.out_dir, f"seed_{args.seed if args.seed is not None else 'none'}.log")
+    setup_logging(log_file, to_console=False, level=logging.DEBUG)
+    run(args)
 
-    #     print(mutable)
-    # rng = random.Random(42)
-    seed = random.randint(0, 10000)
-    seed = 4070
-    rng = random.Random(seed)
-    print("current seed:", seed)
-    # print(len(verbs))
-    # exit()
-    for _round in range(1000):
-        print(f"=== TEST ROUND {_round} ===")
-        mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
-        # # mutated_verbs = mutator.mutate(verbs, max_mutations=5)
-        i = rng.randrange(1, len(verbs))
-        # i = len(verbs) - 1
 
-        # print(colored("=== VERBS SUMMARY (before) ===", "green"))
-        # # print(
-        # #     summarize_verb_list(verbs=verbs, deep=True, highlight=i)
-        # # )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
-        # print(summarize_verb_list(verbs=verbs, deep=True))  # 如果想看 before 的一行摘要：传入反序列化前的原 list
-
-        # mutated_verbs = mutator.mutate_param(verbs, idx=i)
-        try:
-            mutated_verbs = mutator.mutate(verbs)
-        except Exception as e:
-            print(traceback.format_exc())
-            print("round:", _round)
-            print("seed:", seed)
-            exit(0)
-
-        # print(colored("=== VERBS SUMMARY (after) ===", "green"))
-        # print(
-        #     summarize_verb_list(verbs=verbs, deep=True, highlight=i, color="green")
-        # )  # 如果想看 before 的一行摘要：传入反序列化前的
-        print(colored("=== VERBS SUMMARY (after) ===", "green"))
-        print(summarize_verb_list(verbs=verbs, deep=True))  # 如果想看 before 的一行摘要：传入反序列化前的
+# if __name__ == "__main__":
+#     arg = argparse.ArgumentParser()
+#     arg.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
+#     arg.add_argument("--rounds", type=int, default=1000, help="Number of fuzzing rounds")
+#     arg.add_argument("--out-dir", type=str, default="./out", help="Output directory for generated files")
+#     args = arg.parse_args()
