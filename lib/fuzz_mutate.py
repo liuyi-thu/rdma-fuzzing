@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import random
 import re
+import traceback
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -114,6 +115,7 @@ def _get_dotted(obj: Any, dotted: str) -> Any:
     for p in dotted.split("."):
         if cur is None:
             return None
+        cur = _unwrap_value(cur)
         cur = getattr(cur, p, None)
     return cur
 
@@ -218,13 +220,13 @@ def _trim_forward_on_lost(verbs, start_idx, lost):
 def _check_feasible_position(verbs, ins_list, idx, *, try_trim_on_destroy=True):
     n = len(verbs)
     pos = idx
-    print("pos:", pos)
+    # print("pos:", pos)
     # 前缀
     ctx = FakeCtx()
     try:
         _apply_slice(ctx, verbs[:pos])
     except Exception as e:
-        print(e)
+        # print(e)
         return False
 
     # 待插入段
@@ -234,7 +236,7 @@ def _check_feasible_position(verbs, ins_list, idx, *, try_trim_on_destroy=True):
     try:
         _apply_slice(ctx_mid, ins_list)
     except Exception as e:
-        print(e)
+        # print(e)
         return False
 
     # 后缀：先直接尝试整条；如果失败且 destroy 可清理，则做一次清理再试
@@ -245,7 +247,7 @@ def _check_feasible_position(verbs, ins_list, idx, *, try_trim_on_destroy=True):
         _apply_slice(ctx_tail, suffix)
         return True
     except Exception as e:
-        print(e)
+        # print(e)
         # 后缀直接失败，尝试 destroy 清理路径
         if not try_trim_on_destroy:
             return False
@@ -488,6 +490,7 @@ def _extract_edges_recursive(root, obj, visited: set):
             rtype = str(getattr(rq, "rtype", "") or "")
             name_attr = getattr(rq, "name_attr", "") or ""
             name = _resolve_name_for_spec(root, obj, name_attr)
+            print("resolved:", rtype, name_attr, "->", name)
             if rtype and name:
                 req.append((rtype, name))
         for pr in getattr(contract, "produces", []) or []:
@@ -644,23 +647,21 @@ def _mk_min_cq_attr():
 
 
 # ---- MW alloc 的最小形态 ----
-def _mk_min_alloc_mw(pd_name: str):
+def _mk_min_alloc_mw(pd_name: str, mw_name: str):
     from .verbs import AllocMW
 
     # 若你的 AllocMW 需要 mw_type，按 verbs.py 调整
-    return AllocMW(pd=pd_name, mw=f"mw_{random.randrange(1 << 16)}", mw_type="IBV_MW_TYPE_1")
+    return AllocMW(pd=pd_name, mw=mw_name, mw_type="IBV_MW_TYPE_1")
 
 
 # ---- DM alloc 的最小形态 ----
-def _mk_min_alloc_dm():
+def _mk_min_alloc_dm(dm_name: str):
     from lib.ibv_all import IbvAllocDmAttr  # 若你的 IbvAllocDmAttr 有不同字段，按需调整
 
     from .verbs import AllocDM
 
     # 视你的 verbs.py 签名而定：很多实现是 ctx_name + length + align
-    return AllocDM(
-        ctx_name="ctx", dm=f"dm_{random.randrange(1 << 16)}", attr_obj=IbvAllocDmAttr(length=0x2000, log_align_req=64)
-    )
+    return AllocDM(ctx_name="ctx", dm=dm_name, attr_obj=IbvAllocDmAttr(length=0x2000, log_align_req=64))
 
 
 # ========================= Live / factories / requires-filler =========================
@@ -878,6 +879,7 @@ def destroyed_targets(v) -> set[tuple[str, str]]:
     """
     outs = set()
     tr = getattr(v.__class__, "CONTRACT", None)
+    # print("tr:", tr)
     if tr:
         for t in getattr(tr, "transitions", []) or []:
             to_state = getattr(t, "to_state", None)
@@ -1057,15 +1059,27 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         pds = [n for (t, n) in live_set() if t == "pd"]
         return rng.choice(pds) if pds else None
 
+    def pick_mw_name():
+        mws = [n for (t, n) in live_set() if t == "mw"]
+        return rng.choice(mws) if mws else None
+
+    def gen_new_name(kind, snap):
+        existing = {n for (t, n) in snap.keys() if t == kind}
+        for _ in range(100):
+            name = f"{kind}_{rng.randrange(1 << 16)}"
+            if name not in existing:
+                return name
+        return None
+
     # 1) ModifyQP：复用你已有的有/无状态策略
-    def build_modify_qp(ctx, rng, live):
+    def build_modify_qp(ctx, rng, live, snap):
         qp = pick_qp_name()
         if not qp:
             return None
         return build_modify_qp_out(verbs, i, qp, rng)  # 你现有的包装
 
     # 2) PostSend：最小 WR（1 SGE）
-    def build_post_send(ctx, rng, live):
+    def build_post_send(ctx, rng, live, snap):
         qp = pick_qp_name()
         if not qp:
             return None
@@ -1073,25 +1087,28 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         return PostSend(qp=qp, wr_obj=wr)
 
     # 3) PollCQ
-    def build_poll_cq(ctx, rng, live):
+    def build_poll_cq(ctx, rng, live, snap):
         cq = pick_cq_name()
         # return None if not cq else PollCQ(cq=cq, num_entries=1)
         return None if not cq else PollCQ(cq=cq)
 
     # 4) RegMR（绑定已有 PD）
-    def build_reg_mr(ctx, rng, live):
+    def build_reg_mr(ctx, rng, live, snap):
         pd = pick_pd_name()
         if not pd:
             return None
-        mr_name = f"mr_{rng.randrange(1 << 16)}"
+        # mr_name = f"mr_{rng.randrange(1 << 16)}"
+        mr_name = gen_new_name("mr", snap)
         return RegMR(pd=pd, mr=mr_name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE")
 
     # 5) CreateCQ（纯创建）
-    def build_create_cq(ctx, rng, live):
-        return CreateCQ(cq=f"cq_{rng.randrange(1 << 16)}", cqe=16, comp_vector=0, channel="NULL")
+    def build_create_cq(ctx, rng, live, snap):
+        # cq_name = f"cq_{rng.randrange(1 << 16)}"
+        cq_name = gen_new_name("cq", snap)
+        return CreateCQ(cq=cq_name, cqe=16, comp_vector=0, channel="NULL")
 
     # 6) **PostRecv**（最小 WR：1 SGE）
-    def build_post_recv(ctx, rng, live):
+    def build_post_recv(ctx, rng, live, snap):
         qp = pick_qp_name()
         if not qp:
             return None
@@ -1099,18 +1116,22 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         return PostRecv(qp=qp, wr_obj=wr)
 
     # 7) **BindMW**（绑定已有 MR，产出 MW）
-    def build_bind_mw(ctx, rng, live):
+    def build_bind_mw(ctx, rng, live, snap):
         qp = pick_qp_name()
         if not qp:
             return None
-        mw_name = f"mw_{rng.randrange(1 << 16)}"
+        mw = pick_mw_name()
+        if not mw:
+            return None
+        # mw_name = f"mw_{rng.randrange(1 << 16)}"
+        mw_name = mw
         mw_bind_obj, mr_name = _mk_min_mw_bind(live_set(), rng)
         # BindMW 的 CONTRACT: 需要 qp 和 mw_bind_obj.bind_info.mr；产出 mw
         # （没有 MR 时，_ensure_requires_before 会补建 RegMR）
         return BindMW(qp=qp, mw=mw_name, mw_bind_obj=mw_bind_obj)
 
     # 8) **AttachMcast**（最小 gid/lid）
-    def build_attach_mcast(ctx, rng, live):
+    def build_attach_mcast(ctx, rng, live, snap):
         qp = pick_qp_name()
         if not qp:
             return None
@@ -1119,42 +1140,45 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         return AttachMcast(qp=qp, gid=gid_var, lid=0)
 
     # 9) （可选）**RegDmaBufMR**（需要 pd）
-    def build_reg_dmabuf_mr(ctx, rng, live):
+    def build_reg_dmabuf_mr(ctx, rng, live, snap):
         pd = pick_pd_name()
         if not pd:
             return None
-        mr_name = f"mr_{rng.randrange(1 << 16)}"
+        # mr_name = f"mr_{rng.randrange(1 << 16)}"
+        mr_name = gen_new_name("mr", snap)
         # 随便给一个小范围
         return RegDmaBufMR(pd=pd, mr=mr_name, offset=0, length=0x2000, iova=0, fd=3, access="IBV_ACCESS_LOCAL_WRITE")
 
     # 新增：销毁类模板（支持点名 destroy_XXX，也支持 generic）
-    def build_destroy(ctx, rng, live):
+    def build_destroy(ctx, rng, live, snap):
         return build_destroy_generic(ctx, rng, live, verbs, i)
 
-    def build_destroy_qp(ctx, rng, live):
+    def build_destroy_qp(ctx, rng, live, snap):
         return _build_destroy_of_type(rng, verbs, i, "qp")
 
-    def build_destroy_cq(ctx, rng, live):
+    def build_destroy_cq(ctx, rng, live, snap):
         return _build_destroy_of_type(rng, verbs, i, "cq")
 
-    def build_dealloc_pd(ctx, rng, live):
+    def build_dealloc_pd(ctx, rng, live, snap):
         return _build_destroy_of_type(rng, verbs, i, "pd")
 
-    def build_dereg_mr(ctx, rng, live):
+    def build_dereg_mr(ctx, rng, live, snap):
         return _build_destroy_of_type(rng, verbs, i, "mr")
 
-    def build_dealloc_mw(ctx, rng, live):
+    def build_dealloc_mw(ctx, rng, live, snap):
         return _build_destroy_of_type(rng, verbs, i, "mw")
 
     # ---------- SRQ ----------
-    def build_create_srq(ctx, rng, live):
+    def build_create_srq(ctx, rng, live, snap):
         pds = pick_rnames("pd")
         if not pds:
             return None
         pd = rng.choice(pds)
-        return CreateSRQ(pd=pd, srq=f"srq_{rng.randrange(1 << 16)}", srq_init_obj=_mk_min_srq_init())
+        # srq_name = f"srq_{rng.randrange(1 << 16)}"
+        srq_name = gen_new_name("srq", snap)
+        return CreateSRQ(pd=pd, srq=srq_name, srq_init_obj=_mk_min_srq_init())
 
-    def build_post_srq_recv(ctx, rng, live):
+    def build_post_srq_recv(ctx, rng, live, snap):
         srqs = pick_rnames("srq")
         if not srqs:
             return None
@@ -1162,7 +1186,7 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
 
         return PostSRQRecv(srq=rng.choice(srqs), wr_obj=_mk_min_recv_wr())
 
-    def build_modify_srq(ctx, rng, live):
+    def build_modify_srq(ctx, rng, live, snap):
         srqs = pick_rnames("srq")
         if not srqs:
             return None
@@ -1174,62 +1198,69 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         )
 
     # ---------- WQ ----------
-    def build_create_wq(ctx, rng, live):
+    def build_create_wq(ctx, rng, live, snap):
         pds = pick_rnames("pd")
         cqs = pick_rnames("cq")
         if not (pds and cqs):
             return None
         pd, cq = rng.choice(pds), rng.choice(cqs)
-        return CreateWQ(ctx_name="ctx", wq=f"wq_{rng.randrange(1 << 16)}", wq_attr_obj=_mk_min_wq_init(pd, cq))
+        # wq_name = f"wq_{rng.randrange(1 << 16)}"
+        wq_name = gen_new_name("wq", snap)
+        return CreateWQ(ctx_name="ctx", wq=wq_name, wq_attr_obj=_mk_min_wq_init(pd, cq))
 
     # ---------- AH ----------
-    def build_create_ah(ctx, rng, live):
+    def build_create_ah(ctx, rng, live, snap):
         pds = pick_rnames("pd")
         if not pds:
             return None
-        return CreateAH(pd=rng.choice(pds), ah=f"ah_{rng.randrange(1 << 16)}", attr_obj=_mk_min_ah_attr())
+        ah_name = gen_new_name("ah", snap)
+        return CreateAH(pd=rng.choice(pds), ah=ah_name, attr_obj=_mk_min_ah_attr())
 
     # ---------- Flow ----------
-    def build_create_flow(ctx, rng, live):
+    def build_create_flow(ctx, rng, live, snap):
         qps = pick_rnames("qp")
         if not qps:
             return None
-        return CreateFlow(qp=rng.choice(qps), flow=f"flow_{rng.randrange(1 << 16)}", flow_attr_obj=_mk_min_flow_attr())
+        flow_name = gen_new_name("flow", snap)
+        return CreateFlow(qp=rng.choice(qps), flow=flow_name, flow_attr_obj=_mk_min_flow_attr())
 
     # ---------- CQ notify ----------
-    def build_req_notify_cq(ctx, rng, live):
+    def build_req_notify_cq(ctx, rng, live, snap):
         cqs = pick_rnames("cq")
         if not cqs:
             return None
         return ReqNotifyCQ(cq=rng.choice(cqs), solicited_only=rng.choice([0, 1]))
 
     # ---------- 查询类 ----------
-    def build_query_qp(ctx, rng, live):
+    def build_query_qp(ctx, rng, live, snap):
         qps = pick_rnames("qp")
         if not qps:
             return None
         return QueryQP(qp=rng.choice(qps), attr_mask="IBV_QP_STATE | IBV_QP_PORT | IBV_QP_PKEY_INDEX")
 
-    def build_query_srq(ctx, rng, live):
+    def build_query_srq(ctx, rng, live, snap):
         srqs = pick_rnames("srq")
         if not srqs:
             return None
         return QuerySRQ(srq=rng.choice(srqs))
 
     # --- AllocPD: 直接产一个 PD ---
-    def build_alloc_pd(ctx, rng, live):
-        return AllocPD(pd=f"pd_{rng.randrange(1 << 16)}")
+    def build_alloc_pd(ctx, rng, live, snap):
+        # pd_name = f"pd_{rng.randrange(1 << 16)}"
+        pd_name = gen_new_name("pd", snap)
+        return AllocPD(pd=pd_name)
 
     # --- CreateQP: 需要 pd/cq，init_attr_obj 引用已有 cq（缺就补链）---
-    def build_create_qp(ctx, rng, live):
+    def build_create_qp(ctx, rng, live, snap):
         pd = pick("pd") or "pd0"
         send_cq = pick("cq") or "cq0"
         recv_cq = pick("cq") or send_cq
         init = _mk_min_qp_init(send_cq, recv_cq)
-        return CreateQP(pd=pd, qp=f"qp_{rng.randrange(1 << 16)}", init_attr_obj=init)
+        qp_name = gen_new_name("qp", snap)
+        return CreateQP(pd=pd, qp=qp_name, init_attr_obj=init)
 
     # --- ModifyCQ: 改调度/容量等（按你的 IbvCQAttr 定义）---
-    def build_modify_cq(ctx, rng, live):
+    def build_modify_cq(ctx, rng, live, snap):
         cq = pick("cq")
         if not cq:
             return None
@@ -1237,24 +1268,24 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         return ModifyCQ(cq=cq, attr_obj=_mk_min_cq_attr())
 
     # --- AllocMW: 需要 pd，产出 mw ---
-    def build_alloc_mw(ctx, rng, live):
+    def build_alloc_mw(ctx, rng, live, snap):
         pd = pick("pd")
         if not pd:
             return None
-        return _mk_min_alloc_mw(pd)
+        return _mk_min_alloc_mw(pd, mw_name=gen_new_name("mw", snap))
 
     # --- AllocDM / FreeDM: 产出/释放 dm ---
-    def build_alloc_dm(ctx, rng, live):
-        return _mk_min_alloc_dm()
+    def build_alloc_dm(ctx, rng, live, snap):
+        return _mk_min_alloc_dm(dm_name=gen_new_name("dm", snap))
 
-    def build_free_dm(ctx, rng, live):
+    def build_free_dm(ctx, rng, live, snap):
         dms = [n for (t, n) in live_set() if t == "dm"]
         if not dms:
             return None
         return FreeDM(dm=rng.choice(dms))
 
     # --- ReRegMR: 需要已存在 mr & pd（flags 简化一版）---
-    def build_rereg_mr(ctx, rng, live):
+    def build_rereg_mr(ctx, rng, live, snap):
         mr = pick("mr")
         pd = pick("pd")
         if not (mr and pd):
@@ -1422,7 +1453,7 @@ class ContractAwareMutator:
         self.rng = rng or random.Random()
         self.cfg = cfg or MutatorConfig()
 
-    def mutate(self, verbs: List[VerbCall], idx: Optional[int], choice: str = None) -> bool:
+    def mutate(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
         if choice:
             if choice == "insert":
                 return self.mutate_insert(verbs, idx)
@@ -1433,9 +1464,12 @@ class ContractAwareMutator:
         else:
             r = self.rng.random()
             if r < 0.5:
+                print("choice: insert")
                 return self.mutate_insert(verbs, idx)
             else:
-                return self.mutate_delete(verbs, idx)
+                print("choice: param")
+                # return self.mutate_delete(verbs, idx)
+                return self.mutate_param(verbs, idx)
 
     def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
         if not verbs:
@@ -1468,12 +1502,14 @@ class ContractAwareMutator:
 
         # 可选：安静/详细输出
         verbose = getattr(getattr(self, "cfg", None), "verbose", False)
+        # verbose = True
         if verbose:
             print("=== VERBS (before) ===")
             for j, v in enumerate(verbs):
                 print(f"[{j:02d}] {summarize_verb(v, deep=True)}")
 
         # 1) 收集可行位置
+        global_snapshot = _make_snapshot(verbs, len(verbs))
         for i in candidate_indices:
             if verbose:
                 print(f"Trying to insert at index {i}")
@@ -1484,11 +1520,13 @@ class ContractAwareMutator:
 
             # 1.2 先用“全局 live”生成；失败再用“当前位置 live”补试一次
             ins_list: Optional[List[VerbCall]] = None
-            global_live = _live_before(verbs, len(verbs))
-            cand = build_fn(None, rng, global_live)
-            if cand is None:
-                pos_live = _live_before(verbs, i)
-                cand = build_fn(None, rng, pos_live)
+            # global_live = _live_before(verbs, len(verbs))
+            # cand = build_fn(None, rng, global_live, global_snapshot)
+            # if cand is None:
+            #     pos_live = _live_before(verbs, i)
+            #     cand = build_fn(None, rng, pos_live, global_snap)
+            pos_live = _live_before(verbs, i)
+            cand = build_fn(None, rng, pos_live, global_snapshot)
 
             if cand is None:
                 if verbose:
@@ -1520,6 +1558,7 @@ class ContractAwareMutator:
         # 3) 真插入 + destroy 前向切片清理
         verbs[pos:pos] = ins_list
         lost = _lost_from_ins(ins_list)
+        # print("lost from ins:", lost)
         if lost:
             _trim_forward_on_lost(verbs, pos + len(ins_list), lost)
 
@@ -1535,6 +1574,7 @@ class ContractAwareMutator:
         except ContractError:
             # 理论上不应触发（pos 源自可行集），但回退以保证幂等
             del verbs[pos : pos + len(ins_list)]
+            print(traceback.format_exc())
             if verbose:
                 print("Final dry-run failed; reverted insertion.")
             return False
@@ -1550,6 +1590,7 @@ class ContractAwareMutator:
             # 1) 随机选 verb
             idx = rng.randrange(len(verbs))
             v = verbs[idx]
+        print("mutate param idx:", idx)
         # 2) 枚举可变路径
         snap = _make_snapshot(verbs, idx)
         contract = v.get_contract()
@@ -1563,7 +1604,12 @@ class ContractAwareMutator:
         print(path, leaf)
         leaf.mutate(snap=snap, contract=contract, rng=rng)
         print(leaf)
+        print(type(leaf))
         print()
+        lost = destroyed_targets(v)
+        print("lost from param mutation:", lost)
+        if lost:
+            _trim_forward_on_lost(verbs, idx, lost)
 
         # # 3) 变异 leaf
         # if leaf is None:

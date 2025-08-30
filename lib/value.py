@@ -536,25 +536,31 @@ class ResourceValue(Value):
         return False
 
     def mutate(self, snap=None, contract=None, rng: random.Random = None):
-        # TODO: 这里的实现其实是错误的，但是先这样凑合着用
         if not self.mutable:
             debug_print("This ResourceValue is not mutable.")
             return
+
+        # 应该是这样，判断该value属于produces还是requires（transition类）
         required_type = self.resource_type
         required_state = None
-        for item in contract.requires or []:
+        required = False
+        for item in contract.requires or []:  # TODO: 这里的实现其实是错误的，但是先这样凑合着用
             if item.rtype == required_type:
+                required = True
                 required_state = item.state
                 break
         # print(required_state, required_type)
-        cands = []
-        for (t, name), st in (snap or {}).items():
-            if t == required_type and (required_state is None or st == required_state):
-                cands.append(name)
-        if cands:
-            rng = rng or random
-            cands = [x for x in cands if x != self.value] or cands
-            self.value = rng.choice(cands)
+        if required:
+            cands = []
+            for (t, name), st in (snap or {}).items():
+                if t == required_type and (required_state is None or st == required_state):
+                    cands.append(name)
+            if cands:
+                rng = rng or random
+                cands = [x for x in cands if x != self.value] or cands
+                self.value = rng.choice(cands)
+                return
+        else:
             return
         # if snap is not None and hasattr(snap, "snapshot"):
         #     typ = self.resource_type

@@ -693,7 +693,11 @@ class AllocMW(VerbCall):
 
     def __init__(self, pd: str = None, mw: str = None, mw_type: str = None):
         self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.mw = ResourceValue(resource_type="mw", value=mw) if mw else ResourceValue(resource_type="mw", value="mw")
+        self.mw = (
+            ResourceValue(resource_type="mw", value=mw, mutable=False)
+            if mw
+            else ResourceValue(resource_type="mw", value="mw", mutable=False)
+        )
         self.mw_type = (
             EnumValue(mw_type, enum_type="IBV_MW_TYPE_ENUM")
             if mw_type
@@ -1043,9 +1047,19 @@ class AttachMcast(VerbCall):
 
 class BindMW(VerbCall):
     MUTABLE_FIELDS = ["qp", "mw", "mw_bind_var", "mw_bind_obj"]
+    # CONTRACT = Contract(  # TODO: 改为动态（其实有办法筛选）
+    #     requires=[RequireSpec("qp", None, "qp"), RequireSpec("mr", None, "mw_bind_obj.bind_info.mr")],
+    #     produces=[ProduceSpec("mw", State.ALLOCATED, "mw")],
+    #     transitions=[],
+    # )
+
     CONTRACT = Contract(  # TODO: 改为动态（其实有办法筛选）
-        requires=[RequireSpec("qp", None, "qp"), RequireSpec("mr", None, "mw_bind_obj.bind_info.mr")],
-        produces=[ProduceSpec("mw", State.ALLOCATED, "mw")],
+        requires=[
+            RequireSpec("qp", None, "qp"),
+            RequireSpec("mr", None, "mw_bind_obj.bind_info.mr"),
+            RequireSpec("mw", State.ALLOCATED, "mw"),
+        ],
+        produces=[],
         transitions=[],
     )
 

@@ -2,6 +2,7 @@ import copy
 import json
 import os
 import random
+import traceback
 from typing import Dict, List
 
 from jinja2 import Environment, FileSystemLoader
@@ -173,7 +174,7 @@ if __name__ == "__main__":
                 num_sge=1,
                 opcode="IBV_WR_SEND",
                 send_flags="IBV_SEND_SIGNALED",
-                sg_list=[IbvSge(addr="mr0", length="MSG_SIZE", lkey="mr0")],
+                sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
             ),
         ),
         PostRecv(
@@ -181,7 +182,7 @@ if __name__ == "__main__":
             wr_obj=IbvRecvWR(
                 wr_id=1,
                 num_sge=1,
-                sg_list=[IbvSge(addr="mr0", length="MSG_SIZE", lkey="mr0")],
+                sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
             ),
         ),
         PostSRQRecv(
@@ -189,7 +190,7 @@ if __name__ == "__main__":
             wr_obj=IbvRecvWR(
                 wr_id=1,
                 num_sge=1,
-                sg_list=[IbvSge(addr="mr0", length="MSG_SIZE", lkey="mr0")],
+                sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
             ),
         ),
         PollCQ(cq="cq0"),
@@ -206,21 +207,37 @@ if __name__ == "__main__":
 
     #     print(mutable)
     # rng = random.Random(42)
-    rng = random
-    for i in range(1000):
+    seed = random.randint(0, 10000)
+    seed = 4070
+    rng = random.Random(seed)
+    print("current seed:", seed)
+    # print(len(verbs))
+    # exit()
+    for _round in range(1000):
+        print(f"=== TEST ROUND {_round} ===")
         mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
         # # mutated_verbs = mutator.mutate(verbs, max_mutations=5)
         i = rng.randrange(1, len(verbs))
         # i = len(verbs) - 1
 
-        print(colored("=== VERBS SUMMARY (before) ===", "green"))
-        print(
-            summarize_verb_list(verbs=verbs, deep=True, highlight=i)
-        )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
+        # print(colored("=== VERBS SUMMARY (before) ===", "green"))
+        # # print(
+        # #     summarize_verb_list(verbs=verbs, deep=True, highlight=i)
+        # # )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
+        # print(summarize_verb_list(verbs=verbs, deep=True))  # 如果想看 before 的一行摘要：传入反序列化前的原 list
 
-        mutated_verbs = mutator.mutate_param(verbs, idx=i)
+        # mutated_verbs = mutator.mutate_param(verbs, idx=i)
+        try:
+            mutated_verbs = mutator.mutate(verbs)
+        except Exception as e:
+            print(traceback.format_exc())
+            print("round:", _round)
+            print("seed:", seed)
+            exit(0)
 
+        # print(colored("=== VERBS SUMMARY (after) ===", "green"))
+        # print(
+        #     summarize_verb_list(verbs=verbs, deep=True, highlight=i, color="green")
+        # )  # 如果想看 before 的一行摘要：传入反序列化前的
         print(colored("=== VERBS SUMMARY (after) ===", "green"))
-        print(
-            summarize_verb_list(verbs=verbs, deep=True, highlight=i, color="green")
-        )  # 如果想看 before 的一行摘要：传入反序列化前的
+        print(summarize_verb_list(verbs=verbs, deep=True))  # 如果想看 before 的一行摘要：传入反序列化前的

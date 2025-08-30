@@ -268,6 +268,13 @@ class ContractTable:
             raise ContractError(f"destroy target not found: {rtype} {name}")
         rec.state = State.DESTROYED
 
+    def check(self, rtype: str, name: str) -> bool:
+        key = ResourceKey(rtype, str(name))
+        rec = self._store.get(key)
+        if rec and rec.state is not State.DESTROYED:
+            return False
+        return True
+
     # ===== 契约执行 =====
     # def apply_contract(self, verb: Any, contract: Contract):
     #     # 1) 检查 require
