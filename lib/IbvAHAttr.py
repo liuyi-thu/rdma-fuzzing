@@ -176,7 +176,7 @@ class IbvGlobalRoute(Attr):
         # self.dgid = OptionalValue(dgid, factory=lambda: IbvGID())  # IbvGID instance, can be mutated
         self.dgid = OptionalValue(
             DeferredValue.from_id("remote.QP", dgid, "gid", "const char *"),
-            factory=DeferredValue.from_id("remote.QP", None, "gid", "const char *"),
+            factory=lambda: DeferredValue.from_id("remote.QP", None, "gid", "const char *"),
         )  # TODO: may cause bugs; and gid cannot be assigned directly, to be fixed.
         self.flow_label = OptionalValue(
             IntValue(flow_label) if flow_label is not None else None, factory=lambda: IntValue()
@@ -234,7 +234,7 @@ class IbvAHAttr(Attr):
         # )  # dlid is usually an integer
         self.dlid = OptionalValue(
             DeferredValue.from_id("remote.QP", dlid, "lid", "uint32_t"),
-            factory=DeferredValue.from_id("remote.QP", None, "lid", "uint32_t"),
+            factory=lambda: DeferredValue.from_id("remote.QP", None, "lid", "uint32_t"),
         )  # dlid is usually an integer # TODO: may cause bugs
         self.sl = OptionalValue(
             IntValue(sl) if sl is not None else None, factory=lambda: IntValue()
@@ -253,7 +253,7 @@ class IbvAHAttr(Attr):
         # )  # Port Number, default is 1
         self.port_num = OptionalValue(
             DeferredValue.from_id("remote.QP", dlid, "port_num", "uint32_t"),
-            factory=DeferredValue.from_id("remote.QP", None, "port_num", "uint32_t"),
+            factory=lambda: DeferredValue.from_id("remote.QP", None, "port_num", "uint32_t"),
         )
         self.remote_qp = None
 

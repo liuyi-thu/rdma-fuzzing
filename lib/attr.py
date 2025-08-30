@@ -91,7 +91,7 @@ class Attr:
         """Set a resource for this verb call, used for replacing resources."""
         self.set_resource(res_type, old_res_name, new_res_name)
 
-    def mutate(self):
+    def mutate(self, snap, contract, rng):
         """Mutate the attributes of this object."""
         # 默认实现：不做任何变更
         for field in self.MUTABLE_FIELDS:
@@ -99,7 +99,7 @@ class Attr:
                 value = getattr(self, field)
                 if hasattr(value, "mutate"):
                     debug_print(f"Mutating field '{field}' with value: {value}")
-                    value.mutate()
+                    value.mutate(snap, contract, rng)
         pass
 
     def is_none(self):

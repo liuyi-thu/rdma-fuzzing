@@ -1559,10 +1559,11 @@ class ContractAwareMutator:
         if not paths:
             return False
         path, leaf = rng.choice(paths)
-        print(paths)
-        print(leaf)
+        print(summarize_verb(v, deep=True))
+        print(path, leaf)
         leaf.mutate(snap=snap, contract=contract, rng=rng)
         print(leaf)
+        print()
 
         # # 3) 变异 leaf
         # if leaf is None:

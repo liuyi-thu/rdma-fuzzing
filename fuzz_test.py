@@ -91,16 +91,25 @@ if __name__ == "__main__":
         QueryPortAttr(),
         QueryGID(),
         AllocPD(pd="pd0"),
+        AllocPD(pd="pd1"),
         AllocDM(dm="dm0", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
         AllocDM(dm="dm1", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
         CreateSRQ(pd="pd0", srq="srq0", srq_init_obj=IbvSrqInitAttr(attr=IbvSrqAttr())),  # --- IGNORE ---
         CreateCQ(cq="cq0"),
+        CreateCQ(cq="cq1"),
         ModifyCQ(cq="cq0", attr_obj=IbvModifyCQAttr()),
         RegMR(
             pd="pd0",
             addr="bufs[0]",
             length=1024,
             mr="mr0",
+            access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+        ),
+        RegMR(
+            pd="pd1",
+            addr="bufs[0]",
+            length=1024,
+            mr="mr1",
             access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
         ),
         CreateQP(
@@ -196,20 +205,22 @@ if __name__ == "__main__":
     #     mutable = fuzz_mutate._enumerate_mutable_paths(v)
 
     #     print(mutable)
-    rng = random.Random(42)
-    mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
-    # # mutated_verbs = mutator.mutate(verbs, max_mutations=5)
-    # i = rng.randrange(len(verbs))
-    i = len(verbs) - 1
+    # rng = random.Random(42)
+    rng = random
+    for i in range(1000):
+        mutator = fuzz_mutate.ContractAwareMutator(rng=rng)
+        # # mutated_verbs = mutator.mutate(verbs, max_mutations=5)
+        i = rng.randrange(1, len(verbs))
+        # i = len(verbs) - 1
 
-    # print(colored("=== VERBS SUMMARY (before) ===", "green"))
-    # print(
-    #     summarize_verb_list(verbs=verbs, deep=True, highlight=i)
-    # )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
+        print(colored("=== VERBS SUMMARY (before) ===", "green"))
+        print(
+            summarize_verb_list(verbs=verbs, deep=True, highlight=i)
+        )  # 如果想看 before 的一行摘要：传入反序列化前的原 list
 
-    mutated_verbs = mutator.mutate_param(verbs, idx=i)
+        mutated_verbs = mutator.mutate_param(verbs, idx=i)
 
-    # print(colored("=== VERBS SUMMARY (after) ===", "green"))
-    # print(
-    #     summarize_verb_list(verbs=verbs, deep=True, highlight=i, color="green")
-    # )  # 如果想看 before 的一行摘要：传入反序列化前的
+        print(colored("=== VERBS SUMMARY (after) ===", "green"))
+        print(
+            summarize_verb_list(verbs=verbs, deep=True, highlight=i, color="green")
+        )  # 如果想看 before 的一行摘要：传入反序列化前的

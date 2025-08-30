@@ -121,7 +121,9 @@ class IbvQPAttr(Attr):
         self.qp_state = OptionalValue(
             EnumValue(qp_state, enum_type="IBV_QP_STATE_ENUM", mutable=False) if qp_state is not None else None,
             factory=lambda: EnumValue(0, enum_type="IBV_QP_STATE_ENUM", mutable=False),
+            mutable=False,
         )  # 默认值为IBV_QPS_RESET
+        # TODO: make qp_state non-mutable，不知道这么做科学吗？
         self.cur_qp_state = OptionalValue(
             EnumValue(cur_qp_state, enum_type="IBV_QP_STATE_ENUM") if cur_qp_state is not None else None,
             factory=lambda: EnumValue(0, enum_type="IBV_QP_STATE_ENUM"),

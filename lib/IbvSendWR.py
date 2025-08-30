@@ -170,7 +170,7 @@ class IbvBindMwInfo(Attr):
         return cls(
             mw=None,  # 或者 f"mw_{random.randint(0,100)}"
             rkey=random.randint(0, 0xFFFFFFFF),
-            bind_info=None,
+            bind_info=IbvMwBindInfo.random_mutation(),
         )
 
     def to_cxx(self, varname, ctx=None):

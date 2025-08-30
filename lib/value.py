@@ -8,7 +8,7 @@ except ImportError:
 
 
 # ===== 在文件开头加一个全局开关和工具函数 =====
-DEBUG = False  # 改成 True 就能打开所有调试信息
+DEBUG = True  # 改成 True 就能打开所有调试信息
 
 
 def debug_print(*args, **kwargs):
@@ -52,7 +52,7 @@ class Value(ABC):
     def __hash__(self):
         return hash(self.value)
 
-    @abstractmethod
+    # @abstractmethod
     def mutate(self, snap=None, contract=None, rng: random.Random = None):
         raise NotImplementedError("Mutate method not implemented for Value class")
 
@@ -514,6 +514,26 @@ class ResourceValue(Value):
     #             return
     #     if tracker:
     #         self.value = tracker.random_choose(self.resource_type, exclude=self.value)
+    def fill(self, snap=None, contract=None, rng: random.Random = None):
+        if self.value is not None:
+            return False
+        required_type = self.resource_type
+        required_state = None
+        for item in contract.requires or []:
+            if item.rtype == required_type:
+                required_state = item.state
+                break
+        # print(required_state, required_type)
+        cands = []
+        for (t, name), st in (snap or {}).items():
+            if t == required_type and (required_state is None or st == required_state):
+                cands.append(name)
+        if cands:
+            rng = rng or random
+            cands = [x for x in cands if x != self.value] or cands
+            self.value = rng.choice(cands)
+            return True
+        return False
 
     def mutate(self, snap=None, contract=None, rng: random.Random = None):
         # TODO: 这里的实现其实是错误的，但是先这样凑合着用
@@ -529,13 +549,12 @@ class ResourceValue(Value):
         # print(required_state, required_type)
         cands = []
         for (t, name), st in (snap or {}).items():
-            print(t, name, st)
             if t == required_type and (required_state is None or st == required_state):
                 cands.append(name)
-        print(cands)
         if cands:
             rng = rng or random
-            self.value = rng.choice([x for x in cands if x != self.value] or cands)
+            cands = [x for x in cands if x != self.value] or cands
+            self.value = rng.choice(cands)
             return
         # if snap is not None and hasattr(snap, "snapshot"):
         #     typ = self.resource_type
@@ -599,7 +618,7 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
             if self.value:
                 item_to_mutate = rng.choice(self.value)
                 if hasattr(item_to_mutate, "mutate"):
-                    item_to_mutate.mutate()
+                    item_to_mutate.mutate(snap, contract, rng)
                     debug_print(f"Mutated item: {item_to_mutate}")
                 else:
                     debug_print(f"Item {item_to_mutate} cannot be mutated.")
@@ -652,6 +671,14 @@ class OptionalValue(Value):
             if self.factory:
                 self.value = self.factory()  # TODO: factory should return a Value type（重新生成一份新的？）
                 # self.value.mutate()  # 如果有 factory，生成一个新的 Values
+                # fill with some initial value, especially resource values
+                if isinstance(self.value, ResourceValue):
+                    filled = self.value.fill(snap, contract, rng)
+                    if not filled:
+                        debug_print("OptionalValue: could not fill ResourceValue, setting to None")
+                        self.value = None
+                        return
+                # self.value.mutate(snap, contract, rng)  # 如果有 factory，生成一个新的 Values
                 debug_print(f"OptionalValue: created new value {self.value}")
         else:
             if r < 0.33:
@@ -660,13 +687,19 @@ class OptionalValue(Value):
             elif r < 0.66:
                 # 对内部 value 做变异
                 if hasattr(self.value, "mutate"):
-                    self.value.mutate()
+                    self.value.mutate(snap, contract, rng)
                     debug_print("OptionalValue: mutated internal value")
             else:
                 # 重新生成一个新的 value
                 if self.factory:
                     self.value = self.factory()
-                    self.value.mutate()  # 如果有 factory，生成一个新的 Values
+                    if isinstance(self.value, ResourceValue):
+                        filled = self.value.fill(snap, contract, rng)
+                        if not filled:
+                            debug_print("OptionalValue: could not fill ResourceValue, setting to None")
+                            self.value = None
+                            return
+                    # self.value.mutate(snap, contract, rng)  # 如果有 factory，生成一个新的 Values
                     debug_print(f"OptionalValue: replaced with new value {self.value}")
 
     # def __str__(self):
@@ -739,7 +772,7 @@ class OptionalValue(Value):
 import re
 
 
-class DeferredValue:
+class DeferredValue(Value):
     __slots__ = ("key", "c_type", "source", "default", "by_id")
 
     def __init__(self, key: str, c_type: str = "uint32_t", source: str = "runtime", default=None, by_id=None):
@@ -748,6 +781,10 @@ class DeferredValue:
     @classmethod
     def from_id(cls, kind: str, id_str: str, field: str, c_type: str = "uint32_t"):
         return cls(key=f"{kind}|{id_str}|{field}", c_type=c_type, source="runtime_by_id", by_id=(kind, id_str, field))
+
+    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+        # DeferredValue 不变异
+        return
 
     def to_cxx(self, varname: str, ctx=None, assign=False) -> str:
         if ctx:
@@ -778,6 +815,9 @@ class DeferredValue:
 
     def __str__(self):
         return self.to_cxx(varname=None, assign=False)
+
+    def is_none(self) -> bool:
+        return False
 
 
 # class DeferredValue:
