@@ -5,7 +5,7 @@ import random
 import re
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 import logging
 
 from termcolor import colored
@@ -1446,6 +1446,141 @@ def _enumerate_mutable_paths(obj, prefix=""):
     return out
 
 
+def _as_str_name(x: Any) -> str:
+    if x is None:
+        return ""
+    if hasattr(x, "value"):
+        try:
+            return str(x.value)
+        except Exception:
+            return str(x)
+    return str(x)
+
+
+# --- 递归遍历对象树，收集所有 ResourceValue 出现，返回 {(rtype,name), ...} ---
+def _collect_resource_refs(obj: Any) -> Set[Tuple[str, str]]:  # this is a contract-free implementation
+    from lib.value import OptionalValue, ListValue, ResourceValue  # 按你的路径调整
+
+    seen: Set[int] = set()
+    out: Set[Tuple[str, str]] = set()
+
+    def walk(o: Any):
+        if o is None:
+            return
+        oid = id(o)
+        if oid in seen:
+            return
+        seen.add(oid)
+
+        # 资源引用
+        if isinstance(o, ResourceValue):
+            rtype = getattr(o, "resource_type", None)
+            name = _as_str_name(getattr(o, "value", None))
+            if rtype and name:
+                out.add((str(rtype), str(name)))
+            return
+
+        # OptionalValue: 进入其 .value
+        if isinstance(o, OptionalValue):
+            walk(getattr(o, "value", None))
+            return
+
+        # ListValue: 进入每个元素
+        if isinstance(o, ListValue):
+            lst = getattr(o, "value", None)
+            if isinstance(lst, list):
+                for it in lst:
+                    walk(it)
+            return
+
+        # 常规对象：遍历公开字段
+        if hasattr(o, "__dict__"):
+            for k, v in o.__dict__.items():
+                if k.startswith("_"):
+                    continue
+                walk(v)
+        elif isinstance(o, (list, tuple)):
+            for it in o:
+                walk(it)
+        # 其他原子类型忽略
+
+    walk(obj)
+    return out
+
+
+# --- 收集 verb 的 requires（优先走 get_required_resources_recursively，其次静态扫描） ---
+def _requires_of(verb: Any) -> Set[Tuple[str, str]]:
+    # 动态：如果 verb 已实现递归接口，优先使用
+    # if hasattr(verb, "get_required_resources_recursively"):
+    #     try:
+    #         items = verb.get_required_resources_recursively()
+    #         reqs: Set[Tuple[str, str]] = set()
+    #         for it in items or []:
+    #             rtype = it.get("type") if isinstance(it, dict) else None
+    #             name = it.get("name") if isinstance(it, dict) else None
+    #             if rtype and name:
+    #                 reqs.add((str(rtype), str(name)))
+    #         if reqs:
+    #             return reqs
+    #     except Exception:
+    #         pass
+    # 兜底：静态递归扫描 ResourceValue（常可覆盖嵌套 attr_obj）
+    # reqs: Set[Tuple[str, str]] = set()
+    # # 1) CONTRACT.produces
+    # contract = verb.get_contract()
+    # if contract and hasattr(contract, "requires"):
+    #     for spec in getattr(contract, "requires") or []:
+    #         # spec 有 rtype / name_attr / state
+    #         rtype = getattr(spec, "rtype", None)
+    #         name_attr = getattr(spec, "name_attr", None)
+    #         if rtype and name_attr:
+    #             val = _get_dotted(verb, name_attr)
+    #             name = _as_str_name(val)
+    #             if name:
+    #                 reqs.add((str(rtype), str(name)))
+    # return reqs
+    return _collect_resource_refs(verb)
+
+
+# --- 收集 verb 的 produces（优先 CONTRACT，然后 allocated_resources，然后静态推断） ---
+def _produces_of(verb: VerbCall) -> Set[Tuple[str, str]]:
+    prods: Set[Tuple[str, str]] = set()
+    # 1) CONTRACT.produces
+    contract = verb.get_contract()
+    if contract and hasattr(contract, "produces"):
+        for spec in getattr(contract, "produces") or []:
+            # spec 有 rtype / name_attr / state
+            rtype = getattr(spec, "rtype", None)
+            name_attr = getattr(spec, "name_attr", None)
+            if rtype and name_attr:
+                val = _get_dotted(verb, name_attr)
+                name = _as_str_name(val)
+                if name:
+                    prods.add((str(rtype), str(name)))
+    # # 2) 动态：allocated_resources（若之前调用过 apply 会存在）
+    # if hasattr(verb, "allocated_resources"):
+    #     try:
+    #         for tup in verb.allocated_resources or []:
+    #             if isinstance(tup, (list, tuple)) and len(tup) >= 2:
+    #                 prods.add((str(tup[0]), str(tup[1])))
+    #     except Exception:
+    #         pass
+    # # 3) 兜底：常见创建类动词的字段名启发（可按需扩展）
+    # if not prods:
+    #     # 试探：若动词含有 ResourceValue 且命名与其类型一致，可能是产出
+    #     # 例如 CreateQP.qp / RegMR.mr / CreateCQ.cq / AllocPD.pd / AllocMW.mw ...
+    #     from lib.value import ResourceValue
+
+    #     for k, v in getattr(verb, "__dict__", {}).items():
+    #         if isinstance(v, ResourceValue):
+    #             rtype = getattr(v, "resource_type", None)
+    #             name = _as_str_name(getattr(v, "value", None))
+    #             # 仅当字段名看起来是“主产出”时加入（可按项目习惯调整）
+    #             if rtype and name and k in (rtype, "qp", "mr", "cq", "pd", "mw", "srq", "wq", "dm"):
+    #                 prods.add((str(rtype), str(name)))
+    return prods
+
+
 # ========================= Mutator =========================
 
 
@@ -1455,27 +1590,50 @@ class ContractAwareMutator:
         self.cfg = cfg or MutatorConfig()
 
     def mutate(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
-        if choice:
-            if choice == "insert":
-                return self.mutate_insert(verbs, idx)
-            elif choice == "delete":
-                return self.mutate_delete(verbs, idx)
-            elif choice == "param":
-                return self.mutate_param(verbs, idx)
-            else:
-                raise ValueError(f"Unknown mutation choice: {choice}")
+        rng = self.rng
+        choices = ["insert", "delete", "param"]
+        if not choice:
+            # randomly pick one
+            choice = rng.choices(choices, weights=[0.4, 0.2, 0.4], k=1)[0]
+        if choice == "insert":
+            return self.mutate_insert(verbs, idx)
+        elif choice == "delete":
+            return self.mutate_delete(verbs, idx)
+        elif choice == "param":
+            return self.mutate_param(verbs, idx)
         else:
-            r = self.rng.random()
-            if r < 0.33:
-                logging.debug("Mutate: insert")
-                return self.mutate_insert(verbs, idx)
-            elif r < 0.66:
-                logging.debug("Mutate: delete")
-                return self.mutate_delete(verbs, idx)
-            else:
-                logging.debug("Mutate: param")
-                # return self.mutate_delete(verbs, idx)
-                return self.mutate_param(verbs, idx)
+            raise ValueError(f"Unknown mutation choice: {choice}")
+
+    def find_dependent_verbs(self, verbs: List[Any], target: Tuple[str, str]) -> List[int]:
+        """
+        找出所有依赖于 target 资源的 verb 索引（直接或间接依赖）。
+        target: (rtype, name)
+        规则：顺序扫描，若某 verb 的 requires 命中当前已知依赖资源集合 S，则该 verb 被标记为依赖；
+            同时将该 verb 产生的资源（produces）加入 S，形成传递闭包。
+        """
+        if not verbs or not target or not target[0] or not target[1]:
+            return []
+
+        # 预计算每个 verb 的 requires / produces
+        reqs_list: List[Set[Tuple[str, str]]] = []
+        prods_list: List[Set[Tuple[str, str]]] = []
+        for v in verbs:
+            reqs_list.append(_requires_of(v))
+            prods_list.append(_produces_of(v))
+
+        # 传递式前向传播
+        S: Set[Tuple[str, str]] = {(str(target[0]), str(target[1]))}
+        deps: List[int] = []
+
+        for i, (reqs, prods) in enumerate(zip(reqs_list, prods_list)):
+            # 命中依赖集合即认为该 verb 依赖于 target
+            if any((rt, rn) in S for (rt, rn) in reqs):
+                deps.append(i)
+                # 该 verb 新产出的资源也成为“依赖传递体”
+                for p in prods:
+                    S.add((str(p[0]), str(p[1])))
+
+        return deps
 
     def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
         if not verbs:
@@ -1487,8 +1645,6 @@ class ContractAwareMutator:
             return False
         del verbs[idx]
         lost = set(verb_edges_recursive(victim)[1])  # produces
-        # logging.debug("lost from delete:", lost)
-        # print("lost from delete:", lost)
         impact = compute_forward_impact(verbs, idx, lost)
         for k in sorted(impact, reverse=True):
             verbs.pop(k)

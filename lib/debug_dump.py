@@ -332,7 +332,7 @@ def _fmt_scalar(x: Any) -> str:
 #     return "\n".join(lines)
 
 
-def summarize_verb(v: Any, max_fields: int = 6, *, deep: bool = False) -> str:
+def summarize_verb(v: Any, max_fields: int = 6, *, deep: bool = False, max_items: int = 4) -> str:
     if not v:
         return "∅"
     name = v.__class__.__name__
@@ -340,7 +340,7 @@ def summarize_verb(v: Any, max_fields: int = 6, *, deep: bool = False) -> str:
 
     def show_pair(k, val):
         if deep:
-            parts.append(f"{k}={_summarize_value_short(val)}")
+            parts.append(f"{k}={_summarize_value_short(val, max_items=max_items)}")
             return
         # ------- 浅层旧逻辑（保留） -------
         # ResourceValue
