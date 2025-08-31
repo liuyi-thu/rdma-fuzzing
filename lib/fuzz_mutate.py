@@ -1581,6 +1581,85 @@ def _produces_of(verb: VerbCall) -> Set[Tuple[str, str]]:
     return prods
 
 
+# ---------- 从 CONTRACT 提取 requires / transitions / produces ----------
+def _contract_specs(
+    verb: VerbCall,
+) -> Tuple[Set[Tuple[str, str, Any]], List[Tuple[str, str, Any, Any]], Set[Tuple[str, str, Any]]]:
+    """
+    返回：
+      - reqs: Set[(rtype, name, state_or_None)]
+      - transitions: List[(rtype, name, from_state_or_None, to_state)]
+      - prods: Set[(rtype, name, state)]
+    """
+    reqs: Set[Tuple[str, str, Any]] = set()
+    prods: Set[Tuple[str, str, Any]] = set()
+    transitions: List[Tuple[str, str, Any, Any]] = []
+
+    # contract = getattr(verb, "CONTRACT", None)
+    contract = verb.get_contract()
+    if not contract:
+        return reqs, transitions, prods
+
+    # requires
+    for spec in getattr(contract, "requires", []) or []:
+        rtype = getattr(spec, "rtype", None)
+        state = getattr(spec, "state", None)
+        name_attr = getattr(spec, "name_attr", None)
+        if rtype and name_attr:
+            name_val = _get_dotted(verb, name_attr)
+            name = _as_str_name(name_val)
+            if name:
+                reqs.add((str(rtype), name, state))
+
+    # transitions
+    for spec in getattr(contract, "transitions", []) or []:
+        rtype = getattr(spec, "rtype", None)
+        name_attr = getattr(spec, "name_attr", None)
+        from_state = getattr(spec, "from_state", None)
+        to_state = getattr(spec, "to_state", None)
+        if rtype and name_attr and to_state is not None:
+            name_val = _get_dotted(verb, name_attr)
+            name = _as_str_name(name_val)
+            if name:
+                transitions.append((str(rtype), name, from_state, to_state))
+
+    # produces
+    for spec in getattr(contract, "produces", []) or []:
+        rtype = getattr(spec, "rtype", None)
+        name_attr = getattr(spec, "name_attr", None)
+        state = getattr(spec, "state", None)
+        if rtype and name_attr:
+            name_val = _get_dotted(verb, name_attr)
+            name = _as_str_name(name_val)
+            if name:
+                prods.add((str(rtype), name, state))
+    return reqs, transitions, prods
+
+
+# ---------- 匹配规则 ----------
+def _state_match(need, have) -> bool:
+    """need 是 requires 需要的状态（可为 None），have 是 D 里的状态（可为 None）。"""
+    if need is None:
+        return True  # 需要任意状态
+    return need == have  # 精确匹配
+
+
+def _has_in_D(D: Set[Tuple[str, str, Any]], rtype: str, name: str, need_state) -> bool:
+    # (rtype, name, ANY)
+    if (rtype, name, None) in D:
+        return True
+    # (rtype, name, exact)
+    return (rtype, name, need_state) in D
+
+
+def _advance_by_transition(D: Set[Tuple[str, str, Any]], rtype: str, name: str, frm, to) -> None:
+    """
+    D 中若已有 (rtype,name, frm) 或 (rtype,name, None)，则加入 (rtype,name, to)。
+    """
+    if (rtype, name, None) in D or (frm is not None and (rtype, name, frm) in D):
+        D.add((rtype, name, to))
+
+
 # ========================= Mutator =========================
 
 
@@ -1634,6 +1713,61 @@ class ContractAwareMutator:
                     S.add((str(p[0]), str(p[1])))
 
         return deps
+
+        # ---------- 主函数：状态感知依赖分析 ----------
+
+    def find_dependent_verbs_stateful(self, verbs: List[Any], target: Tuple[str, str, Any]) -> List[int]:
+        """
+        找出所有依赖于 target=(rtype, name, state) 的 verb 索引（考虑状态机）。
+        规则：顺序扫描，维护 D={(rtype,name,state)}；命中 require → 标记依赖并把 produces/transition 推进到 D 里。
+        - target.state 可为 None（表示“该资源在任意状态下被当作依赖根”）
+        """
+        if not verbs or not target or not target[0] or not target[1]:
+            return []
+        rtype0, name0, state0 = target[0], target[1], target[2] if len(target) > 2 else None
+
+        # 预解析每个 verb 的 contract 三类信息
+        v_reqs: List[Set[Tuple[str, str, Any]]] = []
+        v_trans: List[List[Tuple[str, str, Any, Any]]] = []
+        v_prods: List[Set[Tuple[str, str, Any]]] = []
+        for v in verbs:
+            reqs, trans, prods = _contract_specs(v)
+            v_reqs.append(reqs)
+            v_trans.append(trans)
+            v_prods.append(prods)
+            print(summarize_verb(v, deep=True))
+            print("  reqs:", reqs)
+            print("  trans:", trans)
+            print("  prods:", prods)
+
+        # 依赖集合 D：保存 (rtype, name, state_or_None)
+        D: Set[Tuple[str, str, Any]] = {(str(rtype0), str(name0), state0)}
+
+        dependents: List[int] = []
+
+        for i, (reqs, trans, prods) in enumerate(zip(v_reqs, v_trans, v_prods)):
+            # 1) 是否命中 require？
+            hit = False
+            for rt, nm, need_state in reqs:
+                if _has_in_D(D, rt, nm, need_state):
+                    hit = True
+                    break
+
+            if hit:
+                dependents.append(i)
+                # 2) 命中后：把 produces 的 (rtype,name,state) 加入 D
+                for rt, nm, st in prods:
+                    D.add((rt, nm, st))
+                # 3) 命中后：根据 transition 推进状态
+                for rt, nm, frm, to in trans:
+                    _advance_by_transition(D, rt, nm, frm, to)
+            else:
+                # 即便没命中，也允许 transition 推动 D（比如把根状态推进，以便后续动词命中）
+                for rt, nm, frm, to in trans:
+                    _advance_by_transition(D, rt, nm, frm, to)
+                # produces 不加入（因为没命中，不构成依赖传播体）
+
+        return dependents
 
     def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
         if not verbs:

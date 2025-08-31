@@ -3762,7 +3762,7 @@ class ModifyQP(VerbCall):
             )
         return Contract(
             # requires=[RequireSpec("qp", _PREV_STATE[target], "qp")],
-            requires=[RequireSpec("qp", None, "qp")],
+            requires=[RequireSpec("qp", _PREV_STATE[target], "qp")],
             produces=[],
             # from_state=None = 放宽来源，避免你这种二次调用还要求 RESET 的情况
             transitions=[TransitionSpec("qp", from_state=_PREV_STATE[target], to_state=target, name_attr="qp")],

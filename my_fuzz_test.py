@@ -16,6 +16,7 @@ from termcolor import colored
 from lib import fuzz_mutate
 from lib.codegen_context import CodeGenContext
 from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
+from lib.contracts import ContractError, ContractTable, State
 from lib.ibv_all import (
     IbvAHAttr,
     IbvAllocDmAttr,
@@ -184,8 +185,14 @@ if __name__ == "__main__":
     # for v in verbs:
     #     print(summarize_verb(v))
     mutator = fuzz_mutate.ContractAwareMutator(verbs)
-    target = ("cq", "cq0")
+    target = ("qp", "qp0")
     dependent_verbs = mutator.find_dependent_verbs(verbs, target)
     print(f"Dependent verbs for {target}:")
+    for i in dependent_verbs:
+        print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
+
+    target_stateful = ("qp", "qp0", State.INIT)
+    dependent_verbs = mutator.find_dependent_verbs_stateful(verbs, target_stateful)
+    print(f"Dependent verbs for {target_stateful}:")
     for i in dependent_verbs:
         print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
