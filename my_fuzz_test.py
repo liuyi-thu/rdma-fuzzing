@@ -1,22 +1,23 @@
+import argparse
 import copy
 import json
-import os
-import random
-import traceback
-import argparse
 import logging
-import sys
+import os
 import pickle
-import dill
-
+import random
+import sys
+import traceback
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List
+
+import dill
 from jinja2 import Environment, FileSystemLoader
 from termcolor import colored
+
 from lib import fuzz_mutate
 from lib.codegen_context import CodeGenContext
-from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
 from lib.contracts import ContractError, ContractTable, State
+from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
 from lib.ibv_all import (
     IbvAHAttr,
     IbvAllocDmAttr,
@@ -172,6 +173,7 @@ INITIAL_VERBS = [
     ),
     PollCQ(cq="cq0"),
     DestroyQP(qp="qp0"),
+    # DestroyQP(qp="qp0"),  # --- IGNORE ---
     DestroyCQ(cq="cq0"),
     DestroySRQ(srq="srq0"),
     DeregMR(mr="mr0"),
@@ -184,15 +186,27 @@ if __name__ == "__main__":
     verbs = copy.deepcopy(INITIAL_VERBS)
     # for v in verbs:
     #     print(summarize_verb(v))
-    mutator = fuzz_mutate.ContractAwareMutator(verbs)
-    target = ("qp", "qp0")
-    dependent_verbs = mutator.find_dependent_verbs(verbs, target)
-    print(f"Dependent verbs for {target}:")
-    for i in dependent_verbs:
-        print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
+    ctx = CodeGenContext()
+    for v in verbs:
+        v.apply(ctx)
+        # print(ctx.contracts)
+    mutator = fuzz_mutate.ContractAwareMutator()
+    # target = ("qp", "qp0")
+    # dependent_verbs = mutator.find_dependent_verbs(verbs, target)
+    # print(f"Dependent verbs for {target}:")
+    # for i in dependent_verbs:
+    #     print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
 
-    target_stateful = ("qp", "qp0", State.INIT)
+    target_stateful = ("qp", "qp0", State.ALLOCATED)
     dependent_verbs = mutator.find_dependent_verbs_stateful(verbs, target_stateful)
     print(f"Dependent verbs for {target_stateful}:")
     for i in dependent_verbs:
         print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
+
+    for i in range(len(verbs)):
+        print(f"[{i}]", summarize_verb(verbs[i], deep=True, max_items=100))
+        # print()
+    for i in range(len(verbs)):
+        mutator.mutate_move(verbs, i, None)
+
+    # print(mutator.enumerate_mutable_paths(verbs[16]))

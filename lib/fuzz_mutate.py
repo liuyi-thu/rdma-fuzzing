@@ -1,18 +1,19 @@
 # lib/fuzz_mutate.py (refactored)
 from __future__ import annotations
 
+import logging
 import random
 import re
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Set
-import logging
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from termcolor import colored
 
 from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
 
-from .verbs import VerbCall, ModifyQP
+from .value import Value
+from .verbs import ModifyQP, VerbCall
 
 try:
     from .contracts import ContractError, ContractTable, State
@@ -1459,7 +1460,7 @@ def _as_str_name(x: Any) -> str:
 
 # --- 递归遍历对象树，收集所有 ResourceValue 出现，返回 {(rtype,name), ...} ---
 def _collect_resource_refs(obj: Any) -> Set[Tuple[str, str]]:  # this is a contract-free implementation
-    from lib.value import OptionalValue, ListValue, ResourceValue  # 按你的路径调整
+    from lib.value import ListValue, OptionalValue, ResourceValue  # 按你的路径调整
 
     seen: Set[int] = set()
     out: Set[Tuple[str, str]] = set()
@@ -1660,6 +1661,166 @@ def _advance_by_transition(D: Set[Tuple[str, str, Any]], rtype: str, name: str, 
         D.add((rtype, name, to))
 
 
+# ---------- 判断 require 是“存在性需求”还是“状态需求” ----------
+def _is_existence_requirement(state) -> bool:
+    """
+    state 为 None 或 “ALLOCATED” 视作存在性需求；
+    其余（INIT/RTR/RTS/...）为状态需求。
+    """
+    if state is None:
+        return True
+    # 你的 State 枚举若是对象，建议统一成字符串判断
+    return state == State.ALLOCATED
+    # s = str(state)
+    # return s.upper() == "ALLOCATED"
+
+
+def _ES_in_of_requires(verb: Any):
+    """把 requires 切分成 E_in(存在) 和 S_in(状态) 两类输入。"""
+    reqs, _, _ = _contract_specs(verb)
+    E_in: Set[Tuple[str, str]] = set()
+    S_in: Set[Tuple[str, str, str]] = set()
+    for rt, nm, st in reqs:
+        if _is_existence_requirement(st):
+            E_in.add((rt, nm))
+        else:
+            S_in.add((rt, nm, str(st)))
+    return E_in, S_in
+
+
+def _ES_out_of_verb(verb: Any):
+    """
+    verb 的输出：
+      - E_out: 产生了哪些存在资源 {(rtype,name)}
+      - S_out: 产生了哪些“已达成状态” {(rtype,name,state)}；来自 produces(state!=None) 或 transitions(to_state)
+    """
+    _, trans, prods = _contract_specs(verb)
+    E_out: Set[Tuple[str, str]] = set()
+    S_out: Set[Tuple[str, str, str]] = set()
+
+    for rt, nm, st in prods:
+        E_out.add((rt, nm))
+        if st is not None:
+            S_out.add((rt, nm, str(st)))
+
+    for rt, nm, frm, to in trans:
+        if to is not None:
+            S_out.add((rt, nm, str(to)))
+    return E_out, S_out
+
+
+def _kills_resource(verb: Any) -> Set[Tuple[str, str]]:
+    """
+    返回该 verb 杀伤（使之后不可再用）的资源集合 {(rtype, name)}。
+    规则：
+      - 若 transitions 里有 to_state == DESTROYED，则该 (rtype,name) 被杀伤；
+      - 也可按需扩展：DeallocPD/DeregMR/DestroyCQ/DestroyQP 若用 produces 显式表示“free”，
+        也将其加入杀伤集（见注释）。
+    """
+    killed: Set[Tuple[str, str]] = set()
+    reqs, transitions, prods = _contract_specs(verb)
+
+    # A) 通过状态机：to_state == DESTROYED
+    for rt, nm, frm, to in transitions:
+        if to == State.DESTROYED:
+            killed.add((rt, nm))
+
+    # B) （可选）如果你在 Dealloc/Dereg/Destroy 类动词里，用 produces 标记了 State.DESTROYED，
+    #    那么这里也把它当做“杀伤”
+    for rt, nm, st in prods:
+        if st is not None and st == State.DESTROYED:
+            killed.add((rt, nm))
+
+    return killed
+
+
+# ==== 单个 verb 的可移动窗口 ====
+
+
+def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
+    """
+    返回 (lo, hi)：把 verbs[idx] 移动到 [lo, hi] 之间都不破坏基于 CONTRACT 的因果关系。
+      - lo：所有输入（E_in / S_in）被满足的“最后一次提供点”之后
+      - hi：第一个“依赖此 verb 的输出（E_out / S_out）”的消费者之前
+    若无法定位提供点/消费者，则取极端（开头或末尾）。
+    """
+    n = len(verbs)
+    if not (0 <= idx < n):
+        return (0, n - 1)
+
+    v = verbs[idx]
+    E_in, S_in = _ES_in_of_requires(v)
+    E_out, S_out = _ES_out_of_verb(v)
+
+    # 1) 计算 lo：所有输入的“最后提供点” + 1
+    lo = 0
+
+    def last_provider_for_E(rt: str, nm: str, before: int) -> Optional[int]:
+        # 找 < before 的最大 j，使得 verbs[j] 的 E_out 包含 (rt,nm)
+        for j in range(before - 1, -1, -1):
+            Ej, _ = _ES_out_of_verb(verbs[j])
+            if (rt, nm) in Ej:
+                return j
+        return None
+
+    def last_provider_for_S(rt: str, nm: str, st: str, before: int) -> Optional[int]:
+        # 找 < before 的最大 j，使得 verbs[j] 的 S_out 包含 (rt,nm,st)
+        for j in range(before - 1, -1, -1):
+            _, Sj = _ES_out_of_verb(verbs[j])
+            if (rt, nm, st) in Sj:
+                return j
+        return None
+
+    for rt, nm in E_in:
+        j = last_provider_for_E(rt, nm, idx)
+        if j is not None:
+            lo = max(lo, j + 1)
+        else:
+            # 没有提供者：不允许越过开头（保持在原地或之后）
+            lo = max(lo, idx)  # 不能提前
+
+    for rt, nm, st in S_in:
+        j = last_provider_for_S(rt, nm, st, idx)
+        if j is not None:
+            lo = max(lo, j + 1)
+        else:
+            lo = max(lo, idx)  # 不能提前
+
+    # 2) 计算 hi：第一个消费者位置 - 1
+    hi = n - 1
+
+    def first_consumer_after(i0: int, Eset: Set[Tuple[str, str]], Sset: Set[Tuple[str, str, str]]) -> Optional[int]:
+        for k in range(i0 + 1, n):
+            Ein_k, Sin_k = _ES_in_of_requires(verbs[k])
+            if (Ein_k & Eset) or (Sin_k & Sset):
+                return k
+        return None
+
+    # 注意：Modify 类通常只有 S_out；Create/Alloc 同时有 E_out 和 S_out
+    if E_out or S_out:
+        k = first_consumer_after(idx, E_out, S_out)
+        if k is not None:
+            hi = min(hi, k - 1)
+
+    # === 新增：根据“杀伤点”进一步限制 hi ===
+    # 思想：一旦后续某个 verb 把我们“依赖的资源”（E_in 或 S_in 中的 rtype,name）杀死，
+    # 那么当前 verb 必须在这个“杀伤点”之前。
+    need_keys: Set[Tuple[str, str]] = set()
+    need_keys |= E_in  # {(rt,nm)}
+    need_keys |= {(rt, nm) for (rt, nm, _) in S_in}
+
+    for j in range(idx + 1, n):
+        killed = _kills_resource(verbs[j])
+        if killed & need_keys:
+            hi = min(hi, j - 1)
+            break
+
+    # 避免 (lo > hi) 的退化：把窗口收缩到原位置
+    if lo > hi:
+        lo = hi = idx
+    return (lo, hi)
+
+
 # ========================= Mutator =========================
 
 
@@ -1670,16 +1831,19 @@ class ContractAwareMutator:
 
     def mutate(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
         rng = self.rng
-        choices = ["insert", "delete", "param"]
+        choices = ["insert", "delete", "param", "move"]
         if not choice:
             # randomly pick one
-            choice = rng.choices(choices, weights=[0.4, 0.2, 0.4], k=1)[0]
+            choice = rng.choices(choices, weights=[0.4, 0.1, 0.4, 0.1], k=1)[0]
+        logging.debug("mutation choice:" + choice)
         if choice == "insert":
             return self.mutate_insert(verbs, idx)
         elif choice == "delete":
             return self.mutate_delete(verbs, idx)
         elif choice == "param":
             return self.mutate_param(verbs, idx)
+        elif choice == "move":
+            return self.mutate_move(verbs, idx)
         else:
             raise ValueError(f"Unknown mutation choice: {choice}")
 
@@ -1716,56 +1880,133 @@ class ContractAwareMutator:
 
         # ---------- 主函数：状态感知依赖分析 ----------
 
+    # def find_dependent_verbs_stateful(self, verbs: List[Any], target: Tuple[str, str, Any]) -> List[int]:
+    #     """
+    #     找出所有依赖于 target=(rtype, name, state) 的 verb 索引（考虑状态机）。
+    #     规则：顺序扫描，维护 D={(rtype,name,state)}；命中 require → 标记依赖并把 produces/transition 推进到 D 里。
+    #     - target.state 可为 None（表示“该资源在任意状态下被当作依赖根”）
+    #     """
+    #     if not verbs or not target or not target[0] or not target[1]:
+    #         return []
+    #     rtype0, name0, state0 = target[0], target[1], target[2] if len(target) > 2 else None
+
+    #     # 预解析每个 verb 的 contract 三类信息
+    #     v_reqs: List[Set[Tuple[str, str, Any]]] = []
+    #     v_trans: List[List[Tuple[str, str, Any, Any]]] = []
+    #     v_prods: List[Set[Tuple[str, str, Any]]] = []
+    #     for v in verbs:
+    #         reqs, trans, prods = _contract_specs(v)
+    #         v_reqs.append(reqs)
+    #         v_trans.append(trans)
+    #         v_prods.append(prods)
+    #         # print(summarize_verb(v, deep=True))
+    #         # print("  reqs:", reqs)
+    #         # print("  trans:", trans)
+    #         # print("  prods:", prods)
+
+    #     # 依赖集合 D：保存 (rtype, name, state_or_None)
+    #     D: Set[Tuple[str, str, Any]] = {(str(rtype0), str(name0), state0)}
+
+    #     dependents: List[int] = []
+
+    #     for i, (reqs, trans, prods) in enumerate(zip(v_reqs, v_trans, v_prods)):
+    #         # 1) 是否命中 require？
+    #         hit = False
+    #         for rt, nm, need_state in reqs:
+    #             if _has_in_D(D, rt, nm, need_state):
+    #                 hit = True
+    #                 break
+
+    #         if hit:
+    #             dependents.append(i)
+    #             # 2) 命中后：把 produces 的 (rtype,name,state) 加入 D
+    #             for rt, nm, st in prods:
+    #                 D.add((rt, nm, st))
+    #             # 3) 命中后：根据 transition 推进状态
+    #             for rt, nm, frm, to in trans:
+    #                 _advance_by_transition(D, rt, nm, frm, to)
+    #         else:
+    #             # 即便没命中，也允许 transition 推动 D（比如把根状态推进，以便后续动词命中）
+    #             for rt, nm, frm, to in trans:
+    #                 _advance_by_transition(D, rt, nm, frm, to)
+    #             # produces 不加入（因为没命中，不构成依赖传播体）
+
+    #     return dependents
     def find_dependent_verbs_stateful(self, verbs: List[Any], target: Tuple[str, str, Any]) -> List[int]:
         """
-        找出所有依赖于 target=(rtype, name, state) 的 verb 索引（考虑状态机）。
-        规则：顺序扫描，维护 D={(rtype,name,state)}；命中 require → 标记依赖并把 produces/transition 推进到 D 里。
-        - target.state 可为 None（表示“该资源在任意状态下被当作依赖根”）
+        目标带状态：(rtype, name, state)
+        - 若 state 为 None 或 ALLOCATED：以“存在性”种子初始化；
+        - 否则：以“状态”种子初始化。
+        传播：
+        - 命中依赖（根据 require 的类型选择 E 或 S）：将 produces 加入 E，并把（若附带状态）加入 S；
+        - transitions 只更新 S（不会影响 E）。
         """
+
         if not verbs or not target or not target[0] or not target[1]:
             return []
+
         rtype0, name0, state0 = target[0], target[1], target[2] if len(target) > 2 else None
 
-        # 预解析每个 verb 的 contract 三类信息
-        v_reqs: List[Set[Tuple[str, str, Any]]] = []
-        v_trans: List[List[Tuple[str, str, Any, Any]]] = []
-        v_prods: List[Set[Tuple[str, str, Any]]] = []
-        for v in verbs:
-            reqs, trans, prods = _contract_specs(v)
-            v_reqs.append(reqs)
-            v_trans.append(trans)
-            v_prods.append(prods)
-            print(summarize_verb(v, deep=True))
-            print("  reqs:", reqs)
-            print("  trans:", trans)
-            print("  prods:", prods)
+        # E: 存在性集合 {(rtype, name)}
+        E: Set[Tuple[str, str]] = set()
+        # S: 状态集合 {(rtype, name) -> set(states)}
+        S: Dict[Tuple[str, str], Set[str]] = {}
 
-        # 依赖集合 D：保存 (rtype, name, state_or_None)
-        D: Set[Tuple[str, str, Any]] = {(str(rtype0), str(name0), state0)}
+        def S_add(rt: str, nm: str, st: Any):
+            if st is None:
+                return
+            key = (rt, nm)
+            if key not in S:
+                S[key] = set()
+            S[key].add(str(st))
 
+        # 初始种子
+        if _is_existence_requirement(state0):
+            E.add((str(rtype0), str(name0)))
+            # 如果给了具体 RESET 之类的也可以同步到 S
+            if state0 not in (None,):
+                S_add(str(rtype0), str(name0), state0)
+        else:
+            S_add(str(rtype0), str(name0), state0)
+        # 预解析 CONTRACT
+        parsed = [_contract_specs(v) for v in verbs]
         dependents: List[int] = []
 
-        for i, (reqs, trans, prods) in enumerate(zip(v_reqs, v_trans, v_prods)):
-            # 1) 是否命中 require？
+        for i, (reqs, trans, prods) in enumerate(parsed):
+            # 1) 判断是否命中依赖
             hit = False
             for rt, nm, need_state in reqs:
-                if _has_in_D(D, rt, nm, need_state):
-                    hit = True
-                    break
+                if _is_existence_requirement(need_state):
+                    # 只看 E
+                    if (rt, nm) in E:
+                        hit = True
+                        break
+                else:
+                    # 只看 S
+                    key = (rt, nm)
+                    if key in S and str(need_state) in S[key]:
+                        hit = True
+                        break
 
             if hit:
                 dependents.append(i)
-                # 2) 命中后：把 produces 的 (rtype,name,state) 加入 D
+                # 2) 命中后：把 produces 的资源加入 E；附带状态也加入 S
                 for rt, nm, st in prods:
-                    D.add((rt, nm, st))
-                # 3) 命中后：根据 transition 推进状态
+                    E.add((rt, nm))
+                    if st is not None:
+                        S_add(rt, nm, st)
+                # 3) 命中后：根据 transitions 推进 S
                 for rt, nm, frm, to in trans:
-                    _advance_by_transition(D, rt, nm, frm, to)
+                    key = (rt, nm)
+                    if (frm is None and key in E) or (key in S and str(frm) in S[key]):
+                        S_add(rt, nm, to)
             else:
-                # 即便没命中，也允许 transition 推动 D（比如把根状态推进，以便后续动词命中）
+                # 未命中：仅允许 transitions 在“已存在”或“已知状态”上推进 S（不影响 E）
                 for rt, nm, frm, to in trans:
-                    _advance_by_transition(D, rt, nm, frm, to)
-                # produces 不加入（因为没命中，不构成依赖传播体）
+                    key = (rt, nm)
+                    if key in E or (key in S and (frm is None or str(frm) in S[key])):
+                        S_add(rt, nm, to)
+                # 未命中时，不把 produces 纳入 E（避免把与目标无关的创建当作依赖路径）
 
         return dependents
 
@@ -1880,6 +2121,9 @@ class ContractAwareMutator:
                 print("Final dry-run failed; reverted insertion.")
             return False
 
+    def enumerate_mutable_paths(self, verb: VerbCall) -> List[Tuple[List[str], Any]]:
+        return _enumerate_mutable_paths(verb)
+
     def mutate_param(self, verbs: List[VerbCall], idx: Optional[int] = None) -> bool:
         if not verbs:
             return False
@@ -1891,74 +2135,61 @@ class ContractAwareMutator:
             # 1) 随机选 verb
             idx = rng.randrange(len(verbs))
             v = verbs[idx]
-        # print("mutate param idx:", idx)
         # 2) 枚举可变路径
         snap = _make_snapshot(verbs, idx)
         contract = v.get_contract()
-        # print("snap:", snap)
-        # print("contract:", contract)
         paths = _enumerate_mutable_paths(v)
         if not paths:
             return False
         path, leaf = rng.choice(paths)
-        # print(summarize_verb(v, deep=True))
-        # print(path, leaf)
-        leaf.mutate(snap=snap, contract=contract, rng=rng)
-        # print(leaf)
-        # print(type(leaf))
-        # print()
+        logging.debug(f"mutate param: verb idx={idx}, path={path}, leaf={leaf}")
+        leaf.mutate(snap=snap, contract=contract, rng=rng, path=path)
         lost = destroyed_targets(v)
-        # print("lost from param mutation:", lost)
         if lost:
             _trim_forward_on_lost(verbs, idx, lost)
 
-        # # 3) 变异 leaf
-        # if leaf is None:
-        #     # None -> OptionalValue.factory 构建
-        #     from lib.value import OptionalValue
+    def mutate_move(self, verbs: List[Any], idx: Optional[int] = None, new_pos: Optional[int] = None) -> bool:
+        """
+        移动单个 verb：
+        - 若 new_pos 未指定，则在可行窗口内随机选择一个位置（不等于原 idx）
+        - 移动后可选做一次 dry-run（apply/contract），失败则回滚
+        """
+        if not verbs:
+            return False
+        if idx is None:
+            idx = self.rng.randrange(0, len(verbs))
 
-        #     new_leaf = OptionalValue.factory(rng)
-        #     if new_leaf is None:
-        #         return False
-        #     _set_dotted(v, path, new_leaf)
-        #     return True
+        lo, hi = compute_move_window(verbs, idx)
+        # 没有可移动空间
+        if lo == hi == idx:
+            return False
 
-        # from lib.value import ConstantValue, EnumValue, FlagValue, IntValue, ListValue, OptionalValue, ResourceValue
+        if new_pos is None:
+            # 在 [lo,hi] 里采样一个 != idx 的位置
+            choices = [p for p in range(lo, hi + 1) if p != idx]
+            if not choices:
+                return False
+            new_pos = self.rng.choice(choices)
+        else:
+            new_pos = max(lo, min(hi, new_pos))  # clamp 到窗口
 
-        # if isinstance(leaf, OptionalValue):
-        #     # flip present/absent；若 present，递归变异其 value
-        #     if rng.random() < 0.5:
-        #         # flip to absent
-        #         leaf.present = False
-        #         leaf.value = None
-        #         return True
-        #     else:
-        #         # mutate inner value (if any)
-        #         if leaf.value is None:
-        #             return False
-        #         inner_paths = _enumerate_mutable_paths(leaf.value)
-        #         if not inner_paths:
-        #             return False
-        #         inner_path, inner_leaf = rng.choice(inner_paths)
-        #         return self._mutate_value(inner_leaf, lambda newv: _set_dotted(leaf.value, inner_path, newv))
-        # elif isinstance(leaf, ListValue):
-        #     # 变长或变异元素
-        #     if rng.random() < 0.3 and len(leaf.value) > 0:
-        #         # 删除一个元素
-        #         idx = rng.randrange(len(leaf.value))
-        #         leaf.value.pop(idx)
-        #         return True
-        #     elif rng.random() < 0.6:
-        #         # 添加一个新元素（尝试用第一个元素的类型构造）
-        #         if not leaf.value:
-        #             return False
-        #         sample_elem = leaf.value[0]
-        #         new_elem = self._construct_sample(sample_elem, rng)
-        #         if new_elem is None:
-        #             return False
-        #         leaf.value.append(new_elem)
-        #         return True
-        #     else:
-        #         # 变异一个元素
-        #         if not leaf.value:
-        #             return
+        # 执行“抽出-插入”
+        v = verbs.pop(idx)
+        # 注意：pop 后索引变化，重新计算目标插入位
+        if new_pos > idx:
+            new_pos -= 1
+        verbs.insert(new_pos, v)
+
+        # 可选：一次轻量校验（不强制回滚，也可以回滚）
+        # if getattr(self, "dryrun_contract", False):
+        if True:
+            try:
+                ctx = FakeCtx()
+                for vv in verbs:
+                    vv.apply(ctx)
+            except Exception:
+                # 回滚：把 v 放回原处
+                verbs.pop(new_pos)
+                verbs.insert(idx, v)
+                return False
+        return True

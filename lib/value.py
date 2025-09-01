@@ -1,12 +1,13 @@
+import logging
 import random
 from abc import ABC, abstractmethod
-import logging
 
 try:
     from objtracker import ObjectTracker
 except ImportError:
     from .objtracker import ObjectTracker
 
+from .contracts import RequireSpec
 
 # ===== 在文件开头加一个全局开关和工具函数 =====
 DEBUG = True  # 改成 True 就能打开所有调试信息
@@ -55,7 +56,7 @@ class Value(ABC):
         return hash(self.value)
 
     # @abstractmethod
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         raise NotImplementedError("Mutate method not implemented for Value class")
 
     def is_none(self):
@@ -107,7 +108,7 @@ class IntValue(Value):
         self.step = step
         # self.rng = rng or random
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         rng = rng or random
         if not self.mutable:
             debug_print("This IntValue is not mutable.")
@@ -162,7 +163,7 @@ class BoolValue(Value):
     def __init__(self, value: bool = None, mutable: bool = True):
         super().__init__(value, mutable)
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         if not self.mutable:
             debug_print("This BoolValue is not mutable.")
             return
@@ -175,7 +176,7 @@ class ConstantValue(Value):
     def __init__(self, value: str = None):
         super().__init__(value)
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         # Constants do not change, so this method does nothing
         debug_print("ConstantValue does not mutate.")
         pass
@@ -306,7 +307,7 @@ class EnumValue(Value):
     #     debug_print(f"Available enums: {self.enums}")
     #     self.value = random.choice(self.enums)
     #     pass  # Implement actual mutation logic based on enum type
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         rng = rng or random
         if not self.mutable:
             debug_print("This EnumValue is not mutable.")
@@ -428,7 +429,7 @@ class FlagValue(Value):
         else:
             raise ValueError(f"Flag type {flag_type} not found in FlagValue class.")
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         rng = rng or random
         if not self.mutable:
             return
@@ -537,25 +538,33 @@ class ResourceValue(Value):
             return True
         return False
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         if not self.mutable:
             debug_print("This ResourceValue is not mutable.")
             return
+        if not path:
+            debug_print("No path provided for ResourceValue mutation.")
+            return
 
         # 应该是这样，判断该value属于produces还是requires（transition类）
-        required_type = self.resource_type
-        required_state = None
-        required = False
+        # produces类禁止mutate
+
+        reqs = []
         for item in contract.requires or []:  # TODO: 这里的实现其实是错误的，但是先这样凑合着用
-            if item.rtype == required_type:
-                required = True
-                required_state = item.state
-                break
+            if item.name_attr == path:
+                reqs.append(item)
+
+        assert len(reqs) <= 1
+        logging.debug(f"ResourceValue mutate at {path}, reqs: {reqs}")
+
         # print(required_state, required_type)
-        if required:
+        if reqs:
+            req: RequireSpec = reqs[0]
+            assert req.rtype == self.resource_type
             cands = []
             for (t, name), st in (snap or {}).items():
-                if t == required_type and (required_state is None or st == required_state):
+                if t == req.rtype and (req.state is None or st == req.state) and st not in (req.exclude_states or []):
+                    logging.debug(f"  candidate: {(t, name)} with state {st}")
                     cands.append(name)
             if cands:
                 rng = rng or random
@@ -600,7 +609,7 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
 
         self.on_after_mutate = on_after_mutate
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         rng = rng or random
         if not self.mutable:
             debug_print("This ListValue is not mutable.")
@@ -668,7 +677,7 @@ class OptionalValue(Value):
         self.value = value  # 类型: Value 或 None
         self.factory = factory  # 新建时用，比如 lambda: IntValue(...)
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         if not self.mutable:
             debug_print("This OptionalValue is not mutable.")
             return
@@ -790,7 +799,7 @@ class DeferredValue(Value):
     def from_id(cls, kind: str, id_str: str, field: str, c_type: str = "uint32_t"):
         return cls(key=f"{kind}|{id_str}|{field}", c_type=c_type, source="runtime_by_id", by_id=(kind, id_str, field))
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         # DeferredValue 不变异
         return
 

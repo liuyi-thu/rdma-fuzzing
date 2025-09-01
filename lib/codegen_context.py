@@ -5,6 +5,8 @@ try:
 except ImportError:
     from objtracker import ObjectTracker
 
+from .contracts import ContractTable
+
 predefined_variables = {  # 全局变量，写在template里面的
     "ibv_qp": "struct ibv_qp",
     "ibv_cq": "struct ibv_cq",
@@ -64,6 +66,8 @@ class CodeGenContext:
 
         self.alloc_variable(self.msg_buf_name, "char", None, "[1024][1024]")
         self.bindings = {}  # local qp -> remote qp
+
+        self.contracts = ContractTable()
 
     # ---- alloc helpers ----
     def alloc_variable(self, name, type, init_value=None, array_size=None):

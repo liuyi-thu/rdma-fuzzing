@@ -103,6 +103,7 @@ class RequireSpec:
     rtype: str  # 资源类型
     state: Optional[State]  # 允许的状态（可为 None 表示只要求存在）
     name_attr: str  # 从 verb 上读取资源名的属性名（如 'pd' / 'qp'）
+    exclude_states: Optional[List[State]] = None  # 排除的状态列表（可选）
 
 
 @dataclass
@@ -241,13 +242,20 @@ class ContractTable:
             raise ContractError(f"resource already exists: {rtype} {name} in state {rec.state.name}")
         self._store[key] = ResourceRec(key, state)
 
-    def require(self, rtype: str, name: str, state: Optional[State] = None):
+    def require(
+        self, rtype: str, name: str, state: Optional[State] = None, exclude_states: Optional[List[State]] = None
+    ):
         key = ResourceKey(rtype, str(name))
         rec = self._store.get(key)
         if not rec:
             raise ContractError(f"required resource not found: {rtype} {name}")
         if state is not None and rec.state is not state:
             raise ContractError(f"resource {rtype} {name} in state {rec.state.name}, required {state.name}")
+        if exclude_states is not None and rec.state in exclude_states:
+            exclude_state_names = [s.name for s in exclude_states]
+            raise ContractError(
+                f"resource {rtype} {name} in state {rec.state.name}, excluded states {exclude_state_names}"
+            )
 
     def transition(self, rtype: str, name: str, to_state: State, from_state: Optional[State] = None):
         key = ResourceKey(rtype, str(name))
@@ -301,7 +309,7 @@ class ContractTable:
             except Exception as e:
                 raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
-                self.require(spec.rtype, str(name), spec.state)
+                self.require(spec.rtype, str(name), spec.state, spec.exclude_states)
 
         # 2) transitions
         for spec in contract.transitions:
@@ -323,7 +331,7 @@ class ContractTable:
 
     # ===== 查询 / 调试 =====
     def snapshot(self) -> Dict[Tuple[str, str], str]:
-        return {(k.rtype, k.name): v.state.name for k, v in self._store.items()}
+        return {(k.rtype, k.name): v.state for k, v in self._store.items()}
 
     # @staticmethod
     # def instantiate_contract(verb: Any, contract: Contract):

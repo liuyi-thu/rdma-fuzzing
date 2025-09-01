@@ -477,7 +477,7 @@ class AckCQEvents(VerbCall):
     """
 
     MUTABLE_FIELDS = ["cq", "nevents"]
-    CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str | None = None, nevents: int | None = None):
         self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
@@ -1007,7 +1007,9 @@ class AllocTD(VerbCall):
 
 class AttachMcast(VerbCall):
     MUTABLE_FIELDS = ["qp", "gid", "lid"]
-    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
+    )
 
     def __init__(self, qp: str = None, gid: str = None, lid: int = None):
         # 注意gid需要是变量，不然无法传参 # TODO: gid这种类型如何处理
@@ -1061,8 +1063,8 @@ class BindMW(VerbCall):
 
     CONTRACT = Contract(  # TODO: 改为动态（其实有办法筛选）
         requires=[
-            RequireSpec("qp", None, "qp"),
-            RequireSpec("mr", None, "mw_bind_obj.bind_info.mr"),
+            RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED]),
+            RequireSpec("mr", State.ALLOCATED, "mw_bind_obj.bind_info.mr"),
             RequireSpec("mw", State.ALLOCATED, "mw"),
         ],
         produces=[],
@@ -1603,7 +1605,7 @@ class CreateFlow(VerbCall):
 
     MUTABLE_FIELDS = ["qp", "flow", "flow_attr_var", "flow_attr_obj"]
     CONTRACT = Contract(
-        requires=[RequireSpec("qp", None, "qp")],
+        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
         produces=[ProduceSpec("flow", State.ALLOCATED, "flow")],
         transitions=[],
     )
@@ -1681,6 +1683,7 @@ class CreateQP(VerbCall):
             # 也可以要求 cq 存在（如果你用名字引用 cq）：RequireSpec("cq", State.ALLOCATED, "recv_cq") ...
         ],
         produces=[
+            # ProduceSpec(rtype="qp", state=State.ALLOCATED, name_attr="qp"),
             ProduceSpec(rtype="qp", state=State.RESET, name_attr="qp"),
         ],
         transitions=[],
@@ -1805,8 +1808,8 @@ class CreateQPEx(VerbCall):
     CONTRACT = Contract(
         requires=[
             RequireSpec("pd", State.ALLOCATED, "qp_attr_obj.pd"),
-            RequireSpec("cq", None, "qp_attr_obj.send_cq"),
-            RequireSpec("cq", None, "qp_attr_obj.recv_cq"),
+            RequireSpec("cq", State.ALLOCATED, "qp_attr_obj.send_cq"),
+            RequireSpec("cq", State.ALLOCATED, "qp_attr_obj.recv_cq"),
         ],
         produces=[ProduceSpec("qp", State.RESET, "qp")],
         transitions=[],
@@ -2186,9 +2189,9 @@ class DeallocMW(VerbCall):
 
     MUTABLE_FIELDS = ["mw"]
     CONTRACT = Contract(
-        requires=[RequireSpec("mw", None, "mw")],
+        requires=[RequireSpec("mw", State.ALLOCATED, "mw")],
         produces=[],
-        transitions=[TransitionSpec("mw", None, State.DESTROYED, "mw")],
+        transitions=[TransitionSpec("mw", State.ALLOCATED, State.DESTROYED, "mw")],
     )
 
     def __init__(self, mw: str = None):
@@ -2228,9 +2231,9 @@ class DeallocPD(VerbCall):
 
     MUTABLE_FIELDS = ["pd"]
     CONTRACT = Contract(
-        requires=[RequireSpec("pd", state=None, name_attr="pd")],
+        requires=[RequireSpec("pd", state=State.ALLOCATED, name_attr="pd")],
         produces=[],
-        transitions=[TransitionSpec("pd", from_state=None, to_state=State.DESTROYED, name_attr="pd")],
+        transitions=[TransitionSpec("pd", from_state=State.ALLOCATED, to_state=State.DESTROYED, name_attr="pd")],
     )
 
     def __init__(self, pd: str = None):
@@ -2273,9 +2276,9 @@ class DeallocTD(VerbCall):
 
     MUTABLE_FIELDS = ["td"]
     CONTRACT = Contract(
-        requires=[RequireSpec("td", None, "td")],
+        requires=[RequireSpec("td", State.ALLOCATED, "td")],
         produces=[],
-        transitions=[TransitionSpec("td", None, State.DESTROYED, "td")],
+        transitions=[TransitionSpec("td", State.ALLOCATED, State.DESTROYED, "td")],
     )
 
     def __init__(self, td: str = None):
@@ -2318,9 +2321,9 @@ class DeregMR(VerbCall):
 
     MUTABLE_FIELDS = ["mr"]
     CONTRACT = Contract(
-        requires=[RequireSpec("mr", None, "mr")],
+        requires=[RequireSpec("mr", State.ALLOCATED, "mr")],
         produces=[],
-        transitions=[TransitionSpec("mr", None, State.DESTROYED, "mr")],
+        transitions=[TransitionSpec("mr", State.ALLOCATED, State.DESTROYED, "mr")],
     )
 
     def __init__(self, mr: str = None):
@@ -2364,8 +2367,8 @@ class DestroyAH(VerbCall):
     MUTABLE_FIELDS = ["ah"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
-        produces=[ProduceSpec("ah", State.ALLOCATED, "ah")],
-        transitions=[],
+        produces=[],
+        transitions=[TransitionSpec("ah", State.ALLOCATED, State.DESTROYED, "ah")],
     )
 
     def __init__(self, ah: str = None):
@@ -2408,9 +2411,9 @@ class DestroyCompChannel(VerbCall):
 
     MUTABLE_FIELDS = ["channel"]
     CONTRACT = Contract(
-        requires=[RequireSpec("channel", None, "channel")],
+        requires=[RequireSpec("channel", State.ALLOCATED, "channel")],
         produces=[],
-        transitions=[TransitionSpec("channel", None, State.DESTROYED, "channel")],
+        transitions=[TransitionSpec("channel", State.ALLOCATED, State.DESTROYED, "channel")],
     )
 
     def __init__(self, channel: str = None):
@@ -2461,9 +2464,9 @@ class DestroyCQ(VerbCall):
 
     MUTABLE_FIELDS = ["cq"]
     CONTRACT = Contract(
-        requires=[RequireSpec("cq", None, "cq")],
+        requires=[RequireSpec("cq", State.ALLOCATED, "cq")],
         produces=[],
-        transitions=[TransitionSpec("cq", None, State.DESTROYED, "cq")],
+        transitions=[TransitionSpec("cq", State.ALLOCATED, State.DESTROYED, "cq")],
     )
 
     def __init__(self, cq: str = None):
@@ -2506,9 +2509,9 @@ class DestroyFlow(VerbCall):
 
     MUTABLE_FIELDS = ["flow"]
     CONTRACT = Contract(
-        requires=[RequireSpec("flow", None, "flow")],
+        requires=[RequireSpec("flow", State.ALLOCATED, "flow")],
         produces=[],
-        transitions=[TransitionSpec("flow", None, State.DESTROYED, "flow")],
+        transitions=[TransitionSpec("flow", State.ALLOCATED, State.DESTROYED, "flow")],
     )
 
     def __init__(self, flow: str = None):
@@ -2555,7 +2558,7 @@ class DestroyQP(VerbCall):
 
     MUTABLE_FIELDS = ["qp"]
     CONTRACT = Contract(
-        requires=[RequireSpec("qp", None, "qp")],
+        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
         produces=[],
         transitions=[TransitionSpec("qp", None, State.DESTROYED, "qp")],
     )
@@ -2625,9 +2628,9 @@ class DestroySRQ(VerbCall):
 
     MUTABLE_FIELDS = ["srq"]
     CONTRACT = Contract(
-        requires=[RequireSpec("srq", None, "srq")],
+        requires=[RequireSpec("srq", State.ALLOCATED, "srq")],
         produces=[],
-        transitions=[TransitionSpec("srq", None, State.DESTROYED, "srq")],
+        transitions=[TransitionSpec("srq", State.ALLOCATED, State.DESTROYED, "srq")],
     )
 
     def __init__(self, srq: str = None):
@@ -2670,9 +2673,9 @@ class DestroyWQ(VerbCall):
 
     MUTABLE_FIELDS = ["wq"]
     CONTRACT = Contract(
-        requires=[RequireSpec("wq", None, "wq")],
+        requires=[RequireSpec("wq", State.ALLOCATED, "wq")],
         produces=[],
-        transitions=[TransitionSpec("wq", from_state=None, to_state=State.DESTROYED, name_attr="wq")],
+        transitions=[TransitionSpec("wq", from_state=State.ALLOCATED, to_state=State.DESTROYED, name_attr="wq")],
     )
 
     def __init__(self, wq: str = None):
@@ -2714,7 +2717,9 @@ class DetachMcast(VerbCall):  # TODO: gid 需要是变量名
     """Detach a QP from a multicast group."""
 
     MUTABLE_FIELDS = ["qp", "gid", "lid"]
-    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
+    )
 
     def __init__(self, qp: str = None, gid: str = None, lid: int = None):
         self.qp = (
@@ -2871,9 +2876,9 @@ class FreeDM(VerbCall):
 
     MUTABLE_FIELDS = ["dm"]
     CONTRACT = Contract(
-        requires=[RequireSpec("dm", None, "dm")],
+        requires=[RequireSpec("dm", State.ALLOCATED, "dm")],
         produces=[],
-        transitions=[TransitionSpec("dm", None, State.DESTROYED, "dm")],
+        transitions=[TransitionSpec("dm", State.ALLOCATED, State.DESTROYED, "dm")],
     )
 
     def __init__(self, dm: str = None):
@@ -3209,7 +3214,7 @@ class GetPKeyIndex(VerbCall):
 class GetSRQNum(VerbCall):
     MUTABLE_FIELDS = ["srq", "srq_num_var"]
     CONTRACT = Contract(
-        requires=[RequireSpec("srq", None, "srq")],
+        requires=[RequireSpec("srq", State.ALLOCATED, "srq")],
         produces=[],
         transitions=[],
     )
@@ -3286,7 +3291,7 @@ class GetSRQNum(VerbCall):
 class ImportDM(VerbCall):
     MUTABLE_FIELDS = ["dm_handle", "dm"]
     CONTRACT = Contract(
-        requires=[RequireSpec("dm", None, "dm")],
+        requires=[RequireSpec("dm", State.ALLOCATED, "dm")],
         produces=[],
         transitions=[],
     )
@@ -3337,8 +3342,8 @@ class ImportDM(VerbCall):
 class ImportMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr_handle", "mr"]
     CONTRACT = Contract(
-        requires=[RequireSpec("pd", None, "pd")],
-        produces=[ProduceSpec("mr", None, "mr")],
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
         transitions=[],
     )
 
@@ -3394,7 +3399,7 @@ class ImportPD(VerbCall):
     MUTABLE_FIELDS = ["pd", "pd_handle"]
     CONTRACT = Contract(
         requires=[],
-        produces=[ProduceSpec("pd", None, "pd")],
+        produces=[ProduceSpec("pd", State.ALLOCATED, "pd")],
         transitions=[TransitionSpec("pd", from_state=None, to_state=State.IMPORTED, name_attr="pd")],
     )
 
@@ -3532,7 +3537,7 @@ class ImportPD(VerbCall):
 class MemcpyFromDM(VerbCall):
     MUTABLE_FIELDS = ["host", "dm", "dm_offset", "length"]
     CONTRACT = Contract(
-        requires=[RequireSpec("dm", None, "dm")],
+        requires=[RequireSpec("dm", State.ALLOCATED, "dm")],
         produces=[],
         transitions=[],
     )
@@ -3588,7 +3593,7 @@ class MemcpyFromDM(VerbCall):
 class MemcpyToDM(VerbCall):
     MUTABLE_FIELDS = ["dm", "dm_offset", "host", "length"]
     CONTRACT = Contract(
-        requires=[RequireSpec("dm", None, "dm")],
+        requires=[RequireSpec("dm", State.ALLOCATED, "dm")],
         produces=[],
         transitions=[],
     )
@@ -3653,7 +3658,7 @@ class ModifyCQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["cq", "attr_obj", "attr_var"]
-    CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None, attr_obj: IbvModifyCQAttr = None, attr_var: str = None):
         if not cq:
@@ -3872,7 +3877,7 @@ class ModifyQPRateLimit(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "attr_var", "attr_obj"]
-    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("qp", State.ALLOCATED, "qp")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -3939,7 +3944,7 @@ class ModifySRQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["srq", "attr_var", "attr_obj", "attr_mask"]
-    CONTRACT = Contract(requires=[RequireSpec("srq", None, "srq")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("srq", State.ALLOCATED, "srq")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -4008,7 +4013,7 @@ class ModifyWQ(VerbCall):
 
     MUTABLE_FIELDS = ["wq", "attr_var", "attr_obj"]
     CONTRACT = Contract(
-        requires=[RequireSpec("wq", None, "wq")],
+        requires=[RequireSpec("wq", State.ALLOCATED, "wq")],
         produces=[],
         transitions=[],  # 若你有 WQ 状态机，可加 transitions
     )
@@ -4106,7 +4111,7 @@ class OpenQP(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_var", "qp", "attr_var", "attr_obj"]
-    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("qp", State.ALLOCATED, "qp")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -4187,7 +4192,7 @@ class OpenXRCD(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_var", "xrcd", "attr_var", "attr_obj"]
-    CONTRACT = Contract(requires=[RequireSpec("xrcd", None, "xrcd")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("xrcd", State.ALLOCATED, "xrcd")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -4254,7 +4259,7 @@ class OpenXRCD(VerbCall):
 
 class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数，待改
     MUTABLE_FIELDS = ["cq"]
-    CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None):
         if not cq:
@@ -4335,7 +4340,9 @@ class PostRecv(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "wr_obj", "wr_var", "bad_wr_var"]
-    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
+    )
 
     def __init__(
         self,
@@ -4408,7 +4415,9 @@ class PostRecv(VerbCall):
 
 class PostSend(VerbCall):  # TODO: 修改varname
     MUTABLE_FIELDS = ["qp", "wr_obj"]
-    CONTRACT = Contract(requires=[RequireSpec("qp", None, "qp")], produces=[], transitions=[])
+    CONTRACT = Contract(
+        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
+    )
 
     def __init__(self, qp: str = None, wr_obj: IbvSendWR = None, wr_var=None, bad_wr_var=None):
         if not qp:
@@ -4511,7 +4520,7 @@ class PostSRQRecv(VerbCall):
     """
 
     MUTABLE_FIELDS = ["srq", "wr_obj", "wr_var", "bad_wr_var"]
-    CONTRACT = Contract(requires=[RequireSpec("srq", None, "srq")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("srq", State.ALLOCATED, "srq")], produces=[], transitions=[])
 
     def __init__(
         self,
@@ -4677,7 +4686,7 @@ class QueryDeviceEx(VerbCall):
 class QueryECE(VerbCall):
     MUTABLE_FIELDS = ["qp", "output"]
     CONTRACT = Contract(
-        requires=[RequireSpec("qp", None, "qp")],
+        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
         produces=[RequireSpec("ece_options", None, "ece_options")],
         transitions=[],
     )
@@ -4885,7 +4894,7 @@ class QueryQP(VerbCall):
 
     MUTABLE_FIELDS = ["qp", "attr_mask"]
     CONTRACT = Contract(
-        requires=[RequireSpec("qp", None, "qp")],
+        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
         produces=[],
         transitions=[],
     )
@@ -4990,7 +4999,7 @@ class QuerySRQ(VerbCall):
 
     MUTABLE_FIELDS = ["srq"]
     CONTRACT = Contract(
-        requires=[RequireSpec("srq", None, "srq")],
+        requires=[RequireSpec("srq", State.ALLOCATED, "srq")],
         produces=[],
         transitions=[],
     )
@@ -5323,7 +5332,7 @@ class ReqNotifyCQ(VerbCall):
     """Request completion notification on a completion queue (CQ)."""
 
     MUTABLE_FIELDS = ["cq", "solicited_only"]
-    CONTRACT = Contract(requires=[RequireSpec("cq", None, "cq")], produces=[], transitions=[])
+    CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None, solicited_only: int = None):
         self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")

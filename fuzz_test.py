@@ -1,18 +1,19 @@
+import argparse
 import copy
 import json
-import os
-import random
-import traceback
-import argparse
 import logging
-import sys
+import os
 import pickle
-import dill
-
+import random
+import sys
+import traceback
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List
+
+import dill
 from jinja2 import Environment, FileSystemLoader
 from termcolor import colored
+
 from lib import fuzz_mutate
 from lib.codegen_context import CodeGenContext
 from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
@@ -245,6 +246,17 @@ def run(args):
             logging.info(
                 summarize_verb_list(verbs=verbs, deep=True) + "\n"
             )  # 如果想看 before 的一行摘要：传入反序列化前的
+
+            ctx = CodeGenContext()
+            try:
+                for v in verbs:
+                    v.apply(ctx)  # check new verbs
+            except Exception as e:
+                logging.error("Verb application failed: %s", e)
+                logging.error(traceback.format_exc())
+                exit(0)
+                # logging.info("Mutated verbs:\n%s", summarize_verb_list(verbs=mutated, deep=True))
+                raise
 
         # f.close()
 
