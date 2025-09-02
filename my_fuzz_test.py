@@ -198,15 +198,17 @@ if __name__ == "__main__":
     #     print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
 
     target_stateful = ("qp", "qp0", State.ALLOCATED)
-    dependent_verbs = mutator.find_dependent_verbs_stateful(verbs, target_stateful)
+    dependent_verbs = fuzz_mutate.find_dependent_verbs_stateful(verbs, target_stateful)
+    print(dependent_verbs)
+    print(dependent_verbs[:-1])
     print(f"Dependent verbs for {target_stateful}:")
     for i in dependent_verbs:
         print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
 
-    for i in range(len(verbs)):
-        print(f"[{i}]", summarize_verb(verbs[i], deep=True, max_items=100))
-        # print()
-    for i in range(len(verbs)):
-        mutator.mutate_move(verbs, i, None)
+    # for i in range(len(verbs)):
+    #     print(f"[{i}]", summarize_verb(verbs[i], deep=True, max_items=100))
+    #     # print()
+    # for i in range(len(verbs)):
+    #     mutator.mutate_move(verbs, i, None)
 
     # print(mutator.enumerate_mutable_paths(verbs[16]))

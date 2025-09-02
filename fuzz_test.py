@@ -199,7 +199,8 @@ def setup_logging(log_file: str, to_console: bool = False, level=logging.INFO):
         logger.removeHandler(h)
 
     # 文件轮转（50MB * 3份备份）
-    fh = RotatingFileHandler(log_file, mode="w", maxBytes=50 * 1024 * 1024, backupCount=3, encoding="utf-8")
+    # fh = RotatingFileHandler(log_file, mode="w", maxBytes=50 * 1024 * 1024, backupCount=3, encoding="utf-8") # 暂时不需要这个功能
+    fh = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     # fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(process)d %(name)s: %(message)s")
     fmt = logging.Formatter("%(message)s")
     fh.setFormatter(fmt)
@@ -233,6 +234,9 @@ def run(args):
         ctx = CodeGenContext()
         verbs: list[VerbCall] = INITIAL_VERBS
         rng = random.Random(seed)
+        random.seed(seed)
+        # random 改不过来了……
+        # print(rng.getstate())
         logging.info("Initial verbs:\n%s", summarize_verb_list(verbs=verbs, deep=True))
         for _round in range(max_rounds):
             logging.info("=== TEST ROUND %d ===", _round)

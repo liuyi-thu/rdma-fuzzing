@@ -109,7 +109,7 @@ class IntValue(Value):
         # self.rng = rng or random
 
     def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
-        rng = rng or random
+        # rng = rng or random
         if not self.mutable:
             debug_print("This IntValue is not mutable.")
             return
@@ -128,35 +128,6 @@ class IntValue(Value):
             # 无约束：温和扰动
             v = (self.value or 0) + rng.choice([-1, 1])
             self.value = max(0, v)
-
-
-# class IntValue(Value):
-#     def __init__(self, value: int = None, range: Range = None, mutable: bool = True):
-#         super().__init__(value, mutable)
-#         self.range = range  # should be a default Range object or None
-#         if isinstance(self.range, int):
-#             self.range = Range(0, self.range)
-
-#     def mutate(self):
-#         if not self.mutable:
-#             debug_print("This IntValue is not mutable.")
-#             return
-#         # Example mutation: increment or decrement the value
-#         if isinstance(self.range, Range):
-#             # Ensure the mutation stays within the specified range
-#             min_val, max_val = self.range.min_value, self.range.max_value
-#             # mutation = random.choice([-1, 1])
-#             # self.value = max(min_val, min(max_val, self.value + mutation))
-#             self.value = random.randint(min_val, max_val)
-#         elif isinstance(self.range, list):
-#             # If range is a list, randomly select a value from the list
-#             self.value = random.choice(self.range)
-#         if self.range is None:
-#             # If no range is specified, just increment or decrement
-#             # mutation = random.choice([-1, 1])
-#             # self.value += mutation
-#             self.value = random.randint(0, 100)  # Example: random value between 0 and 100
-#             debug_print(f"IntValue mutated to {self.value} within range {self.range}")
 
 
 class BoolValue(Value):
@@ -297,16 +268,6 @@ class EnumValue(Value):
         else:
             raise ValueError(f"Enum type {enum_type} not found in EnumValue class.")
 
-    # def mutate(self):
-    #     if not self.mutable:
-    #         debug_print("This EnumValue is not mutable.")
-    #         return
-    #     # Example mutation: change to another value in the enum type
-    #     # This is a placeholder; actual implementation would depend on the enum type
-    #     debug_print(f"Mutating EnumValue of type {self.enum_type} with value {self.value}")
-    #     debug_print(f"Available enums: {self.enums}")
-    #     self.value = random.choice(self.enums)
-    #     pass  # Implement actual mutation logic based on enum type
     def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         rng = rng or random
         if not self.mutable:
@@ -447,33 +408,6 @@ class FlagValue(Value):
         names = [n for n, v in self.map.items() if (self.value & v)]
         return " | ".join(names) if names else "0"
 
-    # def __init__(self, value: str = None, flag_type=None, mutable: bool = True):
-    #     super().__init__(value, mutable)
-    #     self.flag_type = flag_type
-    #     self.flags = self._get_flag_values(flag_type)
-    #     self.flags = list(self.flags)
-
-    # def _get_flag_values(self, flag_type: list) -> list[str]:
-    #     # Placeholder for fetching flag values based on the flag type
-    #     # In a real implementation, this would fetch from an actual flag definition
-    #     if isinstance(flag_type, dict):
-    #         return flag_type.keys()
-    #     elif isinstance(flag_type, str):
-    #         # If flag_type is a string, assume it's a predefined enum type
-    #         return getattr(self, flag_type, {}).keys()
-    #     return flag_type
-
-    # def mutate(self):  # 随机选一个或者多个，然后combine
-    #     if not self.mutable:
-    #         debug_print("This FlagValue is not mutable.")
-    #         return
-    #     debug_print(f"Mutating FlagValue of type {self.flag_type} with value {self.value}")
-    #     debug_print(f"Available flags: {self.flags}")
-    #     # Randomly select one or more flags and combine them
-    #     selected_flags = random.sample(self.flags, k=random.randint(1, len(self.flags)))
-    #     self.value = " | ".join(selected_flags)
-    #     debug_print(f"New value after mutation: {self.value}")
-
 
 class ResourceValue(Value):
     def __init__(self, value: str = None, resource_type: str = None, mutable: bool = True):
@@ -482,41 +416,6 @@ class ResourceValue(Value):
         if not resource_type:
             raise ValueError("ResourceValue must have a resource type defined.")
 
-    # def mutate(self, tracker: ObjectTracker = None):
-    #     if not self.mutable:
-    #         debug_print("This ResourceValue is not mutable.")
-    #         return
-    #     # # Resource values may not change, so this method does nothing
-    #     # debug_print("ResourceValue does not mutate.")
-    #     if tracker:
-    #         # Example mutation: randomly select a resource from the tracker
-    #         # resources = tracker.all_objs(self.resource_type)
-    #         # if resources:
-    #         #     self.value = random.choice(resources)
-    #         # else:
-    #         #     debug_print(f"No resources of type {self.resource_type} available for mutation.")
-    #         self.value = tracker.random_choose(self.resource_type, exclude=self.value)
-    #         if self.value is None:
-    #             debug_print(f"No resources of type {self.resource_type} available for mutation.")
-    #     else:
-    #         debug_print("No ObjectTracker provided, cannot mutate ResourceValue.")
-    #     pass
-
-    # def mutate(
-    #     self, tracker: ObjectTracker = None, contracts=None, want_type: str | None = None, allow_destroyed=False
-    # ):
-    #     if not self.mutable:
-    #         debug_print("This ResourceValue is not mutable.")
-    #         return
-    #     if contracts is not None and hasattr(contracts, "snapshot"):
-    #         typ = want_type or self.resource_type
-    #         snap = contracts.snapshot()
-    #         cands = [name for (t, name), st in snap.items() if t == typ and (allow_destroyed or st != "DESTROYED")]
-    #         if cands:
-    #             self.value = random.choice([x for x in cands if x != self.value] or cands)
-    #             return
-    #     if tracker:
-    #         self.value = tracker.random_choose(self.resource_type, exclude=self.value)
     def fill(self, snap=None, contract=None, rng: random.Random = None):
         if self.value is not None:
             return False
@@ -916,58 +815,3 @@ def is_deferred(x) -> bool:
 def unwrap_runtime(x):
     # OptionalValue(inner=DeferredValue) 的场景下使用
     return x.value if hasattr(x, "value") and isinstance(x.value, DeferredValue) else x
-
-
-if __name__ == "__main__":
-    # Example usage
-    # int_value = IntValue(10, range=(0, 20))
-    # debug_print(int_value)  # Output: 10
-    # int_value.mutate()
-    # debug_print(int_value)  # Output: 9 or 11 (or any value within the range)
-
-    # str_value = Value("Hello")
-    # print(str_value)  # Output: Hello
-    # print(repr(str_value))  # Output: Value(Hello)
-
-    # enum_value = EnumValue("IBV_QPT_RC", "IBV_QP_TYPE_ENUM")
-    # print(enum_value)  # Output: IBV_QPT_RC
-    # enum_value.mutate()
-    # print(enum_value)  # Output: Randomly selected value from IBV_QP_TYPE
-
-    # flag_value = FlagValue("IBV_QP_STATE", FlagValue.IBV_QP_ATTR_MASK_ENUM)
-    # flag_value = FlagValue("IBV_QP_STATE", "IBV_QP_ATTR_MASK_ENUM")
-    # # print(flag_value.IBV_QP_ATTR_MASK_ENUM)
-    # print(flag_value)  # Output: IBV_QP_STATE
-    # flag_value.mutate()
-
-    # resource_value = ResourceValue(value = "xrcd_0", resource_type = "xrcd")
-
-    # print()
-    # print(f"{int_value} {str_value} {enum_value} {flag_value}")
-
-    # opt_int = OptionalValue(
-    #     None, factory=lambda: IntValue(random.randint(0, 100)))
-    # for i in range(5):
-    #     opt_int.mutate()
-    #     print(opt_int)
-    # list_value = ListValue(value=[IntValue(1), IntValue(2)], factory=lambda: IntValue(random.randint(0, 100)))
-    # for i in range(5):
-    #     list_value.mutate()
-    #     print(list_value)
-
-    # for i, item in enumerate(list_value):
-    #     print(f"Item {i}: {item}")
-    # print(len(list_value))  # Should print the length of the list
-
-    # opt_int = OptionalValue(None, factory=lambda: IntValue(0))
-    # opt_int.init()  # Initialize the OptionalValue
-    # print(opt_int)
-    # print(opt_int.value)
-    defv = DeferredValue.from_id("remote.QP", "peer0", "qpn", "uint32_t")
-    print(defv)
-    print(defv.to_cxx("qpn"))
-    # opt_defv = OptionalValue(None, factory=lambda: DeferredValue("local.MR[0].lkey", "uint32_t"))
-    # opt_defv.init()
-    # print(opt_defv)
-    # print(opt_defv.value)
-    # print(opt_defv.to_cxx("lkey"))

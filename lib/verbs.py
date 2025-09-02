@@ -1680,7 +1680,9 @@ class CreateQP(VerbCall):
     CONTRACT = Contract(
         requires=[
             RequireSpec(rtype="pd", state=State.ALLOCATED, name_attr="pd"),
-            # 也可以要求 cq 存在（如果你用名字引用 cq）：RequireSpec("cq", State.ALLOCATED, "recv_cq") ...
+            RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="init_attr_obj.send_cq"),
+            RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="init_attr_obj.recv_cq"),
+            RequireSpec(rtype="srq", state=State.ALLOCATED, name_attr="init_attr_obj.srq"),
         ],
         produces=[
             # ProduceSpec(rtype="qp", state=State.ALLOCATED, name_attr="qp"),
@@ -1700,6 +1702,14 @@ class CreateQP(VerbCall):
         self.tracker = None
         self.required_resources = []
         self.allocated_resources = []
+
+    # def _contract(self) -> Contract:
+    #     """Generate the contract for this verb call."""
+    #     return self._contract_for_this_call()
+
+    # def _contract_for_this_call(self) -> Contract:
+    #     # 读取本次期望目标状态
+    #     return
 
     def apply(self, ctx: CodeGenContext):
         self.required_resources = []
