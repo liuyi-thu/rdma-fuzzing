@@ -4350,8 +4350,19 @@ class PostRecv(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "wr_obj", "wr_var", "bad_wr_var"]
+
     CONTRACT = Contract(
-        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
+        requires=[
+            # 需要 QP 存在（状态可不限制）
+            RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED]),
+            # 需要 WR 链里每个 SGE 的 MR 存在（未销毁即可）
+            # wr_obj**   ：遍历整条 RecvWR 链
+            # sg_list[*]：每个 WR 的所有 SGE
+            # .mr       ：取出 ResourceValue("mr", <name>) → 名字
+            RequireSpec("mr", State.ALLOCATED, "wr_obj**.sg_list[*].mr"),
+        ],
+        produces=[],
+        transitions=[],
     )
 
     def __init__(
@@ -4365,13 +4376,37 @@ class PostRecv(VerbCall):
             raise ValueError("QP name must be provided")
         self.qp = ResourceValue(resource_type="qp", value=qp)
         self.wr_obj = wr_obj
-        # Default variable name for the receive work request
-        # Variable name for the receive work request
         self.wr_var = ConstantValue(wr_var or f"recv_wr_{qp}")
-        # Variable name for the bad receive work request pointer
         self.bad_wr_var = ConstantValue(bad_wr_var or f"bad_recv_wr_{qp}")
         self.tracker = None
         self.required_resources = []
+
+    # def _contract(self) -> Contract:
+    #     """Generate the contract for this verb call."""
+    #     return self._contract_for_this_call()
+
+    # def _contract_for_this_call(self) -> Contract:  # dynamic contracts, since wr_obj may affect
+    #     if not self.wr_obj:
+    #         return Contract(
+    #             requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
+    #         )
+    #     else:
+    #         required_mrs = []
+    #         head = self.wr_obj
+    #         while head:
+    #             for sg in head.sg_list:
+    #                 if sg.mr:
+    #                     required_mrs.append(sg.mr.value)
+    #             head = head.next
+    #         return Contract(
+    #             requires=[
+    #                 RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED]),
+    #             ]
+    #             + [RequireSpec("mr", State.ALLOCATED, mr) for mr in required_mrs],
+    #             produces=[],
+    #             transitions=[],
+    #         )
+    #     pass
 
     def apply(self, ctx: CodeGenContext):
         self.required_resources = []

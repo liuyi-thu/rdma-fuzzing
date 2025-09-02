@@ -7,7 +7,10 @@ try:
 except ImportError:
     from .objtracker import ObjectTracker
 
-from .contracts import RequireSpec
+try:
+    from contracts import ContractTable, RequireSpec
+except ImportError:
+    from .contracts import ContractTable, RequireSpec
 
 # ===== 在文件开头加一个全局开关和工具函数 =====
 DEBUG = True  # 改成 True 就能打开所有调试信息
@@ -416,7 +419,7 @@ class ResourceValue(Value):
         if not resource_type:
             raise ValueError("ResourceValue must have a resource type defined.")
 
-    def fill(self, snap=None, contract=None, rng: random.Random = None):
+    def fill(self, snap=None, contract=None, rng: random.Random = None):  # TODO: to be checked
         if self.value is not None:
             return False
         required_type = self.resource_type
@@ -504,9 +507,16 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
             raise ValueError("Factory must be provided to create new Value objects.")
         if factory is not None and not callable(factory):
             raise TypeError("Factory must be a callable that returns a Value object.")
-        self.factory = factory  # Factory function to create new Value objects
-
+        self.factory = factory
         self.on_after_mutate = on_after_mutate
+
+    def _call_factory(self, snap=None, contract=None, rng=None):
+        try:
+            # 支持上下文工厂：(snap, contract, rng) -> Value
+            return self.factory(snap, contract, rng)
+        except TypeError:
+            # 退化为无参工厂：() -> Value
+            return self.factory()
 
     def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
         rng = rng or random
@@ -518,26 +528,60 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
         debug_print(f"Mutating ListValue with choice: {mutation_choice}")
         if mutation_choice == "add_item":
             # Add a new item to the list
-            new_item = self.factory()
+            new_item = self._call_factory(snap, contract, rng)
             self.value.append(new_item)
+            if callable(self.on_after_mutate):
+                self.on_after_mutate(
+                    kind="add_item",
+                    lv=self,
+                    idx=len(self.value) - 1,
+                    item=new_item,
+                    snap=snap,
+                    contract=contract,
+                    rng=rng,
+                    path=path,
+                )
             debug_print(f"Added new item: {new_item}")
         elif mutation_choice == "remove_item":
             # Remove an existing item from the list
             if self.value:
-                removed_item = rng.choice(self.value)
-                self.value.remove(removed_item)
-                debug_print(f"Removed item: {removed_item}")
+                k = rng.randrange(0, len(self.value))
+                removed = self.value.pop(k)
+                if callable(self.on_after_mutate):
+                    self.on_after_mutate(
+                        kind="remove_item",
+                        lv=self,
+                        idx=k,
+                        item=removed,
+                        snap=snap,
+                        contract=contract,
+                        rng=rng,
+                        path=path,
+                    )
+                debug_print(f"Removed item: {removed}")
             else:
                 debug_print("list is empty, cannot remove item.")
         elif mutation_choice == "mutate_item":
             # Mutate an existing item in the list
             if self.value:
-                item_to_mutate = rng.choice(self.value)
-                if hasattr(item_to_mutate, "mutate"):
-                    item_to_mutate.mutate(snap, contract, rng)
-                    debug_print(f"Mutated item: {item_to_mutate}")
+                k = rng.randrange(0, len(self.value))
+                itm = self.value[k]
+                if hasattr(itm, "mutate"):
+                    itm.mutate(snap=snap, contract=contract, rng=rng, path=(path or "") + f".[{k}]")
+                    debug_print(f"Mutated item: {itm}")
+                    if callable(self.on_after_mutate):
+                        self.on_after_mutate(
+                            kind="mutate_item",
+                            lv=self,
+                            idx=k,
+                            item=itm,
+                            snap=snap,
+                            contract=contract,
+                            rng=rng,
+                            path=path,
+                        )
                 else:
-                    debug_print(f"Item {item_to_mutate} cannot be mutated.")
+                    debug_print(f"Item {itm} cannot be mutated.")
             else:
                 debug_print("list is empty, cannot mutate item.")
         elif mutation_choice == "swap_items":
@@ -545,6 +589,10 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
             if len(self.value) > 1:
                 idx1, idx2 = rng.sample(range(len(self.value)), 2)
                 self.value[idx1], self.value[idx2] = self.value[idx2], self.value[idx1]
+                # if callable(self.on_after_mutate):
+                #     self.on_after_mutate(kind="swap_items", lv=self, idx=i,
+                #                         item=self.value[i], snap=snap, contract=contract, rng=rng, path=path)
+
                 debug_print(f"Swapped items: {self.value[idx1]} and {self.value[idx2]}")
             else:
                 debug_print("Not enough items to swap in the list.")

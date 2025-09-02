@@ -22,25 +22,23 @@ except ImportError:
 
 
 class IbvSge(Attr):
-    FIELD_LIST = ["addr", "length", "lkey"]
+    # FIELD_LIST = ["addr", "length", "lkey"]
+    FIELD_LIST = ["mr"]
     MUTABLE_FIELDS = FIELD_LIST
 
-    def __init__(self, addr=None, length=None, lkey=None):
-        # self.addr = OptionalValue(IntValue(addr) if addr is not None else None, factory=lambda: IntValue(0))
-        self.addr = OptionalValue(
-            DeferredValue.from_id("local.MR", addr, "addr", "uint64_t") if addr is not None else None,
-            factory=lambda: DeferredValue.from_id("local.MR", None, "addr", "uint64_t"),
-        )  # TODO: may cause errors
-        self.length = OptionalValue(IntValue(length) if length is not None else None, factory=lambda: IntValue(0))
-        # self.length = OptionalValue(
-        #     DeferredValue.from_id("local.MR", length, "length", "uint32_t") if length is not None else None,
-        #     factory=lambda: DeferredValue.from_id("local.MR", None, "length", "uint32_t"),
-        # )
-        # self.lkey = OptionalValue(IntValue(lkey) if lkey is not None else None, factory=lambda: IntValue(0))
-        self.lkey = OptionalValue(
-            DeferredValue.from_id("local.MR", lkey, "lkey", "uint32_t") if lkey is not None else None,
-            factory=lambda: DeferredValue.from_id("local.MR", None, "lkey", "uint32_t"),
-        )
+    def __init__(self, addr=None, length=None, lkey=None, mr=None):
+        self.addr = None
+        self.length = None
+        self.lkey = None
+        if mr is not None:
+            # 允许传字符串或 ResourceValue
+            if isinstance(mr, ResourceValue):
+                self.mr = mr
+            else:
+                self.mr = ResourceValue(value=str(mr), resource_type="mr")
+            self.bind_local_mr(self.mr.value)
+        else:
+            self.mr = None  # 让上层 on_after_mutate 或 apply(ctx) 来补
 
     @classmethod
     def random_mutation(cls):
@@ -57,6 +55,22 @@ class IbvSge(Attr):
             if val:
                 s += emit_assign(varname, field, val)
         return s
+
+    def bind_local_mr(self, mr):
+        if not mr:
+            return
+        self.addr = OptionalValue(  # invisible from mutation
+            DeferredValue.from_id("local.MR", mr, "addr", "uint64_t"),
+            factory=lambda: DeferredValue.from_id("local.MR", mr, "addr", "uint64_t"),
+        )
+        self.length = OptionalValue(
+            DeferredValue.from_id("local.MR", mr, "length", "uint32_t"),
+            factory=lambda: DeferredValue.from_id("local.MR", mr, "length", "uint32_t"),
+        )
+        self.lkey = OptionalValue(
+            DeferredValue.from_id("local.MR", mr, "lkey", "uint32_t"),
+            factory=lambda: DeferredValue.from_id("local.MR", mr, "lkey", "uint32_t"),
+        )
 
 
 if __name__ == "__main__":

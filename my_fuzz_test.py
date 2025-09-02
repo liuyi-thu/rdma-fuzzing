@@ -160,7 +160,8 @@ INITIAL_VERBS = [
         wr_obj=IbvRecvWR(
             wr_id=1,
             num_sge=1,
-            sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
+            next_wr=IbvRecvWR(wr_id=1, num_sge=1, next_wr=None, sg_list=[IbvSge(mr="mr0"), IbvSge(mr="mr12")]),
+            sg_list=[IbvSge(mr="mr0"), IbvSge(mr="mr1")],
         ),
     ),
     PostSRQRecv(
@@ -187,28 +188,30 @@ if __name__ == "__main__":
     # for v in verbs:
     #     print(summarize_verb(v))
     ctx = CodeGenContext()
-    for v in verbs:
-        v.apply(ctx)
+    for i in range(len(verbs)):
+        print(summarize_verb(verbs[i], deep=True, max_items=100))
+        verbs[i].apply(ctx)
+        print()
         # print(ctx.contracts)
-    mutator = fuzz_mutate.ContractAwareMutator()
-    # target = ("qp", "qp0")
-    # dependent_verbs = mutator.find_dependent_verbs(verbs, target)
-    # print(f"Dependent verbs for {target}:")
+    # mutator = fuzz_mutate.ContractAwareMutator()
+    # # target = ("qp", "qp0")
+    # # dependent_verbs = mutator.find_dependent_verbs(verbs, target)
+    # # print(f"Dependent verbs for {target}:")
+    # # for i in dependent_verbs:
+    # #     print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
+
+    # target_stateful = ("qp", "qp0", State.ALLOCATED)
+    # dependent_verbs = fuzz_mutate.find_dependent_verbs_stateful(verbs, target_stateful)
+    # print(dependent_verbs)
+    # print(dependent_verbs[:-1])
+    # print(f"Dependent verbs for {target_stateful}:")
     # for i in dependent_verbs:
     #     print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
 
-    target_stateful = ("qp", "qp0", State.ALLOCATED)
-    dependent_verbs = fuzz_mutate.find_dependent_verbs_stateful(verbs, target_stateful)
-    print(dependent_verbs)
-    print(dependent_verbs[:-1])
-    print(f"Dependent verbs for {target_stateful}:")
-    for i in dependent_verbs:
-        print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
+    # # for i in range(len(verbs)):
+    # #     print(f"[{i}]", summarize_verb(verbs[i], deep=True, max_items=100))
+    # #     # print()
+    # # for i in range(len(verbs)):
+    # #     mutator.mutate_move(verbs, i, None)
 
-    # for i in range(len(verbs)):
-    #     print(f"[{i}]", summarize_verb(verbs[i], deep=True, max_items=100))
-    #     # print()
-    # for i in range(len(verbs)):
-    #     mutator.mutate_move(verbs, i, None)
-
-    # print(mutator.enumerate_mutable_paths(verbs[16]))
+    # # print(mutator.enumerate_mutable_paths(verbs[16]))

@@ -16,59 +16,150 @@ def debug_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def _unwrap(x: Any) -> Any:
-    return getattr(x, "value", x)
+def _unwrap(v):
+    # 解 OptionalValue / ResourceValue / ConstantValue / ListValue
+    try:
+        # 你的 wrapper 若有统一的 .get_value() 更好；这里做常见分支
+        from lib.value import ConstantValue, ListValue, OptionalValue, ResourceValue
+
+        if isinstance(v, OptionalValue):
+            inner = v.value
+            return _unwrap(inner) if inner is not None else None
+        if isinstance(v, ConstantValue):
+            return v.value
+        if isinstance(v, ResourceValue):
+            # 对 require 来说，我们关心资源名字符串
+            return v.value
+        if isinstance(v, ListValue):
+            return [_unwrap(x) for x in v.value]
+    except Exception:
+        pass
+    return v
 
 
-def _get_by_path(root: Any, path: str, *, missing_ok: bool = True) -> Any:
+def _as_iter(v):
+    if v is None:
+        return []
+    v = _unwrap(v)
+    if isinstance(v, (list, tuple, set)):
+        return list(v)
+    return [v]
+
+
+def _iter_children(obj, seg):
     """
-    支持点路径 'a.b.c'，并在**每一跳**先做 unwrap：
-      - 若当前节点是 wrapper（有 .value），先取 .value
-      - 若为 None 且 missing_ok=True，直接返回 None（表示“可缺省”）
-      - 支持 dict（按 key）与 list/tuple（按下标）访问
+    对当前 obj 应用一个路径段 seg，返回展开后的节点列表。
+    支持：
+      - 普通字段名： e.g. "sg_list"
+      - 列表展开：   "sg_list[*]" 或 "sg_list.*"
+      - 纯 "*"：     对 obj 若是 list 则展开
+      - 下标：       "sg_list[0]"（可选）
     """
-    cur = root
+    out = []
+    obj = _unwrap(obj)
+
+    # 纯 "*"
+    if seg in ("*", "[*]"):
+        return list(_as_iter(obj))
+
+    import re
+
+    m = re.match(r"^([A-Za-z_]\w*)(\[(\*|\d+)\])?$", seg)
+    if not m:
+        # 非法段，直接失败
+        return []
+
+    field = m.group(1)
+    index = m.group(3)  # None / "*" / digits
+
+    # 取字段
+    node = getattr(obj, field, None)
+    node = _unwrap(node)
+
+    if index is None:
+        # 不带下标：直接返回该字段
+        return _as_iter(node)
+    if index == "*":
+        # 列表展开
+        return list(_as_iter(node))
+
+    # 数值下标
+    try:
+        k = int(index)
+        seq = list(_as_iter(node))
+        if 0 <= k < len(seq):
+            return [seq[k]]
+        return []
+    except Exception:
+        return []
+
+
+def _walk_double_star(head):
+    """
+    针对 WR 链：从 head 开始，沿 next 指针一直走到底，返回所有结点。
+    其他类型若没有 'next'，就只返回自身。
+    """
+    out = []
+    cur = _unwrap(head)
+    seen = set()
+    while cur is not None and id(cur) not in seen:
+        out.append(cur)
+        seen.add(id(cur))
+        nxt = getattr(cur, "next", None)
+        # next 可能是 OptionalValue，解一下
+        cur = _unwrap(nxt)
+    return out
+
+
+def _get_by_path(root, path: str, *, missing_ok: bool = False):
+    """
+    增强版路径：
+      - "a.b.c" 普通字段
+      - "a[*].b" 列表展开
+      - "**" / "field**" 递归沿 next 链（"**" 从当前节点；"field**" 先取字段再沿链）
+    返回扁平 list（元素已做 _unwrap/_as_iter）
+    """
+    if not path:
+        return root
+
+    nodes = [root]
     for seg in path.split("."):
-        cur = _unwrap(cur)
-        if cur is None:
-            if missing_ok:
-                return None
-            raise AttributeError(f"path '{path}' broken at segment '{seg}' (None)")
-
-        # dict 优先
-        if isinstance(cur, dict) and seg in cur:
-            cur = cur[seg]
+        # 1) 纯 "**"：对当前 nodes 里的每个节点，沿 next 链展开
+        if seg == "**":
+            expanded = []
+            for n in nodes:
+                expanded.extend(_walk_double_star(n))
+            nodes = expanded
             continue
 
-        # list/tuple 下标
-        if isinstance(cur, (list, tuple)):
-            try:
-                idx = int(seg)
-                cur = cur[idx]
-                continue
-            except Exception:
-                # 不是下标，继续尝试 getattr
-                pass
+        # 2) 字段名带后缀 "**"：先取该字段，再沿 next 链展开
+        if seg.endswith("**") and seg != "**":
+            base = seg[:-2]  # 去掉后缀
+            seeds = []
+            for n in nodes:
+                seeds.extend(_iter_children(n, base))
+            expanded = []
+            for s in seeds:
+                expanded.extend(_walk_double_star(s))
+            nodes = expanded
+            if not nodes and not missing_ok:
+                raise KeyError(f"path seg '{seg}' not found/empty after '**'")
+            continue
 
-        # 常规 getattr
-        cur = getattr(cur, seg)
+        # 3) 常规/带 [*] 段
+        nxt = []
+        for n in nodes:
+            nxt.extend(_iter_children(n, seg))
+        nodes = nxt
 
-    return _unwrap(cur)
+        if not nodes and not missing_ok:
+            raise KeyError(f"path seg '{seg}' not found/empty")
 
-
-def _as_iter(x: Any) -> Iterable:
-    """
-    对 require/transition/produce 里的 name 值做批量化：
-      - None -> 空列表（跳过）
-      - list/tuple/set -> 原样迭代
-      - 其他 -> 单元素列表
-    """
-    x = _unwrap(x)
-    if x is None:
-        return []
-    if isinstance(x, (list, tuple, set)):
-        return x
-    return [x]
+    # 扁平化
+    flat = []
+    for x in nodes:
+        flat.extend(_as_iter(x))
+    return flat
 
 
 # -------- 资源状态机：可按需扩展 --------
@@ -301,14 +392,16 @@ class ContractTable:
     #         self.put(spec.rtype, str(name), spec.state)
     def apply_contract(self, verb: Any, contract: Contract):
         contract = verb.get_contract()
-        # print(contract)
+        print(contract.requires)
         # 1) requires
         for spec in contract.requires:
             try:
                 val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+                print(val)
             except Exception as e:
                 raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
+                print("requires:", str(name))
                 self.require(spec.rtype, str(name), spec.state, spec.exclude_states)
 
         # 2) transitions

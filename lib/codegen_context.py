@@ -5,7 +5,10 @@ try:
 except ImportError:
     from objtracker import ObjectTracker
 
-from .contracts import ContractTable
+try:
+    from .contracts import ContractTable
+except ImportError:
+    from contracts import ContractTable
 
 predefined_variables = {  # 全局变量，写在template里面的
     "ibv_qp": "struct ibv_qp",
