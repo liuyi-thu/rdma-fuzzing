@@ -26,6 +26,11 @@ except ImportError:
     from utils import emit_assign  # for direct script debugging
 
 try:
+    from .contracts import State
+except ImportError:
+    from contracts import State
+
+try:
     from .value import (
         ConstantValue,
         DeferredValue,
@@ -370,18 +375,46 @@ class IbvSendWR(Attr):
         tso=None,
     ):
         self.wr_id = OptionalValue(IntValue(wr_id, 0xFFFFFFFF) if wr_id is not None else None)
-        self.next = OptionalValue(next_wr, factory=lambda: IbvSendWR.random_mutation())  # 另一个IbvSendWR对象或None
+        self.next = OptionalValue(next_wr, factory=lambda: IbvSendWR.random_mutation())
+
+        # ---- helpers: 选一个“活着”的本地 MR 名字 ----
+        def pick_live_local_mr_name(snap, rng):
+            cands = []
+            for (rt, nm), st in (snap or {}).items():
+                # 你的 contracts 中 MR “可用”如何定义由 require() 决定；这里简单用 ALLOCATED
+                if rt == "mr" and st in (State.ALLOCATED,):
+                    cands.append(nm)
+            return rng.choice(cands) if cands else None
+
+        def _sge_factory(snap=None, contract=None, rng=None):
+            rng = rng or random
+            mr_name = pick_live_local_mr_name(snap, rng)
+            if mr_name:
+                return IbvSge(mr=mr_name)
+            return IbvSge()  # 没 MR 也先给一个占位，后续 repair/contract 会提示补齐
+
+        def _sg_after(kind, lv, idx, item, snap, contract, rng, path):
+            # 维护 num_sge 不变式
+            try:
+                self.num_sge = OptionalValue(IntValue(len(lv.value)))
+            except Exception:
+                pass
+
         self.sg_list = OptionalValue(
-            ListValue(value=sg_list, factory=lambda: IbvSge.random_mutation()) if sg_list is not None else None
-        )  # list[IbvSge]
-        self.num_sge = OptionalValue(
-            IntValue(num_sge, 0) if num_sge is not None else (len(self.sg_list) if self.sg_list else 0)
+            ListValue(
+                value=sg_list if sg_list is not None else [],
+                factory=_sge_factory,
+                on_after_mutate=_sg_after,
+            )
         )
+        # 初值：如果传了 sg_list，就按长度赋；否则 0
+        init_num = len(self.sg_list.value) if (self.sg_list and hasattr(self.sg_list, "value")) else 0
+        self.num_sge = OptionalValue(IntValue(num_sge, 0) if num_sge is not None else IntValue(init_num))
+
         self.opcode = OptionalValue(EnumValue(opcode, "IBV_WR_OPCODE_ENUM") if opcode is not None else None)
         self.send_flags = OptionalValue(
             FlagValue(send_flags, "IBV_SEND_FLAGS_ENUM") if send_flags is not None else None
         )
-        # union
         self.imm_data = OptionalValue(IntValue(imm_data, 0xFFFFFFFF) if imm_data is not None else None)
         self.invalidate_rkey = OptionalValue(
             IntValue(invalidate_rkey, 0xFFFFFFFF) if invalidate_rkey is not None else None
@@ -395,78 +428,65 @@ class IbvSendWR(Attr):
 
     @classmethod
     def random_mutation(cls, chain_length=1):
+        rng = random
         if chain_length <= 1:
-            sg_list = [IbvSge.random_mutation() for _ in range(random.choice([0, 1, 2, 4]))]
-            opcode_val = random.choice(list(IBV_WR_OPCODE_ENUM.values()))
+            # sg_list 用上面的工厂逻辑，所以这里给一个空列表即可，让 ListValue 自己加
+            sg_list = []
+            opcode_val = rng.choice(list(IBV_WR_OPCODE_ENUM.values()))
             fields = {}
-            # 1. opcode驱动的union分支
             if opcode_val in (1, 3):  # *_WITH_IMM
-                fields["imm_data"] = random.randint(0, 0xFFFFFFFF)
+                fields["imm_data"] = rng.randint(0, 0xFFFFFFFF)
             if opcode_val == 7:  # *_INV
-                fields["invalidate_rkey"] = random.randint(0, 0xFFFFFFFF)
-            if opcode_val in (0, 1, 4):  # RDMA相关
+                fields["invalidate_rkey"] = rng.randint(0, 0xFFFFFFFF)
+            if opcode_val in (0, 1, 4):  # RDMA
                 fields["rdma"] = IbvRdmaInfo.random_mutation()
             if opcode_val in (5, 6, 15):  # ATOMIC
                 fields["atomic"] = IbvAtomicInfo.random_mutation()
             if opcode_val == 2:  # UD
                 fields["ud"] = IbvUdInfo.random_mutation()
-            # XRC通常是QP类型相关，但也可混淆
-            if random.random() < 0.2:
+            if rng.random() < 0.2:
                 fields["xrc"] = IbvXrcInfo.random_mutation()
-            # bind_mw
-            if opcode_val == 8 or random.random() < 0.1:
+            if opcode_val == 8 or rng.random() < 0.1:
                 fields["bind_mw"] = IbvBindMwInfo.random_mutation()
-            # TSO
-            if opcode_val == 10 or random.random() < 0.05:
+            if opcode_val == 10 or rng.random() < 0.05:
                 fields["tso"] = IbvTsoInfo.random_mutation()
-
-            # 支持链表式WR
-            next_wr = None
-            # if random.random() < 0.15:
-            #     next_wr = f"wr_{random.randint(1,9999)}"  # 这里给变量名占位，真正链表拼接时可递归生成
-
             return cls(
-                wr_id=random.randint(0, 2**64 - 1),
-                next_wr=next_wr,
+                wr_id=rng.randint(0, 2**64 - 1),
+                next_wr=None,
                 sg_list=sg_list,
-                num_sge=len(sg_list),
+                num_sge=0,
                 opcode=opcode_val,
-                send_flags=random.randint(0, 0xFFFF),
+                send_flags=rng.randint(0, 0xFFFF),
                 **fields,
             )
         else:
             head = None
             for _ in range(chain_length):
-                sg_list = [IbvSge.random_mutation() for _ in range(random.choice([0, 1, 2, 4]))]
-                opcode_val = random.choice(list(IBV_WR_OPCODE_ENUM.values()))
+                opcode_val = rng.choice(list(IBV_WR_OPCODE_ENUM.values()))
                 fields = {}
-                # 1. opcode驱动的union分支
-                if opcode_val in (1, 3):  # *_WITH_IMM
-                    fields["imm_data"] = random.randint(0, 0xFFFFFFFF)
-                if opcode_val == 7:  # *_INV
-                    fields["invalidate_rkey"] = random.randint(0, 0xFFFFFFFF)
-                if opcode_val in (0, 1, 4):  # RDMA相关
+                if opcode_val in (1, 3):
+                    fields["imm_data"] = rng.randint(0, 0xFFFFFFFF)
+                if opcode_val == 7:
+                    fields["invalidate_rkey"] = rng.randint(0, 0xFFFFFFFF)
+                if opcode_val in (0, 1, 4):
                     fields["rdma"] = IbvRdmaInfo.random_mutation()
-                if opcode_val in (5, 6, 15):  # ATOMIC
+                if opcode_val in (5, 6, 15):
                     fields["atomic"] = IbvAtomicInfo.random_mutation()
-                if opcode_val == 2:  # UD
+                if opcode_val == 2:
                     fields["ud"] = IbvUdInfo.random_mutation()
-                # XRC通常是QP类型相关，但也可混淆
-                if random.random() < 0.2:
+                if rng.random() < 0.2:
                     fields["xrc"] = IbvXrcInfo.random_mutation()
-                # bind_mw
-                if opcode_val == 8 or random.random() < 0.1:
+                if opcode_val == 8 or rng.random() < 0.1:
                     fields["bind_mw"] = IbvBindMwInfo.random_mutation()
-                # TSO
-                if opcode_val == 10 or random.random() < 0.05:
+                if opcode_val == 10 or rng.random() < 0.05:
                     fields["tso"] = IbvTsoInfo.random_mutation()
                 head = cls(
-                    wr_id=random.randint(0, 2**64 - 1),
+                    wr_id=rng.randint(0, 2**64 - 1),
                     next_wr=head,
-                    sg_list=sg_list,
-                    num_sge=1,
+                    sg_list=[],  # 让 ListValue 工厂后续自己补 SGEs
+                    num_sge=0,
                     opcode=opcode_val,
-                    send_flags=random.randint(0, 0xFFFF),
+                    send_flags=rng.randint(0, 0xFFFF),
                     **fields,
                 )
             return head
@@ -480,6 +500,8 @@ class IbvSendWR(Attr):
             val = getattr(self, field)
             if not val:
                 continue
+
+            # ---- sg_list：先解包成 python list 再生成 ----
             if field == "sg_list":
                 if len(val) > 0:
                     # 生成sge数组
@@ -488,7 +510,23 @@ class IbvSendWR(Attr):
                         s += sge.to_cxx(sge_var, ctx)
                     s += f"    {varname}.sg_list = &{varname}_sge_0;\n"
                 continue
-            # union/struct字段
+                # from lib.value import ListValue, OptionalValue
+
+                # vv = val.value if isinstance(val, OptionalValue) else val
+                # if isinstance(vv, ListValue):
+                #     items = vv.value
+                # elif isinstance(vv, list):
+                #     items = vv
+                # else:
+                #     items = []
+                # if len(items) > 0:
+                #     for idx, sge in enumerate(items):
+                #         sge_var = f"{varname}_sge_{idx}"
+                #         s += sge.to_cxx(sge_var, ctx)
+                #     s += f"    {varname}.sg_list = &{varname}_sge_0;\n"
+                # continue
+
+            # ---- union/struct 分支 ----
             if field == "rdma":
                 rdma_var = varname + "_rdma"
                 s += val.to_cxx(rdma_var, ctx)
@@ -520,10 +558,8 @@ class IbvSendWR(Attr):
                 for f in IbvTsoInfo.FIELD_LIST:
                     s += f"    {varname}.tso.{f} = {tso_var}.{f};\n"
             elif field in ["imm_data", "invalidate_rkey"]:
-                # union: 直接赋值即可，假定调用方保证只有一个有效
                 s += emit_assign(varname, field, val)
             elif field == "next_wr":
-                # 假设 next 是下一个wr的变量名
                 s += f"    {varname}.next = {val};\n"
             else:
                 s += emit_assign(varname, field, val, enum_fields)

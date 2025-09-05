@@ -4359,7 +4359,7 @@ class PostRecv(VerbCall):
             # wr_obj**   ：遍历整条 RecvWR 链
             # sg_list[*]：每个 WR 的所有 SGE
             # .mr       ：取出 ResourceValue("mr", <name>) → 名字
-            RequireSpec("mr", State.ALLOCATED, "wr_obj**.sg_list[*].mr"),
+            RequireSpec("mr", State.ALLOCATED, "wr_obj.**.sg_list[*].mr"),
         ],
         produces=[],
         transitions=[],
@@ -4380,33 +4380,6 @@ class PostRecv(VerbCall):
         self.bad_wr_var = ConstantValue(bad_wr_var or f"bad_recv_wr_{qp}")
         self.tracker = None
         self.required_resources = []
-
-    # def _contract(self) -> Contract:
-    #     """Generate the contract for this verb call."""
-    #     return self._contract_for_this_call()
-
-    # def _contract_for_this_call(self) -> Contract:  # dynamic contracts, since wr_obj may affect
-    #     if not self.wr_obj:
-    #         return Contract(
-    #             requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
-    #         )
-    #     else:
-    #         required_mrs = []
-    #         head = self.wr_obj
-    #         while head:
-    #             for sg in head.sg_list:
-    #                 if sg.mr:
-    #                     required_mrs.append(sg.mr.value)
-    #             head = head.next
-    #         return Contract(
-    #             requires=[
-    #                 RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED]),
-    #             ]
-    #             + [RequireSpec("mr", State.ALLOCATED, mr) for mr in required_mrs],
-    #             produces=[],
-    #             transitions=[],
-    #         )
-    #     pass
 
     def apply(self, ctx: CodeGenContext):
         self.required_resources = []
@@ -4458,17 +4431,24 @@ class PostRecv(VerbCall):
         return s
 
 
-class PostSend(VerbCall):  # TODO: 修改varname
+class PostSend(VerbCall):
     MUTABLE_FIELDS = ["qp", "wr_obj"]
+
+    # 关键：把整条 WR 链（wr_obj**）的所有 SGE（sg_list[*]）里的 MR 都声明为 requires
     CONTRACT = Contract(
-        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
+        requires=[
+            RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED]),
+            RequireSpec("mr", None, "wr_obj.**.sg_list[*].mr"),
+        ],
+        produces=[],
+        transitions=[],
     )
 
     def __init__(self, qp: str = None, wr_obj: IbvSendWR = None, wr_var=None, bad_wr_var=None):
         if not qp:
             raise ValueError("QP name must be provided")
         self.qp = ResourceValue(resource_type="qp", value=qp)
-        self.wr_obj = wr_obj  # IbvSendWR实例（用于自动生成WR内容）
+        self.wr_obj = wr_obj  # IbvSendWR实例（可为链头）
         self.tracker = None
         self.required_resources = []
 
@@ -4476,78 +4456,25 @@ class PostSend(VerbCall):  # TODO: 修改varname
         self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
         if self.tracker:
-            # Register the QP address in the tracker
             self.tracker.use("qp", self.qp.value)
-            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})  # 记录需要的资源
-            # # # Register the WR object in the tracker if it exists
-            # if wr_obj:
-            #     self.tracker.use('wr_obj', wr_obj)
+            self.required_resources.append({"type": "qp", "name": self.qp.value, "position": "qp"})
         if hasattr(ctx, "contracts"):
             ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
-    @classmethod
-    def from_trace(cls, info, ctx):
-        # info: 字符串或者dict，含qp/wr/bad_wr等参数
-        kv = _parse_kv(info)  # 假设有类似 {'qp':'qp1', 'wr':'wr1', ...}
-        wr_obj = None
-        if "wr_obj" in kv:
-            wr_obj = kv["wr_obj"]
-        return cls(qp=kv.get("qp"), wr=kv.get("wr"), bad_wr=kv.get("bad_wr"), wr_obj=wr_obj)
-
-    # def generate_c(self, ctx):
-    #     # ctx: CodeGenContext，负责变量声明/资源管理
-    #     qp_name = str(self.qp)
-    #     # e.g., "_0" for qp[0]
-    #     attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
-    #     wr_name = f"wr{attr_suffix}"  # e.g., "wr_0"
-    #     bad_wr_name = f"bad_wr{attr_suffix}"  # e.g., "bad_wr_0"
-    #     code = ""
-    #     # 1. 声明send_wr结构体内容
-    #     if self.wr_obj is not None:
-    #         code += self.wr_obj.to_cxx(wr_name, ctx)
-    #     # 2. 声明bad_wr变量
-    #     if bad_wr_name:
-    #         # Register the bad work request pointer in the context
-    #         ctx.alloc_variable(bad_wr_name, "struct ibv_send_wr *", "NULL")
-    #     # 3. 生成ibv_post_send调用
-    #     bad_wr_arg = f"&{bad_wr_name}" if bad_wr_name else "NULL"
-    #     # code += (
-    #     #     f"\n    int rc = ibv_post_send({self.qp}, "
-    #     #     f"&{self.wr}, {bad_wr_arg});\n"
-    #     #     f"    if (ibv_post_send({self.qp}, "
-    #     #     f"&{self.wr}, {bad_wr_arg})) {{ printf(\"ibv_post_send failed: %d\\n\", rc); }}\n"
-    #     # )
-    #     return f"""
-    # /* ibv_post_send */
-    # {code}
-
-    # if (ibv_post_send({qp_name}, &{wr_name}, {bad_wr_arg}) != 0) {{
-    #     fprintf(stderr, "Failed to post send work request\\n");
-    #     return -1;
-    # }}
-    # """
-
     def generate_c(self, ctx: CodeGenContext) -> str:
         qp_name = coerce_str(self.qp)
-        wr = unwrap(self.wr_obj)
         attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
-        wr_name = f"wr{attr_suffix}"  # e.g., "wr_0"
-        bad_wr_name = f"bad_wr{attr_suffix}"  # e.g., "bad_wr_0"
+        wr_name = f"wr{attr_suffix}"
+        bad_wr_name = f"bad_wr{attr_suffix}"
         code = ""
-        # 1. 声明send_wr结构体内容
         if self.wr_obj is not None:
             code += self.wr_obj.to_cxx(wr_name, ctx)
-        # 2. 声明bad_wr变量
         if bad_wr_name:
-            # Register the bad work request pointer in the context
             ctx.alloc_variable(bad_wr_name, "struct ibv_send_wr *", "NULL")
-        # 3. 生成ibv_post_send调用
-        bad_wr_arg = f"&{bad_wr_name}" if bad_wr_name else "NULL"
         return f"""
     /* ibv_post_send */
     {code}
-
-    if (ibv_post_send({qp_name}, &{wr_name}, {bad_wr_arg}) != 0) {{
+    if (ibv_post_send({qp_name}, &{wr_name}, &{bad_wr_name}) != 0) {{
         fprintf(stderr, "Failed to post send work request\\n");
         return -1;
     }}
@@ -5743,25 +5670,25 @@ class WrStart(VerbCall):
 
 # Mapping verb -> constructor
 VERB_FACTORY = {
-    "ibv_create_qp": CreateQP.from_trace,
-    "ibv_reg_mr": RegMR.from_trace,
-    "ibv_post_send": PostSend.from_trace,
-    "ibv_post_recv": PostRecv.from_trace,
-    "ibv_get_device_list": GetDeviceList.from_trace,
-    "ibv_open_device": OpenDevice.from_trace,
-    "ibv_free_device_list": FreeDeviceList.from_trace,
-    "ibv_query_device": QueryDeviceAttr.from_trace,
-    "ibv_query_port": QueryPortAttr.from_trace,
-    "ibv_query_gid": QueryGID.from_trace,
-    "ibv_alloc_pd": AllocPD.from_trace,
-    "ibv_create_cq": CreateCQ.from_trace,
-    "ibv_modify_qp": ModifyQP.from_trace,
-    # "ibv_modify_qp_rtr": ModifyQPToRTR.from_trace,
-    # "ibv_modify_qp_rts": ModifyQPToRTS.from_trace,
-    "ibv_poll_cq": PollCQ.from_trace,
-    "ibv_destroy_qp": DestroyQP.from_trace,
-    "ibv_dereg_mr": DeregMR.from_trace,
-    "ibv_destroy_cq": DestroyCQ.from_trace,
-    "ibv_dealloc_pd": DeallocPD.from_trace,
-    "ibv_close_device": CloseDevice.from_trace,
+    # "ibv_create_qp": CreateQP.from_trace,
+    # "ibv_reg_mr": RegMR.from_trace,
+    # "ibv_post_send": PostSend.from_trace,
+    # "ibv_post_recv": PostRecv.from_trace,
+    # "ibv_get_device_list": GetDeviceList.from_trace,
+    # "ibv_open_device": OpenDevice.from_trace,
+    # "ibv_free_device_list": FreeDeviceList.from_trace,
+    # "ibv_query_device": QueryDeviceAttr.from_trace,
+    # "ibv_query_port": QueryPortAttr.from_trace,
+    # "ibv_query_gid": QueryGID.from_trace,
+    # "ibv_alloc_pd": AllocPD.from_trace,
+    # "ibv_create_cq": CreateCQ.from_trace,
+    # "ibv_modify_qp": ModifyQP.from_trace,
+    # # "ibv_modify_qp_rtr": ModifyQPToRTR.from_trace,
+    # # "ibv_modify_qp_rts": ModifyQPToRTS.from_trace,
+    # "ibv_poll_cq": PollCQ.from_trace,
+    # "ibv_destroy_qp": DestroyQP.from_trace,
+    # "ibv_dereg_mr": DeregMR.from_trace,
+    # "ibv_destroy_cq": DestroyCQ.from_trace,
+    # "ibv_dealloc_pd": DeallocPD.from_trace,
+    # "ibv_close_device": CloseDevice.from_trace,
 }

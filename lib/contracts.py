@@ -392,16 +392,13 @@ class ContractTable:
     #         self.put(spec.rtype, str(name), spec.state)
     def apply_contract(self, verb: Any, contract: Contract):
         contract = verb.get_contract()
-        print(contract.requires)
         # 1) requires
         for spec in contract.requires:
             try:
                 val = _get_by_path(verb, spec.name_attr, missing_ok=True)
-                print(val)
             except Exception as e:
                 raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
-                print("requires:", str(name))
                 self.require(spec.rtype, str(name), spec.state, spec.exclude_states)
 
         # 2) transitions

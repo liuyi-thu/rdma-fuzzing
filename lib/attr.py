@@ -21,6 +21,8 @@ def debug_print(*args, **kwargs):
 
 
 class Attr:
+    MUTABLE_FIELDS = []
+
     def to_cxx(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError
 
@@ -91,14 +93,21 @@ class Attr:
         """Set a resource for this verb call, used for replacing resources."""
         self.set_resource(res_type, old_res_name, new_res_name)
 
-    def mutate(self, snap, contract, rng):
+    def mutate(self, snap, contract, rng, path):
         """Mutate the attributes of this object."""
         # 默认实现：不做任何变更
-        for field in self.MUTABLE_FIELDS:
-            if hasattr(self, field):
-                value = getattr(self, field)
-                if hasattr(value, "mutate"):
-                    debug_print(f"Mutating field '{field}' with value: {value}")
+        # for field in self.MUTABLE_FIELDS:
+        field = rng.choice(self.MUTABLE_FIELDS or [])
+
+        if hasattr(self, field):
+            value = getattr(self, field)
+            if hasattr(value, "mutate"):
+                sub_path = f"{path}.{field}" if path else field
+                debug_print(f"Mutating field '{field}' with value: {value}")
+                try:
+                    value.mutate(snap=snap, contract=contract, rng=rng, path=sub_path)
+                except TypeError:
+                    # 兼容老 wrapper：回退一次（但会丢 path，尽量把 wrapper 也做成宽容签名）
                     value.mutate(snap, contract, rng)
         pass
 

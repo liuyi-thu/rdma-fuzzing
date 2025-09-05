@@ -152,7 +152,7 @@ INITIAL_VERBS = [
             num_sge=1,
             opcode="IBV_WR_SEND",
             send_flags="IBV_SEND_SIGNALED",
-            sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
+            sg_list=[IbvSge(mr="mr0")],
         ),
     ),
     PostRecv(
@@ -160,7 +160,7 @@ INITIAL_VERBS = [
         wr_obj=IbvRecvWR(
             wr_id=1,
             num_sge=1,
-            next_wr=IbvRecvWR(wr_id=1, num_sge=1, next_wr=None, sg_list=[IbvSge(mr="mr0"), IbvSge(mr="mr12")]),
+            next_wr=IbvRecvWR(wr_id=1, num_sge=1, next_wr=None, sg_list=[IbvSge(mr="mr0"), IbvSge(mr="mr1")]),
             sg_list=[IbvSge(mr="mr0"), IbvSge(mr="mr1")],
         ),
     ),
@@ -181,18 +181,41 @@ INITIAL_VERBS = [
     DeallocPD(pd="pd0"),
     FreeDM(dm="dm0"),  # --- IGNORE ---
 ]
-
 if __name__ == "__main__":
     print("This is my_fuzz_test.py")
+    logging.basicConfig(level=logging.DEBUG)
     verbs = copy.deepcopy(INITIAL_VERBS)
     # for v in verbs:
     #     print(summarize_verb(v))
     ctx = CodeGenContext()
     for i in range(len(verbs)):
-        print(summarize_verb(verbs[i], deep=True, max_items=100))
+        print(i, summarize_verb(verbs[i], deep=True, max_items=100))
         verbs[i].apply(ctx)
         print()
-        # print(ctx.contracts)
+    mutator = fuzz_mutate.ContractAwareMutator()
+    print(mutator.find_dependent_verbs_stateful(verbs, ("mr", "mr0", State.ALLOCATED)))
+
+    for k in range(len(verbs)):
+        verbs = copy.deepcopy(INITIAL_VERBS)
+        print(f"=== Deleting verb {k} ===")
+        # for i in range(len(verbs)):
+        #     print(i, summarize_verb(verbs[i], deep=True, max_items=100))
+        #     verbs[i].apply(ctx)
+        print(summarize_verb_list(verbs, highlight=k, deep=True))
+        print("----- After Deletion -----")
+        mutator.mutate_delete(verbs, idx_=k)
+        ctx = CodeGenContext()
+        for i in range(len(verbs)):
+            # print(i, summarize_verb(verbs[i], deep=True, max_items=100))
+            verbs[i].apply(ctx)
+        print(summarize_verb_list(verbs, deep=True))
+        # print()
+        print()
+
+    # mutator.mutate_param(verbs, 21)
+    # # verbs[21].wr_obj.sg_list.mutate()
+    # print(i, summarize_verb(verbs[21], deep=True, max_items=100))
+    # print(ctx.contracts)
     # mutator = fuzz_mutate.ContractAwareMutator()
     # # target = ("qp", "qp0")
     # # dependent_verbs = mutator.find_dependent_verbs(verbs, target)

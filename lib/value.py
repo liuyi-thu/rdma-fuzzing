@@ -23,6 +23,58 @@ def debug_print(*args, **kwargs):
     logging.debug(*args, **kwargs)
 
 
+import re
+
+
+def _tokenize(path: str):
+    # "wr_obj.**.sg_list[*].mr" -> ["wr_obj", "**", "sg_list[*]", "mr"]
+    return path.split(".")
+
+
+def _seg_matches(pat_seg: str, path_seg: str) -> bool:
+    # 1) ** 在外层处理（不是单段匹配）
+    if pat_seg == "**":
+        return True  # 交给外层回溯
+    # 2) sg_list[*] vs sg_list[0]
+    m = re.fullmatch(r"([A-Za-z_]\w*)\[\*\]", pat_seg)
+    if m:
+        base = m.group(1)
+        return bool(re.fullmatch(rf"{re.escape(base)}\[\d+\]", path_seg))
+    # 3) 普通字段完全相等
+    return pat_seg == path_seg
+
+
+def _path_matches(pattern: str, path: str) -> bool:
+    # 回溯匹配，** 可“吃掉”0~N段
+    p = _tokenize(pattern)
+    s = _tokenize(path)
+    logging.debug(f"Matching path '{path}' against pattern '{pattern}'")
+    logging.debug(f"Tokenized pattern: {p}")
+    logging.debug(f"Tokenized path: {s}")
+
+    def dfs(i, j):
+        if i == len(p) and j == len(s):
+            return True
+        if i == len(p):
+            return False
+        if p[i] == "**":
+            # ** 可以匹配 0..N 段
+            # 尝试不吃段
+            if dfs(i + 1, j):
+                return True
+            # 吃掉一段，再继续
+            if j < len(s) and dfs(i, j + 1):
+                return True
+            return False
+        # 普通段
+        logging.debug(f"Matching segment '{p[i]}' with '{s[j] if j < len(s) else 'END'}'")
+        if j < len(s) and _seg_matches(p[i], s[j]):
+            return dfs(i + 1, j + 1)
+        return False
+
+    return dfs(0, 0)
+
+
 class Range:
     def __init__(self, min_value, max_value):
         self.min_value = min_value
@@ -440,50 +492,88 @@ class ResourceValue(Value):
             return True
         return False
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
-        if not self.mutable:
-            debug_print("This ResourceValue is not mutable.")
-            return
-        if not path:
-            debug_print("No path provided for ResourceValue mutation.")
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, **kwargs):
+        if not self.mutable or not path or not contract:
             return
 
-        # 应该是这样，判断该value属于produces还是requires（transition类）
-        # produces类禁止mutate
-
-        reqs = []
-        for item in contract.requires or []:  # TODO: 这里的实现其实是错误的，但是先这样凑合着用
-            if item.name_attr == path:
-                reqs.append(item)
-
-        assert len(reqs) <= 1
-        logging.debug(f"ResourceValue mutate at {path}, reqs: {reqs}")
-
-        # print(required_state, required_type)
-        if reqs:
-            req: RequireSpec = reqs[0]
-            assert req.rtype == self.resource_type
-            cands = []
-            for (t, name), st in (snap or {}).items():
-                if t == req.rtype and (req.state is None or st == req.state) and st not in (req.exclude_states or []):
-                    logging.debug(f"  candidate: {(t, name)} with state {st}")
-                    cands.append(name)
-            if cands:
-                rng = rng or random
-                cands = [x for x in cands if x != self.value] or cands
-                self.value = rng.choice(cands)
-                return
-        else:
+        # 1) 找到与当前 path 匹配的 require/produce 规格
+        reqs = [spec for spec in (contract.requires or []) if _path_matches(spec.name_attr, path)]
+        prods = [spec for spec in (contract.produces or []) if _path_matches(spec.name_attr, path)]
+        logging.debug(f"Mutating ResourceValue at {path}")
+        logging.debug(f"Found reqs: {reqs}, prods: {prods}")
+        # 2) 产出位点（produces）通常不改名：直接返回
+        if prods:
             return
-        # if snap is not None and hasattr(snap, "snapshot"):
-        #     typ = self.resource_type
-        #     snap_dict = snap.snapshot()
-        #     cands = [name for (t, name), st in snap_dict.items() if t == typ and st != "DESTROYED"]
-        #     if cands:
-        #         rng = rng or random
-        #         self.value = rng.choice([x for x in cands if x != self.value] or cands)
-        #         return
-        pass
+
+        # 3) 按 require 规则挑候选
+        if not reqs:
+            return
+        req = reqs[0]
+        assert req.rtype == self.resource_type
+
+        rng = rng or random
+        cands = []
+        for (t, name), st in (snap or {}).items():
+            if t != req.rtype:
+                continue
+            if (req.state is None or st == req.state) and (st not in (req.exclude_states or [])):
+                cands.append(name)
+
+        if not cands:
+            return
+        # 尽量换个名字
+        choices = [x for x in cands if x != self.value] or cands
+        self.value = rng.choice(choices)
+
+    # def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    #     if not self.mutable:
+    #         debug_print("This ResourceValue is not mutable.")
+    #         return
+    #     if not path:
+    #         debug_print("No path provided for ResourceValue mutation.")
+    #         return
+
+    #     # 应该是这样，判断该value属于produces还是requires（transition类）
+    #     # produces类禁止mutate
+    #     logging.debug(f"Mutating ResourceValue at {path}")
+    #     reqs = []
+    #     for item in contract.requires or []:  # TODO: 这里的实现其实是错误的，但是先这样凑合着用
+    #         if item.name_attr == path:
+    #             reqs.append(item)
+
+    #     produces = []
+    #     for item in contract.produces or []:
+    #         if item.name_attr == path:
+    #             produces.append(item)
+
+    #     assert len(reqs) <= 1
+    #     logging.debug(f"ResourceValue mutate at {path}, reqs: {reqs}, produces: {produces}")
+
+    #     # print(required_state, required_type)
+    #     if reqs:
+    #         req: RequireSpec = reqs[0]
+    #         assert req.rtype == self.resource_type
+    #         cands = []
+    #         for (t, name), st in (snap or {}).items():
+    #             if t == req.rtype and (req.state is None or st == req.state) and st not in (req.exclude_states or []):
+    #                 logging.debug(f"  candidate: {(t, name)} with state {st}")
+    #                 cands.append(name)
+    #         if cands:
+    #             rng = rng or random
+    #             cands = [x for x in cands if x != self.value] or cands
+    #             self.value = rng.choice(cands)
+    #             return
+    #     else:
+    #         return
+    #     # if snap is not None and hasattr(snap, "snapshot"):
+    #     #     typ = self.resource_type
+    #     #     snap_dict = snap.snapshot()
+    #     #     cands = [name for (t, name), st in snap_dict.items() if t == typ and st != "DESTROYED"]
+    #     #     if cands:
+    #     #         rng = rng or random
+    #     #         self.value = rng.choice([x for x in cands if x != self.value] or cands)
+    #     #         return
+    #     pass
 
 
 class ListValue(Value):  # 能不能限定：列表的元素都一样；传入时知道元素类型，比如IbvSge
@@ -525,6 +615,9 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
             return
         # Choices: (1) add a new item, (2) remove an item, (3) mutate an existing item, (4) swap two items
         mutation_choice = rng.choice(self.MUTATION_CHOICES)
+
+        # mutation_choice = "mutate_item"  # debugging only
+
         debug_print(f"Mutating ListValue with choice: {mutation_choice}")
         if mutation_choice == "add_item":
             # Add a new item to the list
@@ -567,7 +660,12 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
                 k = rng.randrange(0, len(self.value))
                 itm = self.value[k]
                 if hasattr(itm, "mutate"):
-                    itm.mutate(snap=snap, contract=contract, rng=rng, path=(path or "") + f".[{k}]")
+                    sub_path = f"{path}[{k}]" if path else f"[{k}]"
+                    try:
+                        itm.mutate(snap=snap, contract=contract, rng=rng, path=sub_path)
+                    except TypeError:
+                        itm.mutate(snap, contract, rng)
+                    # itm.mutate(snap=snap, contract=contract, rng=rng, path=(path or "") + f".[{k}]")
                     debug_print(f"Mutated item: {itm}")
                     if callable(self.on_after_mutate):
                         self.on_after_mutate(
@@ -596,8 +694,8 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
                 debug_print(f"Swapped items: {self.value[idx1]} and {self.value[idx2]}")
             else:
                 debug_print("Not enough items to swap in the list.")
-        if callable(self.on_after_mutate):
-            self.on_after_mutate(self)
+        # if callable(self.on_after_mutate):
+        #     self.on_after_mutate(self)
 
     def __iter__(self):
         """Make ListValue iterable."""
@@ -631,6 +729,10 @@ class OptionalValue(Value):
         # 1/3概率变成None，1/3递归变异，1/3换新
         rng = rng or random
         r = rng.random()
+        # if hasattr(self.value, "mutate"):  # debugging only
+        #     self.value.mutate(snap, contract, rng, path)
+        # return
+
         if self.value is None:
             if self.factory:
                 self.value = self.factory()  # TODO: factory should return a Value type（重新生成一份新的？）
@@ -651,7 +753,7 @@ class OptionalValue(Value):
             elif r < 0.66:
                 # 对内部 value 做变异
                 if hasattr(self.value, "mutate"):
-                    self.value.mutate(snap, contract, rng)
+                    self.value.mutate(snap, contract, rng, path)
                     debug_print("OptionalValue: mutated internal value")
             else:
                 # 重新生成一个新的 value
@@ -729,11 +831,6 @@ class OptionalValue(Value):
     #     # else:
     #     #     raise TypeError("Can only add OptionalValue or Value to OptionalValue")
     #     pass
-
-
-# value.py
-
-import re
 
 
 class DeferredValue(Value):

@@ -166,57 +166,6 @@ def _trim_forward_on_lost(verbs, start_idx, lost):
 
 
 # # ---- 全局搜索可行插入位置 ----
-# def _find_feasible_positions(verbs, ins_list, *, try_trim_on_destroy=True) -> list[int]:
-#     """
-#     返回所有可行插入位置 pos，使得：
-#       apply(verbs[:pos]); apply(ins_list); apply(verbs[pos:]) 可成功
-#     若 ins_list 包含 destroy，且 try_trim_on_destroy=True，则允许先对 suffix 做“前向切片清理”再验证。
-#     """
-#     feasible = []
-#     n = len(verbs)
-#     for pos in range(n + 1):
-#         # 前缀
-#         ctx = FakeCtx()
-#         try:
-#             _apply_slice(ctx, verbs[:pos])
-#         except Exception:
-#             continue
-
-#         # 待插入段
-#         ctx_mid = FakeCtx()
-#         # 为了简化（tracker/contract 状态延续），这里直接用同一个 ctx 连续 apply 即可
-#         ctx_mid = ctx
-#         try:
-#             _apply_slice(ctx_mid, ins_list)
-#         except Exception:
-#             continue
-
-#         # 后缀：先直接尝试整条；如果失败且 destroy 可清理，则做一次清理再试
-#         suffix = verbs[pos:]
-#         ctx_tail = FakeCtx()
-#         ctx_tail = ctx_mid
-#         try:
-#             _apply_slice(ctx_tail, suffix)
-#             feasible.append(pos)
-#             continue
-#         except Exception:
-#             # 后缀直接失败，尝试 destroy 清理路径
-#             if not try_trim_on_destroy:
-#                 continue
-#             lost = _lost_from_ins(ins_list)
-#             if not lost:
-#                 continue
-#             # 构造一个“临时序列”，对 suffix 做剪枝再验证
-#             tmp = verbs[:pos] + list(ins_list) + verbs[pos:]
-#             _trim_forward_on_lost(tmp, pos + len(ins_list), lost)
-#             ctx_full = FakeCtx()
-#             try:
-#                 _apply_slice(ctx_full, tmp)
-#                 feasible.append(pos)
-#             except Exception:
-#                 continue
-
-#     return feasible
 
 
 def _check_feasible_position(verbs, ins_list, idx, *, try_trim_on_destroy=True):
@@ -271,21 +220,6 @@ def _check_feasible_position(verbs, ins_list, idx, *, try_trim_on_destroy=True):
 
 
 # ---- 位置选择策略：best / append / prepend / random ----
-# def _choose_insert_pos(rng, feasible: list[int], *, place: str = "best") -> int | None:
-#     if not feasible:
-#         return None
-#     place = (place or "best").lower()
-#     if place == "append":
-#         return max(feasible)
-#     if place == "prepend":
-#         return min(feasible)
-#     if place == "random":
-#         return rng.choice(feasible)
-#     # "best": 偏向靠后，若有多个并列也可随机挑一个靠后的
-#     m = max(feasible)
-#     # 也可加一点小抖动：在 top-K 里随机
-#     topk = [p for p in feasible if p >= m - 2]  # 允许在最后 3 个点内随机
-#     return rng.choice(topk) if topk else m
 
 
 def _choose_insert_pos(
@@ -585,17 +519,30 @@ def _mk_min_send_wr():
     return IbvSendWR(opcode="IBV_WR_SEND", num_sge=1, sg_list=[sge])
 
 
-def _mk_min_mw_bind(live, rng):
+# ==== 新版：最小 WR/SGE 构造（传入 mr 名称） ====
+def _mk_min_recv_wr_with_mr(mr_name: str):
+    from lib.ibv_all import IbvRecvWR, IbvSge
+
+    sge = IbvSge(mr=mr_name)
+    return IbvRecvWR(num_sge=1, sg_list=[sge])
+
+
+def _mk_min_send_wr_with_mr(mr_name: str):
+    from lib.ibv_all import IbvSendWR, IbvSge
+
+    sge = IbvSge(mr=mr_name)
+    # 最小可行：SEND + 1 SGE
+    return IbvSendWR(opcode="IBV_WR_SEND", num_sge=1, sg_list=[sge])
+
+
+def _mk_min_mw_bind_with_mr(mr_name: str):
     """
     返回 (mw_bind_obj, mr_name)。若现场没有 MR，则生成一个占位名并交给 requires-filler 去补链。
     """
     from lib.ibv_all import IbvMwBind, IbvMwBindInfo
 
-    # 选一个现场 MR；没有就造一个占位名（让 requires-filler 去补 Register）
-    mr_live = [n for (t, n) in live if t == "mr"]
-    mr_name = rng.choice(mr_live) if mr_live else f"mr_{rng.randrange(1 << 16)}"
     bind_info = IbvMwBindInfo(mr=mr_name, addr=0x0, length=0x1000, mw_access_flags=0)  # 最小配置
-    return IbvMwBind(bind_info=bind_info), mr_name
+    return IbvMwBind(bind_info=bind_info)
 
 
 # ==== Minimal builders (复用你已有的 ibv_all 聚合) ====
@@ -687,56 +634,6 @@ def _live_before(verbs: List[VerbCall], i: int) -> set[tuple[str, str]]:
             if (rtype, name) not in live:
                 live.append((rtype, name))
     return live
-
-
-def _default_factories():
-    from lib.ibv_all import IbvAllocDmAttr, IbvQPCap, IbvQPInitAttr
-
-    from .verbs import AllocDM, AllocPD, CreateCQ, CreateQP, RegMR
-
-    def mk_pd(ctx, name):
-        return AllocPD(pd=name)
-
-    def mk_cq(ctx, name):
-        return CreateCQ(cq=name, cqe=16, comp_vector=0, channel="NULL")
-
-    def mk_qp(ctx, name):
-        init = IbvQPInitAttr(
-            qp_type="IBV_QPT_RC",
-            send_cq="cq0",
-            recv_cq="cq0",
-            cap=IbvQPCap(max_send_wr=1, max_recv_wr=1, max_send_sge=1, max_recv_sge=1),
-        )
-        return CreateQP(pd="pd0", qp=name, init_attr_obj=init)
-
-    def mk_mr(ctx, name):
-        return RegMR(pd="pd0", mr=name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE")
-
-    def mk_dm(ctx, name):
-        return AllocDM(dm=name, attr_obj=IbvAllocDmAttr(length=0x2000, log_align_req=64))
-
-    return {"pd": mk_pd, "cq": mk_cq, "qp": mk_qp, "mr": mk_mr, "dm": mk_dm}
-
-
-def _ensure_requires_before(verbs: List[VerbCall], i: int, v_new: VerbCall, *, factories=None, max_chain=8) -> bool:
-    if factories is None:
-        factories = _default_factories()
-    reqs, _pros, _des = verb_edges_recursive(v_new)
-    if not reqs:
-        return True
-    for _ in range(max_chain):
-        live = _live_before(verbs, i)
-        missing = [(r, n) for (r, n) in reqs if (r, n) not in live]
-        if not missing:
-            return True
-        rtype, name = missing[0]
-        f = factories.get(rtype)
-        if not f:
-            return False
-        pre = f(None, name)
-        chain = pre if isinstance(pre, list) else [pre]
-        verbs[i:i] = chain
-    return False
 
 
 # ========================= ModifyQP builders =========================
@@ -978,7 +875,7 @@ def _build_destroy_of_type(rng, verbs, i, rtype: str):
     return cls(**kwargs)
 
 
-def build_destroy_generic(ctx, rng, live, verbs, i):
+def build_destroy_generic(ctx, rng, verbs, i):
     """
     优先销毁“叶子资源”，减少大范围连锁影响；
     若无叶子，就退化为销毁任一 live 资源（不包括 device 等全局）。
@@ -1041,38 +938,7 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         ReRegMR,
     )
 
-    def live_set():
-        return _live_before(verbs, i)
-
-    def pick_rnames(kind):
-        xs = [n for (t, n) in live_set() if t == kind]
-        return xs
-
-    def pick(kind):
-        xs = [n for (t, n) in live_set() if t == kind]
-        return rng.choice(xs) if xs else None
-
-    # def pick(kind):
-    #     # return pick_rnames(kind) or [f"{kind}_{rng.randrange(1 << 16)}"]
-    #     return pick_rnames(kind)
-
-    def pick_qp_name():
-        qps = [n for (t, n) in live_set() if t == "qp"]
-        return rng.choice(qps) if qps else None
-
-    def pick_cq_name():
-        cqs = [n for (t, n) in live_set() if t == "cq"]
-        return rng.choice(cqs) if cqs else None
-
-    def pick_pd_name():
-        pds = [n for (t, n) in live_set() if t == "pd"]
-        return rng.choice(pds) if pds else None
-
-    def pick_mw_name():
-        mws = [n for (t, n) in live_set() if t == "mw"]
-        return rng.choice(mws) if mws else None
-
-    def gen_new_name(kind, snap):
+    def gen_new_name(kind, snap, rng):
         existing = {n for (t, n) in snap.keys() if t == kind}
         for _ in range(100):
             name = f"{kind}_{rng.randrange(1 << 16)}"
@@ -1080,68 +946,94 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
                 return name
         return None
 
+    def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | None:
+        cands = []
+        for (rt, nm), st in (snap or {}).items():
+            if rt == rtype and st not in (State.DESTROYED,):
+                cands.append(nm)
+        return rng.choice(cands) if cands else None
+
     # 1) ModifyQP：复用你已有的有/无状态策略
-    def build_modify_qp(ctx, rng, live, snap):
-        qp = pick_qp_name()
+    def build_modify_qp(ctx, rng, snap):
+        qp = _pick_live_from_snap(snap, "qp", rng)
         if not qp:
             return None
         return build_modify_qp_out(verbs, i, qp, rng)  # 你现有的包装
 
     # 2) PostSend：最小 WR（1 SGE）
-    def build_post_send(ctx, rng, live, snap):
-        qp = pick_qp_name()
+
+    def build_post_send(ctx, rng, snap):
+        qp = _pick_live_from_snap(snap, "qp", rng)
         if not qp:
             return None
-        wr = _mk_min_send_wr()
-        return PostSend(qp=qp, wr_obj=wr)
+
+        # 先找活着的 MR；没有就插入 RegMR（要有 PD）
+        mr_name = _pick_live_from_snap(snap, "mr", rng)
+        ins_list = []
+        if mr_name is None:
+            pd = _pick_live_from_snap(snap, "pd", rng)
+            if pd is None:
+                return None  # 现场既没 MR 也没 PD，无法自举
+            mr_name = gen_new_name("mr", snap, rng)
+            ins_list.append(RegMR(pd=pd, mr=mr_name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE"))
+
+        wr = _mk_min_send_wr_with_mr(mr_name)
+        ins_list.append(PostSend(qp=qp, wr_obj=wr))
+        return ins_list
 
     # 3) PollCQ
-    def build_poll_cq(ctx, rng, live, snap):
-        cq = pick_cq_name()
-        # return None if not cq else PollCQ(cq=cq, num_entries=1)
+    def build_poll_cq(ctx, rng, snap):
+        cq = _pick_live_from_snap(snap, "cq", rng)
         return None if not cq else PollCQ(cq=cq)
 
     # 4) RegMR（绑定已有 PD）
-    def build_reg_mr(ctx, rng, live, snap):
-        pd = pick_pd_name()
+    def build_reg_mr(ctx, rng, snap):
+        pd = _pick_live_from_snap(snap, "pd", rng)
         if not pd:
             return None
-        # mr_name = f"mr_{rng.randrange(1 << 16)}"
-        mr_name = gen_new_name("mr", snap)
+        mr_name = gen_new_name("mr", snap, rng)
         return RegMR(pd=pd, mr=mr_name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE")
 
     # 5) CreateCQ（纯创建）
-    def build_create_cq(ctx, rng, live, snap):
-        # cq_name = f"cq_{rng.randrange(1 << 16)}"
-        cq_name = gen_new_name("cq", snap)
+    def build_create_cq(ctx, rng, snap):
+        cq_name = gen_new_name("cq", snap, rng)
         return CreateCQ(cq=cq_name, cqe=16, comp_vector=0, channel="NULL")
 
     # 6) **PostRecv**（最小 WR：1 SGE）
-    def build_post_recv(ctx, rng, live, snap):
-        qp = pick_qp_name()
+    def build_post_recv(ctx, rng, snap):
+        qp = _pick_live_from_snap(snap, "qp", rng)
         if not qp:
             return None
-        wr = _mk_min_recv_wr()
-        return PostRecv(qp=qp, wr_obj=wr)
+        mr_name = _pick_live_from_snap(snap, "mr", rng)
+        ins_list = []
+        if mr_name is None:
+            pd = _pick_live_from_snap(snap, "pd", rng)
+            if pd is None:
+                return None
+            mr_name = gen_new_name("mr", snap, rng)
+            ins_list.append(RegMR(pd=pd, mr=mr_name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE"))
+
+        wr = _mk_min_recv_wr_with_mr(mr_name)
+        ins_list.append(PostRecv(qp=qp, wr_obj=wr))
+        return ins_list
 
     # 7) **BindMW**（绑定已有 MR，产出 MW）
-    def build_bind_mw(ctx, rng, live, snap):
-        qp = pick_qp_name()
+    def build_bind_mw(ctx, rng, snap):
+        qp = _pick_live_from_snap(snap, "qp", rng)
         if not qp:
             return None
-        mw = pick_mw_name()
+        mw = _pick_live_from_snap(snap, "mw", rng)
         if not mw:
             return None
-        # mw_name = f"mw_{rng.randrange(1 << 16)}"
-        mw_name = mw
-        mw_bind_obj, mr_name = _mk_min_mw_bind(live_set(), rng)
+        mr = _pick_live_from_snap(snap, "mr", rng)
+        mw_bind_obj = _mk_min_mw_bind_with_mr(mr)
         # BindMW 的 CONTRACT: 需要 qp 和 mw_bind_obj.bind_info.mr；产出 mw
         # （没有 MR 时，_ensure_requires_before 会补建 RegMR）
-        return BindMW(qp=qp, mw=mw_name, mw_bind_obj=mw_bind_obj)
+        return BindMW(qp=qp, mw=mw, mw_bind_obj=mw_bind_obj)
 
     # 8) **AttachMcast**（最小 gid/lid）
-    def build_attach_mcast(ctx, rng, live, snap):
-        qp = pick_qp_name()
+    def build_attach_mcast(ctx, rng, snap):
+        qp = _pick_live_from_snap(snap, "qp", rng)
         if not qp:
             return None
         # 用最小 GID 变量名（假设你的 ctx 里会有 gid 变量，或者后续你可以在 factories 里补一个定义 GID 的 helper）
@@ -1149,156 +1041,150 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
         return AttachMcast(qp=qp, gid=gid_var, lid=0)
 
     # 9) （可选）**RegDmaBufMR**（需要 pd）
-    def build_reg_dmabuf_mr(ctx, rng, live, snap):
-        pd = pick_pd_name()
+    def build_reg_dmabuf_mr(ctx, rng, snap):
+        pd = _pick_live_from_snap(snap, "pd", rng)
         if not pd:
             return None
         # mr_name = f"mr_{rng.randrange(1 << 16)}"
-        mr_name = gen_new_name("mr", snap)
+        mr_name = gen_new_name("mr", snap, rng)
         # 随便给一个小范围
         return RegDmaBufMR(pd=pd, mr=mr_name, offset=0, length=0x2000, iova=0, fd=3, access="IBV_ACCESS_LOCAL_WRITE")
 
     # 新增：销毁类模板（支持点名 destroy_XXX，也支持 generic）
-    def build_destroy(ctx, rng, live, snap):
-        return build_destroy_generic(ctx, rng, live, verbs, i)
+    def build_destroy(ctx, rng, snap):
+        return build_destroy_generic(ctx, rng, verbs, i)
 
-    def build_destroy_qp(ctx, rng, live, snap):
+    def build_destroy_qp(ctx, rng, snap):
         return _build_destroy_of_type(rng, verbs, i, "qp")
 
-    def build_destroy_cq(ctx, rng, live, snap):
+    def build_destroy_cq(ctx, rng, snap):
         return _build_destroy_of_type(rng, verbs, i, "cq")
 
-    def build_dealloc_pd(ctx, rng, live, snap):
+    def build_dealloc_pd(ctx, rng, snap):
         return _build_destroy_of_type(rng, verbs, i, "pd")
 
-    def build_dereg_mr(ctx, rng, live, snap):
+    def build_dereg_mr(ctx, rng, snap):
         return _build_destroy_of_type(rng, verbs, i, "mr")
 
-    def build_dealloc_mw(ctx, rng, live, snap):
+    def build_dealloc_mw(ctx, rng, snap):
         return _build_destroy_of_type(rng, verbs, i, "mw")
 
     # ---------- SRQ ----------
-    def build_create_srq(ctx, rng, live, snap):
-        pds = pick_rnames("pd")
-        if not pds:
+    def build_create_srq(ctx, rng, snap):
+        pd = _pick_live_from_snap(snap, "pd", rng)
+        if not pd:
             return None
-        pd = rng.choice(pds)
         # srq_name = f"srq_{rng.randrange(1 << 16)}"
-        srq_name = gen_new_name("srq", snap)
+        srq_name = gen_new_name("srq", snap, rng)
         return CreateSRQ(pd=pd, srq=srq_name, srq_init_obj=_mk_min_srq_init())
 
-    def build_post_srq_recv(ctx, rng, live, snap):
-        srqs = pick_rnames("srq")
-        if not srqs:
-            return None
+    def build_post_srq_recv(ctx, rng, snap):
+        srq = _pick_live_from_snap(snap, "srq", rng)
         from lib.ibv_all import IbvRecvWR
 
-        return PostSRQRecv(srq=rng.choice(srqs), wr_obj=_mk_min_recv_wr())
+        return PostSRQRecv(srq=rng.choice(srq), wr_obj=_mk_min_recv_wr())
 
-    def build_modify_srq(ctx, rng, live, snap):
-        srqs = pick_rnames("srq")
-        if not srqs:
-            return None
+    def build_modify_srq(ctx, rng, snap):
+        srq = _pick_live_from_snap(snap, "srq", rng)
         # 你的 ModifySRQ 支持 IbvSrqAttr + mask（verbs 里定义了 attr_mask: IBV_SRQ_ATTR_*）
         from lib.ibv_all import IbvSrqAttr
 
         return ModifySRQ(
-            srq=rng.choice(srqs), attr_obj=IbvSrqAttr(max_wr=1, srq_limit=0), attr_mask="IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT"
+            srq=rng.choice(srq), attr_obj=IbvSrqAttr(max_wr=1, srq_limit=0), attr_mask="IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT"
         )
 
     # ---------- WQ ----------
-    def build_create_wq(ctx, rng, live, snap):
-        pds = pick_rnames("pd")
-        cqs = pick_rnames("cq")
-        if not (pds and cqs):
+    def build_create_wq(ctx, rng, snap):
+        pd = _pick_live_from_snap(snap, "pd", rng)
+        cq = _pick_live_from_snap(snap, "cq", rng)
+        if not (pd and cq):
             return None
-        pd, cq = rng.choice(pds), rng.choice(cqs)
         # wq_name = f"wq_{rng.randrange(1 << 16)}"
-        wq_name = gen_new_name("wq", snap)
+        wq_name = gen_new_name("wq", snap, rng)
         return CreateWQ(ctx_name="ctx", wq=wq_name, wq_attr_obj=_mk_min_wq_init(pd, cq))
 
     # ---------- AH ----------
-    def build_create_ah(ctx, rng, live, snap):
-        pds = pick_rnames("pd")
-        if not pds:
+    def build_create_ah(ctx, rng, snap):
+        pd = _pick_live_from_snap(snap, "pd", rng)
+        if not pd:
             return None
-        ah_name = gen_new_name("ah", snap)
-        return CreateAH(pd=rng.choice(pds), ah=ah_name, attr_obj=_mk_min_ah_attr())
+        ah_name = gen_new_name("ah", snap, rng)
+        return CreateAH(pd=pd, ah=ah_name, attr_obj=_mk_min_ah_attr())
 
     # ---------- Flow ----------
-    def build_create_flow(ctx, rng, live, snap):
-        qps = pick_rnames("qp")
-        if not qps:
+    def build_create_flow(ctx, rng, snap):
+        qp = _pick_live_from_snap(snap, "qp", rng)
+        if not qp:
             return None
-        flow_name = gen_new_name("flow", snap)
-        return CreateFlow(qp=rng.choice(qps), flow=flow_name, flow_attr_obj=_mk_min_flow_attr())
+        flow_name = gen_new_name("flow", snap, rng)
+        return CreateFlow(qp=qp, flow=flow_name, flow_attr_obj=_mk_min_flow_attr())
 
     # ---------- CQ notify ----------
-    def build_req_notify_cq(ctx, rng, live, snap):
-        cqs = pick_rnames("cq")
-        if not cqs:
+    def build_req_notify_cq(ctx, rng, snap):
+        cq = _pick_live_from_snap(snap, "cq", rng)
+        if not cq:
             return None
-        return ReqNotifyCQ(cq=rng.choice(cqs), solicited_only=rng.choice([0, 1]))
+        return ReqNotifyCQ(cq=cq, solicited_only=rng.choice([0, 1]))
 
     # ---------- 查询类 ----------
-    def build_query_qp(ctx, rng, live, snap):
-        qps = pick_rnames("qp")
-        if not qps:
+    def build_query_qp(ctx, rng, snap):
+        qp = _pick_live_from_snap(snap, "qp", rng)
+        if not qp:
             return None
-        return QueryQP(qp=rng.choice(qps), attr_mask="IBV_QP_STATE | IBV_QP_PORT | IBV_QP_PKEY_INDEX")
+        return QueryQP(qp=qp, attr_mask="IBV_QP_STATE | IBV_QP_PORT | IBV_QP_PKEY_INDEX")
 
-    def build_query_srq(ctx, rng, live, snap):
-        srqs = pick_rnames("srq")
-        if not srqs:
+    def build_query_srq(ctx, rng, snap):
+        srq = _pick_live_from_snap(snap, "srq", rng)
+        if not srq:
             return None
-        return QuerySRQ(srq=rng.choice(srqs))
+        return QuerySRQ(srq=srq)
 
     # --- AllocPD: 直接产一个 PD ---
-    def build_alloc_pd(ctx, rng, live, snap):
+    def build_alloc_pd(ctx, rng, snap):
         # pd_name = f"pd_{rng.randrange(1 << 16)}"
-        pd_name = gen_new_name("pd", snap)
+        pd_name = gen_new_name("pd", snap, rng)
         return AllocPD(pd=pd_name)
 
     # --- CreateQP: 需要 pd/cq，init_attr_obj 引用已有 cq（缺就补链）---
-    def build_create_qp(ctx, rng, live, snap):
-        pd = pick("pd")
+    def build_create_qp(ctx, rng, snap):
+        pd = _pick_live_from_snap(snap, "pd", rng)
         if not pd:
             return None
-        send_cq = pick("cq")
-        recv_cq = pick("cq")
+        send_cq = _pick_live_from_snap(snap, "cq", rng)
+        recv_cq = _pick_live_from_snap(snap, "cq", rng)
         init = _mk_min_qp_init(send_cq, recv_cq)
-        qp_name = gen_new_name("qp", snap)
+        qp_name = gen_new_name("qp", snap, rng)
         return CreateQP(pd=pd, qp=qp_name, init_attr_obj=init)
 
     # --- ModifyCQ: 改调度/容量等（按你的 IbvCQAttr 定义）---
-    def build_modify_cq(ctx, rng, live, snap):
-        cq = pick("cq")
+    def build_modify_cq(ctx, rng, snap):
+        cq = _pick_live_from_snap(snap, "cq", rng)
         if not cq:
             return None
         # return ModifyCQ(cq=cq, attr_obj=_mk_min_cq_attr(), attr_mask="IBV_CQ_MODERATION")
         return ModifyCQ(cq=cq, attr_obj=_mk_min_cq_attr())
 
     # --- AllocMW: 需要 pd，产出 mw ---
-    def build_alloc_mw(ctx, rng, live, snap):
-        pd = pick("pd")
+    def build_alloc_mw(ctx, rng, snap):
+        pd = _pick_live_from_snap(snap, "pd", rng)
         if not pd:
             return None
-        return _mk_min_alloc_mw(pd, mw_name=gen_new_name("mw", snap))
+        return _mk_min_alloc_mw(pd, mw_name=gen_new_name("mw", snap, rng))
 
     # --- AllocDM / FreeDM: 产出/释放 dm ---
-    def build_alloc_dm(ctx, rng, live, snap):
-        return _mk_min_alloc_dm(dm_name=gen_new_name("dm", snap))
+    def build_alloc_dm(ctx, rng, snap):
+        return _mk_min_alloc_dm(dm_name=gen_new_name("dm", snap, rng))
 
-    def build_free_dm(ctx, rng, live, snap):
-        dms = [n for (t, n) in live_set() if t == "dm"]
-        if not dms:
+    def build_free_dm(ctx, rng, snap):
+        dm = _pick_live_from_snap(snap, "dm", rng)
+        if not dm:
             return None
-        return FreeDM(dm=rng.choice(dms))
+        return FreeDM(dm=dm)
 
     # --- ReRegMR: 需要已存在 mr & pd（flags 简化一版）---
-    def build_rereg_mr(ctx, rng, live, snap):
-        mr = pick("mr")
-        pd = pick("pd")
+    def build_rereg_mr(ctx, rng, snap):
+        mr = _pick_live_from_snap(snap, "mr", rng)
+        pd = _pick_live_from_snap(snap, "pd", rng)
         if not (mr and pd):
             return None
         # 例：只变更 access/length；flags 视你的 verbs.py 定义
@@ -1377,16 +1263,6 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
 
 
 # ====== 工具：枚举嵌套可变路径 ======
-def _enumerate_mutable_objects(obj):
-    """
-    返回 [leaf_obj]，即所有可变叶子对象（Attr/Verb/Value等）
-    规则：
-      - 优先使用 Attr/Verb 的 MUTABLE_FIELDS / MUTABLE_FIELD_LIST
-      - OptionalValue/ListValue/ResourceValue 等 wrapper 继续深入其 .value / 内部元素
-    """
-    return [leaf for (_path, leaf) in _enumerate_mutable_paths(obj)]
-
-
 def _enumerate_mutable_paths(obj, prefix=""):
     """
     返回 [(path_str, leaf_obj)]，path 用点号表示，如 "attr_obj.qp_state"
@@ -1520,35 +1396,6 @@ def _collect_resource_refs(obj: Any) -> Set[Tuple[str, str]]:  # this is a contr
 
 # --- 收集 verb 的 requires（优先走 get_required_resources_recursively，其次静态扫描） ---
 def _requires_of(verb: Any) -> Set[Tuple[str, str]]:
-    # 动态：如果 verb 已实现递归接口，优先使用
-    # if hasattr(verb, "get_required_resources_recursively"):
-    #     try:
-    #         items = verb.get_required_resources_recursively()
-    #         reqs: Set[Tuple[str, str]] = set()
-    #         for it in items or []:
-    #             rtype = it.get("type") if isinstance(it, dict) else None
-    #             name = it.get("name") if isinstance(it, dict) else None
-    #             if rtype and name:
-    #                 reqs.add((str(rtype), str(name)))
-    #         if reqs:
-    #             return reqs
-    #     except Exception:
-    #         pass
-    # 兜底：静态递归扫描 ResourceValue（常可覆盖嵌套 attr_obj）
-    # reqs: Set[Tuple[str, str]] = set()
-    # # 1) CONTRACT.produces
-    # contract = verb.get_contract()
-    # if contract and hasattr(contract, "requires"):
-    #     for spec in getattr(contract, "requires") or []:
-    #         # spec 有 rtype / name_attr / state
-    #         rtype = getattr(spec, "rtype", None)
-    #         name_attr = getattr(spec, "name_attr", None)
-    #         if rtype and name_attr:
-    #             val = _get_dotted(verb, name_attr)
-    #             name = _as_str_name(val)
-    #             if name:
-    #                 reqs.add((str(rtype), str(name)))
-    # return reqs
     return _collect_resource_refs(verb)
 
 
@@ -1567,40 +1414,22 @@ def _produces_of(verb: VerbCall) -> Set[Tuple[str, str]]:
                 name = _as_str_name(val)
                 if name:
                     prods.add((str(rtype), str(name)))
-    # # 2) 动态：allocated_resources（若之前调用过 apply 会存在）
-    # if hasattr(verb, "allocated_resources"):
-    #     try:
-    #         for tup in verb.allocated_resources or []:
-    #             if isinstance(tup, (list, tuple)) and len(tup) >= 2:
-    #                 prods.add((str(tup[0]), str(tup[1])))
-    #     except Exception:
-    #         pass
-    # # 3) 兜底：常见创建类动词的字段名启发（可按需扩展）
-    # if not prods:
-    #     # 试探：若动词含有 ResourceValue 且命名与其类型一致，可能是产出
-    #     # 例如 CreateQP.qp / RegMR.mr / CreateCQ.cq / AllocPD.pd / AllocMW.mw ...
-    #     from lib.value import ResourceValue
-
-    #     for k, v in getattr(verb, "__dict__", {}).items():
-    #         if isinstance(v, ResourceValue):
-    #             rtype = getattr(v, "resource_type", None)
-    #             name = _as_str_name(getattr(v, "value", None))
-    #             # 仅当字段名看起来是“主产出”时加入（可按项目习惯调整）
-    #             if rtype and name and k in (rtype, "qp", "mr", "cq", "pd", "mw", "srq", "wq", "dm"):
-    #                 prods.add((str(rtype), str(name)))
     return prods
 
 
 # ---------- 从 CONTRACT 提取 requires / transitions / produces ----------
 def _contract_specs(
     verb: VerbCall,
-) -> Tuple[Set[Tuple[str, str, Any]], List[Tuple[str, str, Any, Any]], Set[Tuple[str, str, Any]]]:
+) -> Tuple[Set[Tuple[str, str, Any, Any]], List[Tuple[str, str, Any, Any]], Set[Tuple[str, str, Any]]]:
     """
     返回：
       - reqs: Set[(rtype, name, state_or_None)]
       - transitions: List[(rtype, name, from_state_or_None, to_state)]
       - prods: Set[(rtype, name, state)]
     """
+
+    from .contracts import _as_iter, _get_by_path
+
     reqs: Set[Tuple[str, str, Any]] = set()
     prods: Set[Tuple[str, str, Any]] = set()
     transitions: List[Tuple[str, str, Any, Any]] = []
@@ -1609,65 +1438,32 @@ def _contract_specs(
     contract = verb.get_contract()
     if not contract:
         return reqs, transitions, prods
+    for spec in contract.requires:
+        try:
+            val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+        except Exception as e:
+            raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+        for name in _as_iter(val):
+            reqs.add((str(spec.rtype), str(name), spec.state))
+            # reqs.add((str(spec.rtype), str(name), spec.state, spec.exclude_states))
 
-    # requires
-    for spec in getattr(contract, "requires", []) or []:
-        rtype = getattr(spec, "rtype", None)
-        state = getattr(spec, "state", None)
-        name_attr = getattr(spec, "name_attr", None)
-        if rtype and name_attr:
-            name_val = _get_dotted(verb, name_attr)
-            name = _as_str_name(name_val)
-            if name:
-                reqs.add((str(rtype), name, state))
+    for spec in contract.transitions:
+        try:
+            val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+        except Exception as e:
+            raise ContractError(f"transition: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+        for name in _as_iter(val):
+            transitions.append((str(spec.rtype), str(name), spec.from_state, spec.to_state))
 
-    # transitions
-    for spec in getattr(contract, "transitions", []) or []:
-        rtype = getattr(spec, "rtype", None)
-        name_attr = getattr(spec, "name_attr", None)
-        from_state = getattr(spec, "from_state", None)
-        to_state = getattr(spec, "to_state", None)
-        if rtype and name_attr and to_state is not None:
-            name_val = _get_dotted(verb, name_attr)
-            name = _as_str_name(name_val)
-            if name:
-                transitions.append((str(rtype), name, from_state, to_state))
+    for spec in contract.produces:
+        try:
+            val = _get_by_path(verb, spec.name_attr, missing_ok=True)
+        except Exception as e:
+            raise ContractError(f"produce: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+        for name in _as_iter(val):
+            prods.add((str(spec.rtype), str(name), spec.state))
 
-    # produces
-    for spec in getattr(contract, "produces", []) or []:
-        rtype = getattr(spec, "rtype", None)
-        name_attr = getattr(spec, "name_attr", None)
-        state = getattr(spec, "state", None)
-        if rtype and name_attr:
-            name_val = _get_dotted(verb, name_attr)
-            name = _as_str_name(name_val)
-            if name:
-                prods.add((str(rtype), name, state))
     return reqs, transitions, prods
-
-
-# ---------- 匹配规则 ----------
-def _state_match(need, have) -> bool:
-    """need 是 requires 需要的状态（可为 None），have 是 D 里的状态（可为 None）。"""
-    if need is None:
-        return True  # 需要任意状态
-    return need == have  # 精确匹配
-
-
-def _has_in_D(D: Set[Tuple[str, str, Any]], rtype: str, name: str, need_state) -> bool:
-    # (rtype, name, ANY)
-    if (rtype, name, None) in D:
-        return True
-    # (rtype, name, exact)
-    return (rtype, name, need_state) in D
-
-
-def _advance_by_transition(D: Set[Tuple[str, str, Any]], rtype: str, name: str, frm, to) -> None:
-    """
-    D 中若已有 (rtype,name, frm) 或 (rtype,name, None)，则加入 (rtype,name, to)。
-    """
-    if (rtype, name, None) in D or (frm is not None and (rtype, name, frm) in D):
-        D.add((rtype, name, to))
 
 
 # ---------- 判断 require 是“存在性需求”还是“状态需求” ----------
@@ -1678,10 +1474,7 @@ def _is_existence_requirement(state) -> bool:
     """
     if state is None:
         return True
-    # 你的 State 枚举若是对象，建议统一成字符串判断
     return state == State.ALLOCATED
-    # s = str(state)
-    # return s.upper() == "ALLOCATED"
 
 
 def _ES_in_of_requires(verb: Any):
@@ -1743,31 +1536,6 @@ def _kills_resource(verb: Any) -> Set[Tuple[str, str]]:
     return killed
 
 
-def _consumes_or_touches_resource(verb, key: tuple[str, str]) -> bool:
-    """
-    判断 verb 是否“消费/触及”该资源（需要它活着或对其状态做操作）。
-    作为“最后一次消费屏障”的判定条件。
-    """
-    rt_k, nm_k = key
-    Ein, Sin = _ES_in_of_requires(verb)
-    # 需要存在性（或 exclude DESTROYED 等变体最终都会落到存在性）
-    if (rt_k, nm_k) in Ein:
-        return True
-    # 需要特定状态（只要不是 DESTROYED，都算需要资源活着）
-    for rt, nm, st in Sin:
-        if rt == rt_k and nm == nm_k and st != State.DESTROYED:
-            return True
-    # 有对该资源的状态迁移（ModifyQP 等），不论 from_state 是否显式，都会触及它
-    _, transitions, _ = _contract_specs(verb)
-    for rt, nm, frm, to in transitions:
-        if rt == rt_k and nm == nm_k:
-            return True
-    # 也把“前面的另一处 kill 同一资源”当作屏障（避免跨越既有销毁点）
-    if key in _kills_resource(verb):
-        return True
-    return False
-
-
 # ==== 单个 verb 的可移动窗口 ====
 
 
@@ -1809,10 +1577,12 @@ def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]
         S_add(str(rtype0), str(name0), state0)
     # 预解析 CONTRACT
     parsed = [_contract_specs(v) for v in verbs]
+    # print(f"parsed contract: {parsed}")
     dependents: List[int] = []
 
     for i, (reqs, trans, prods) in enumerate(parsed):
         # 1) 判断是否命中依赖
+        # excluded_states 不用管，因为当前序列只要合法，就一定不会触及
         hit = False
         for rt, nm, need_state in reqs:
             if _is_existence_requirement(need_state):
@@ -1929,6 +1699,8 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
             hi = min(hi, j - 1)
             break
 
+    # 如果v本身就是“杀伤”类verb，那么不能移太前，因为有的verb可能会依赖于这个资源
+
     K = list(_kills_resource(v))
     if K:
         for rtype, name in K:
@@ -1966,31 +1738,6 @@ class ContractAwareMutator:
         self.rng = rng or random.Random()
         self.cfg = cfg or MutatorConfig()
 
-    def mutate(
-        self, verbs: List[VerbCall], idx: Optional[int] = None, idx2: Optional[int] = None, choice: str = None, rng=None
-    ) -> bool:
-        if not rng:
-            rng = self.rng
-        choices = ["insert", "delete", "param", "move", "swap"]
-        prob_dist = [0.3, 0.1, 0.2, 0.2, 0.2]
-        if not choice:
-            # randomly pick one
-            choice = rng.choices(choices, weights=prob_dist, k=1)[0]
-            # choice = rng.choices(choices, weights=[1, 0, 0, 0, 0], k=1)[0]
-        logging.debug("mutation choice:" + choice)
-        if choice == "insert":
-            return self.mutate_insert(verbs, idx)
-        elif choice == "delete":
-            return self.mutate_delete(verbs, idx)
-        elif choice == "param":
-            return self.mutate_param(verbs, idx)
-        elif choice == "move":
-            return self.mutate_move(verbs, idx)
-        elif choice == "swap":
-            return self.mutate_swap(verbs, idx, idx2)
-        else:
-            raise ValueError(f"Unknown mutation choice: {choice}")
-
     def find_dependent_verbs(self, verbs: List[Any], target: Tuple[str, str]) -> List[int]:
         """
         找出所有依赖于 target 资源的 verb 索引（直接或间接依赖）。
@@ -2022,74 +1769,108 @@ class ContractAwareMutator:
 
         return deps
 
-        # ---------- 主函数：状态感知依赖分析 ----------
+    def enumerate_mutable_paths(self, verb: VerbCall) -> List[Tuple[List[str], Any]]:
+        return _enumerate_mutable_paths(verb)
 
-    # def find_dependent_verbs_stateful(self, verbs: List[Any], target: Tuple[str, str, Any]) -> List[int]:
-    #     """
-    #     找出所有依赖于 target=(rtype, name, state) 的 verb 索引（考虑状态机）。
-    #     规则：顺序扫描，维护 D={(rtype,name,state)}；命中 require → 标记依赖并把 produces/transition 推进到 D 里。
-    #     - target.state 可为 None（表示“该资源在任意状态下被当作依赖根”）
-    #     """
-    #     if not verbs or not target or not target[0] or not target[1]:
-    #         return []
-    #     rtype0, name0, state0 = target[0], target[1], target[2] if len(target) > 2 else None
+    def find_dependent_verbs_stateful(self, verbs: List[Any], target: Tuple[str, str, Any]) -> List[int]:
+        return find_dependent_verbs_stateful(verbs, target)
 
-    #     # 预解析每个 verb 的 contract 三类信息
-    #     v_reqs: List[Set[Tuple[str, str, Any]]] = []
-    #     v_trans: List[List[Tuple[str, str, Any, Any]]] = []
-    #     v_prods: List[Set[Tuple[str, str, Any]]] = []
-    #     for v in verbs:
-    #         reqs, trans, prods = _contract_specs(v)
-    #         v_reqs.append(reqs)
-    #         v_trans.append(trans)
-    #         v_prods.append(prods)
-    #         # print(summarize_verb(v, deep=True))
-    #         # print("  reqs:", reqs)
-    #         # print("  trans:", trans)
-    #         # print("  prods:", prods)
-
-    #     # 依赖集合 D：保存 (rtype, name, state_or_None)
-    #     D: Set[Tuple[str, str, Any]] = {(str(rtype0), str(name0), state0)}
-
-    #     dependents: List[int] = []
-
-    #     for i, (reqs, trans, prods) in enumerate(zip(v_reqs, v_trans, v_prods)):
-    #         # 1) 是否命中 require？
-    #         hit = False
-    #         for rt, nm, need_state in reqs:
-    #             if _has_in_D(D, rt, nm, need_state):
-    #                 hit = True
-    #                 break
-
-    #         if hit:
-    #             dependents.append(i)
-    #             # 2) 命中后：把 produces 的 (rtype,name,state) 加入 D
-    #             for rt, nm, st in prods:
-    #                 D.add((rt, nm, st))
-    #             # 3) 命中后：根据 transition 推进状态
-    #             for rt, nm, frm, to in trans:
-    #                 _advance_by_transition(D, rt, nm, frm, to)
-    #         else:
-    #             # 即便没命中，也允许 transition 推动 D（比如把根状态推进，以便后续动词命中）
-    #             for rt, nm, frm, to in trans:
-    #                 _advance_by_transition(D, rt, nm, frm, to)
-    #             # produces 不加入（因为没命中，不构成依赖传播体）
-
-    #     return dependents
+    def mutate(
+        self, verbs: List[VerbCall], idx: Optional[int] = None, idx2: Optional[int] = None, choice: str = None, rng=None
+    ) -> bool:
+        if not rng:
+            rng = self.rng
+        choices = ["insert", "delete", "param", "move", "swap"]
+        prob_dist = [0.3, 0.1, 0.2, 0.2, 0.2]
+        if not choice:
+            # randomly pick one
+            choice = rng.choices(choices, weights=prob_dist, k=1)[0]
+            # choice = rng.choices(choices, weights=[1, 0, 0, 0, 0], k=1)[0]
+        logging.debug("mutation choice:" + choice)
+        if choice == "insert":
+            return self.mutate_insert(verbs, idx)
+        elif choice == "delete":
+            return self.mutate_delete(verbs, idx)
+        elif choice == "param":
+            return self.mutate_param(verbs, idx)
+        elif choice == "move":
+            return self.mutate_move(verbs, idx)
+        elif choice == "swap":
+            return self.mutate_swap(verbs, idx, idx2)
+        else:
+            raise ValueError(f"Unknown mutation choice: {choice}")
 
     def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
+        """
+        基于 contract 的统一删除策略：
+        1) 选中一个 victim；
+        2) 取出 victim 的 produces 与 transitions，生成“依赖种子”：
+        - 对 produces：加入 (rtype, name, None) 作为存在性种子；若带 state 也加入 (rtype, name, state)
+        - 对 transitions：加入 (rtype, name, to_state) 作为状态种子
+        3) 在 suffix = verbs[idx+1:] 上，用 find_dependent_verbs_stateful 逐个种子做依赖传播；
+        把所有命中的下标偏移回全局并合并；
+        4) 反向删除 {victim} ∪ dependents
+        """
         if not verbs:
             return False
+
+        # 1) 选择要删除的 verb
         idx = self.rng.randrange(len(verbs)) if idx_ is None else idx_
         victim = verbs[idx]
-        # TODO: hotfix，禁止删除ModifyQP
-        if isinstance(victim, ModifyQP):
-            return False
-        del verbs[idx]
-        lost = set(verb_edges_recursive(victim)[1])  # produces
-        impact = compute_forward_impact(verbs, idx, lost)
-        for k in sorted(impact, reverse=True):
-            verbs.pop(k)
+
+        # # （可选策略）不删 ModifyQP，避免把状态链打断到不可修复
+        # try:
+        #     from .verbs import ModifyQP
+
+        #     if isinstance(victim, ModifyQP):
+        #         return False
+        # except Exception:
+        #     pass
+
+        # 2) 解析 victim 的 CONTRACT，提取 produces / transitions
+        try:
+            reqs, trans, prods = _contract_specs(victim)  # [(rt,nm,state)], [(rt,nm,from,to)], [(rt,nm,state)]
+        except Exception:
+            # 回退：如果拿不到 CONTRACT，就只删自己
+            del verbs[idx]
+            return True
+
+        # 3) 生成依赖种子
+        seeds = set()
+        # produces -> 存在性 +（可选）状态
+        for rt, nm, st in prods:
+            seeds.add((rt, nm, None))  # 资源“存在性”
+            if st is not None:
+                seeds.add((rt, nm, st))  # 如果 produce 自带状态（如 RESET），也作为状态种子
+
+        # transitions -> 目标状态
+        for rt, nm, frm, to in trans:
+            if to is not None:
+                seeds.add((rt, nm, to))
+
+        # 特例：如果 victim 什么都不产生、也不迁移（少见），就直接删自己
+        if not seeds:
+            del verbs[idx]
+            return True
+
+        # 4) 在 suffix 上做状态化依赖传播
+        suffix = verbs[idx + 1 :]
+        all_dep_global_idx = set()
+        for seed in seeds:
+            try:
+                dep_local = find_dependent_verbs_stateful(suffix, seed)  # 返回 suffix 内的局部下标
+            except Exception:
+                dep_local = []
+            for j in dep_local:
+                all_dep_global_idx.add(idx + 1 + j)
+
+        # 5) 反向删除：先删 dependents，再删 victim
+        #    注意：同一个 verb 可能被多个种子命中，集合去重后统一删除
+        delete_idx = sorted(all_dep_global_idx | {idx}, reverse=True)
+        for k in delete_idx:
+            if 0 <= k < len(verbs):
+                verbs.pop(k)
+
         return True
 
     def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
@@ -2118,7 +1899,7 @@ class ContractAwareMutator:
                 print(f"[{j:02d}] {summarize_verb(v, deep=True)}")
 
         # 1) 收集可行位置
-        global_snapshot = _make_snapshot(verbs, len(verbs))
+        # global_snapshot = _make_snapshot(verbs, len(verbs))
         for i in candidate_indices:  # 这个居然有随机性？
             # logging.debug(f"Trying to insert at index {i}")
 
@@ -2128,13 +1909,7 @@ class ContractAwareMutator:
 
             # 1.2 先用“全局 live”生成；失败再用“当前位置 live”补试一次
             ins_list: Optional[List[VerbCall]] = None
-            # global_live = _live_before(verbs, len(verbs))
-            # cand = build_fn(None, rng, global_live, global_snapshot)
-            # if cand is None:
-            #     pos_live = _live_before(verbs, i)
-            #     cand = build_fn(None, rng, pos_live, global_snap)
-            pos_live = _live_before(verbs, i)
-            cand = build_fn(None, rng, pos_live, global_snapshot)
+            cand = build_fn(None, rng, _make_snapshot(verbs, i))
 
             if cand is None:
                 # logging.debug("  -> no candidate generated at this position")
@@ -2185,9 +1960,6 @@ class ContractAwareMutator:
                 print("Final dry-run failed; reverted insertion.")
             return False
 
-    def enumerate_mutable_paths(self, verb: VerbCall) -> List[Tuple[List[str], Any]]:
-        return _enumerate_mutable_paths(verb)
-
     def mutate_param(self, verbs: List[VerbCall], idx: Optional[int] = None) -> bool:
         if not verbs:
             return False
@@ -2206,9 +1978,12 @@ class ContractAwareMutator:
         if not paths:
             return False
         path, leaf = rng.choice(paths)
+        # path, leaf = paths[3]  # for debugging only
         logging.debug(f"mutate param: verb idx={idx}, path={path}, leaf={leaf}")
+        logging.debug(f"type of leaf:{type(leaf)}")
         leaf.mutate(snap=snap, contract=contract, rng=rng, path=path)
-        lost = destroyed_targets(v)
+        # 禁止对“创建”的资源进行变异，但是可以对“销毁”的资源进行变异
+        lost = destroyed_targets(v)  # TODO: 这个函数是否够用？
         if lost:
             _trim_forward_on_lost(verbs, idx, lost)
 
@@ -2223,7 +1998,7 @@ class ContractAwareMutator:
         if idx is None:
             idx = self.rng.randrange(0, len(verbs))
 
-        lo, hi = compute_move_window(verbs, idx)
+        lo, hi = compute_move_window(verbs, idx)  # 计算可以移到哪里
         # 没有可移动空间
         if lo == hi == idx:
             return False
@@ -2246,17 +2021,13 @@ class ContractAwareMutator:
 
         # 可选：一次轻量校验（不强制回滚，也可以回滚）
         # if getattr(self, "dryrun_contract", False):
-        if True:
-            try:
-                ctx = FakeCtx()
-                for vv in verbs:
-                    vv.apply(ctx)
-            except Exception:
-                # 回滚：把 v 放回原处
-                verbs.pop(new_pos)
-                verbs.insert(idx, v)
-                return False
-        return True
+        dryrun_flag = _dryrun_sequence(verbs)
+        if dryrun_flag:
+            return True
+        else:
+            verbs.pop(new_pos)
+            verbs.insert(idx, v)
+            return False
 
     def mutate_swap(
         self,
