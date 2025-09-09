@@ -6,7 +6,7 @@ import random
 import re
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 
 from termcolor import colored
 
@@ -105,12 +105,6 @@ class FakeCtx:
         return self.bindings[local_qp]
 
 
-# ---- 临时 dry-run：按顺序 apply 一串 verbs 到 ctx，失败抛 ContractError ----
-def _apply_slice(ctx, seq):
-    for v in seq:
-        v.apply(ctx)
-
-
 # ========================= Helpers (unwrap/dotted) =========================
 def _get_dotted(obj: Any, dotted: str) -> Any:
     cur = obj
@@ -146,77 +140,6 @@ def listify(x) -> List[Any]:
     if isinstance(x, (list, tuple)):
         return list(x)
     return [x]
-
-
-# ---- 计算 Destroy 造成的前向影响（你已有实现就复用）----
-def _lost_from_ins(ins_list):
-    lost = set()
-    for nv in ins_list:
-        if is_destroy_verb(nv):
-            lost |= destroyed_targets(nv)
-    return lost
-
-
-def _trim_forward_on_lost(verbs, start_idx, lost):
-    if not lost:
-        return
-    impact = compute_forward_impact(verbs, start_idx, lost)
-    for k in sorted(impact, reverse=True):
-        verbs.pop(k)
-
-
-# # ---- 全局搜索可行插入位置 ----
-
-
-def _check_feasible_position(verbs, ins_list, idx, *, try_trim_on_destroy=True):
-    n = len(verbs)
-    pos = idx
-    # print("pos:", pos)
-    # 前缀
-    ctx = FakeCtx()
-    try:
-        _apply_slice(ctx, verbs[:pos])
-    except Exception as e:
-        # logging.debug("前缀验证失败: %s", e)
-        # logging.debug(traceback.format_exc())
-        return False
-
-    # 待插入段
-    ctx_mid = FakeCtx()
-    # 为了简化（tracker/contract 状态延续），这里直接用同一个 ctx 连续 apply 即可
-    ctx_mid = ctx
-    try:
-        _apply_slice(ctx_mid, ins_list)
-    except Exception as e:
-        # print(e)
-        # logging.debug("插入段证失败: %s", e)
-        # logging.debug(traceback.format_exc())
-        return False
-
-    # 后缀：先直接尝试整条；如果失败且 destroy 可清理，则做一次清理再试
-    suffix = verbs[pos:]
-    ctx_tail = FakeCtx()
-    ctx_tail = ctx_mid
-    try:
-        _apply_slice(ctx_tail, suffix)
-        return True
-    except Exception as e:
-        # logging.debug("后缀验证失败: %s", e)
-        # logging.debug(traceback.format_exc())
-        if not try_trim_on_destroy:
-            return False
-        lost = _lost_from_ins(ins_list)
-        if not lost:
-            return False
-        # 构造一个“临时序列”，对 suffix 做剪枝再验证
-        tmp = verbs[:pos] + list(ins_list) + verbs[pos:]
-        _trim_forward_on_lost(tmp, pos + len(ins_list), lost)
-        ctx_full = FakeCtx()
-        try:
-            _apply_slice(ctx_full, tmp)
-            return True
-        except Exception:
-            return False
 
 
 # ---- 位置选择策略：best / append / prepend / random ----
@@ -330,11 +253,7 @@ def _state_leq(a: str, b: str) -> bool:
         return False
 
 
-def _qp_state_before(verbs, i: int, qp_name: str) -> str:
-    ctx = FakeCtx()
-    for j in range(0, i):
-        verbs[j].apply(ctx)
-    snap = ctx.contracts.snapshot() if hasattr(ctx, "contracts") else {}
+def _qp_state_before(snap, qp_name: str) -> str:
     return snap.get(("qp", qp_name)) or "RESET"
 
 
@@ -375,103 +294,6 @@ def _unwrap_value(x):
     if hasattr(x, "value"):
         return _unwrap_value(getattr(x, "value"))
     return x
-
-
-def _resolve_name_for_spec(root, current, name_attr: str):
-    if not name_attr:
-        return None
-    val = _get_dotted(root, name_attr) if "." in name_attr else getattr(current, name_attr, None)
-    if val is None or _is_optional_none(val):
-        return None
-    val = _unwrap_value(val)
-    return None if val is None else str(val)
-
-
-def _iter_children_fields(obj):
-    fields = (getattr(obj.__class__, "MUTABLE_FIELDS", []) or []) + [
-        f
-        for f in (getattr(obj.__class__, "FIELD_LIST", []) or [])
-        if f not in getattr(obj.__class__, "MUTABLE_FIELDS", [])
-    ]
-    seen = set()
-    for name in fields:
-        if name in seen:
-            continue
-        seen.add(name)
-        try:
-            v = getattr(obj, name)
-        except Exception:
-            continue
-        if hasattr(v, "inner"):
-            v = getattr(v, "inner")
-        if v is None or isinstance(v, (str, int, float, bool)):
-            continue
-        if isinstance(v, (list, tuple)):
-            for it in v:
-                if it is None or isinstance(it, (str, int, float, bool)):
-                    continue
-                yield it
-        else:
-            yield v
-
-
-def _extract_edges_recursive(root, obj, visited: set):
-    """返回 (requires, produces, destroys)，元素为 (rtype,name)。"""
-    oid = id(obj)
-    if oid in visited:
-        return [], [], []
-    visited.add(oid)
-
-    req, pro, des = [], [], []
-    # contract = getattr(obj.__class__, "CONTRACT", None)
-    contract = obj.get_contract()
-    if contract:
-        for rq in getattr(contract, "requires", []) or []:
-            rtype = str(getattr(rq, "rtype", "") or "")
-            name_attr = getattr(rq, "name_attr", "") or ""
-            name = _resolve_name_for_spec(root, obj, name_attr)
-            # print("resolved:", rtype, name_attr, "->", name)
-            if rtype and name:
-                req.append((rtype, name))
-        for pr in getattr(contract, "produces", []) or []:
-            rtype = str(getattr(pr, "rtype", "") or "")
-            name_attr = getattr(pr, "name_attr", "") or ""
-            name = _resolve_name_for_spec(root, obj, name_attr)
-            if rtype and name:
-                pro.append((rtype, name))
-        for tr in getattr(contract, "transitions", []) or []:
-            # if str(getattr(tr, "to_state", None)).upper() == "DESTROYED":
-            if getattr(tr, "to_state", None) == State.DESTROYED:
-                rtype = str(getattr(tr, "rtype", "") or "")
-                name_attr = getattr(tr, "name_attr", "") or ""
-                name = _resolve_name_for_spec(root, obj, name_attr)
-                if rtype and name:
-                    des.append((rtype, name))
-
-    for child in _iter_children_fields(obj):  # TODO: 感觉很奇怪，但是不影响功能
-        r, p, d = _extract_edges_recursive(root, child, visited)
-        req.extend(r)
-        pro.extend(p)
-        des.extend(d)
-    return req, pro, des
-
-
-def verb_edges_recursive(verb):
-    return _extract_edges_recursive(verb, verb, set())
-
-
-def compute_forward_impact(verbs, start_idx: int, lost_resources: set):
-    """级联删除：从 start_idx 起，凡 requires 命中 lost 的 verb 均删除，并把其 produces 继续加入 lost。"""
-    to_drop, frontier = set(), set(lost_resources)
-    for i in range(start_idx, len(verbs)):
-        req, pro, _ = verb_edges_recursive(verbs[i])
-        # print(summarize_verb(verbs[i], deep=True))
-        # print("f:", frontier, "r:", req)
-        if any((r, n) in frontier for (r, n) in req):
-            to_drop.add(i)
-            for item in pro:
-                frontier.add(item)
-    return to_drop
 
 
 # ========================= Minimal builders =========================
@@ -617,25 +439,6 @@ def _mk_min_alloc_dm(dm_name: str):
     return AllocDM(ctx_name="ctx", dm=dm_name, attr_obj=IbvAllocDmAttr(length=0x2000, log_align_req=64))
 
 
-# ========================= Live / factories / requires-filler =========================
-def _live_before(verbs: List[VerbCall], i: int) -> set[tuple[str, str]]:
-    # live = set()
-    live = []
-    ctx = FakeCtx()
-    for j in range(0, i):
-        try:
-            verbs[j].apply(ctx)
-        except ContractError:
-            break
-    snap = ctx.contracts.snapshot() if hasattr(ctx, "contracts") else {}
-    for (rtype, name), st in snap.items():
-        if st != State.DESTROYED:
-            # live.add()
-            if (rtype, name) not in live:
-                live.append((rtype, name))
-    return live
-
-
 # ========================= ModifyQP builders =========================
 # 字段名 → attr_mask 位名
 _QP_FIELD2MASK = {
@@ -679,24 +482,22 @@ ALLOW_ATTRS_BY_STATE = {
 }
 
 
-def build_modify_qp_out(verbs, i: int, qp_name: str, rng):
+def build_modify_qp_out(verbs, i: int, snap, qp_name: str, rng):
     if rng.random() < 0.5:
-        res = build_modify_qp_safe_chain(verbs, i, qp_name, rng)
+        res = build_modify_qp_safe_chain(verbs, i, snap, qp_name, rng)
         if res:
             return res
         else:
-            return build_modify_qp_stateless(verbs, i, qp_name, rng)
+            return build_modify_qp_stateless(snap, qp_name, rng)
     else:
-        return build_modify_qp_stateless(verbs, i, qp_name, rng)
+        return build_modify_qp_stateless(snap, qp_name, rng)
 
 
-def build_modify_qp_safe_chain(verbs, i: int, qp_name: str, rng) -> List[VerbCall]:
+def build_modify_qp_safe_chain(verbs, i: int, snap, qp_name: str, rng) -> List[VerbCall]:
     from lib.ibv_all import IbvQPAttr
 
-    from .verbs import ModifyQP
-
-    cur = _qp_state_before(verbs, i, qp_name)
-    succ = _first_successor_target_after(verbs, i, qp_name)
+    cur = _qp_state_before(snap, qp_name)  # 也可从 snapshot 里取
+    succ = _first_successor_target_after(verbs, i, qp_name)  # 真的要用到完整verbs了
 
     def _rand_target_from(s, rng):
         idx = _QP_ORDER.index(s) if s in _QP_ORDER else 0
@@ -714,12 +515,10 @@ def build_modify_qp_safe_chain(verbs, i: int, qp_name: str, rng) -> List[VerbCal
     ]
 
 
-def build_modify_qp_stateless(verbs, i: int, qp_name: str, rng) -> Optional[VerbCall]:
+def build_modify_qp_stateless(snap, qp_name: str, rng) -> Optional[VerbCall]:
     from lib.ibv_all import IbvQPAttr
 
-    from .verbs import ModifyQP
-
-    cur = _qp_state_before(verbs, i, qp_name)
+    cur = _qp_state_before(snap, qp_name)
     cand = ALLOW_ATTRS_BY_STATE.get(cur, [])
     if not cand:
         return None
@@ -827,17 +626,12 @@ def destroyed_targets(v) -> set[tuple[str, str]]:
 
 
 # ---- Destroy 插入模板 ----
-def _build_destroy_of_type(rng, verbs, i, rtype: str):
+def _build_destroy_of_type(snap, rtype, rng):
     """
     从 live 集合里挑选一个 rtype 资源，构造相应 Destroy verb。
     若该类型在现场没有实例，返回 None。
     """
-    live = _live_before(verbs, i)
-    cand = [n for (t, n) in live if t == rtype]
-    if not cand:
-        return None
-
-    name = rng.choice(cand)
+    name = _pick_live_from_snap(snap, rtype, rng)
 
     # 映射：rtype -> (Class, param_name)
     from .verbs import (
@@ -875,7 +669,7 @@ def _build_destroy_of_type(rng, verbs, i, rtype: str):
     return cls(**kwargs)
 
 
-def build_destroy_generic(ctx, rng, verbs, i):
+def build_destroy_generic(snap, rng):
     """
     优先销毁“叶子资源”，减少大范围连锁影响；
     若无叶子，就退化为销毁任一 live 资源（不包括 device 等全局）。
@@ -897,14 +691,24 @@ def build_destroy_generic(ctx, rng, verbs, i):
     rng.shuffle(order)
 
     for rt in order:
-        v = _build_destroy_of_type(rng, verbs, i, rt)
+        v = _build_destroy_of_type(snap, rt, rng)
         if v is not None:
             return v
     return None
 
 
+def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | None:
+    cands = []
+    for (rt, nm), st in (snap or {}).items():
+        if rt == rtype and st not in (State.DESTROYED,):
+            cands.append(nm)
+    return rng.choice(cands) if cands else None
+
+
 # ========================= Insertion templates =========================
-def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, choice: str = None):
+def _pick_insertion_template(
+    rng: random.Random, verbs: List[VerbCall], i: int, choice: str = None, global_snapshot=None
+) -> Optional[Callable]:
     from lib.ibv_all import IbvQPAttr  # 你已聚合的话
 
     from .verbs import (
@@ -939,26 +743,21 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
     )
 
     def gen_new_name(kind, snap, rng):
-        existing = {n for (t, n) in snap.keys() if t == kind}
-        for _ in range(100):
+        # existing = {n for (t, n) in snap.keys() if t == kind}
+        # global_snapshot = _make_snapshot(verbs, len(verbs))
+        existing = {n for (t, n) in global_snapshot.keys() if t == kind}
+        for _ in range(1000):
             name = f"{kind}_{rng.randrange(1 << 16)}"
             if name not in existing:
                 return name
         return None
-
-    def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | None:
-        cands = []
-        for (rt, nm), st in (snap or {}).items():
-            if rt == rtype and st not in (State.DESTROYED,):
-                cands.append(nm)
-        return rng.choice(cands) if cands else None
 
     # 1) ModifyQP：复用你已有的有/无状态策略
     def build_modify_qp(ctx, rng, snap):
         qp = _pick_live_from_snap(snap, "qp", rng)
         if not qp:
             return None
-        return build_modify_qp_out(verbs, i, qp, rng)  # 你现有的包装
+        return build_modify_qp_out(verbs, i, snap, qp, rng)  # 你现有的包装
 
     # 2) PostSend：最小 WR（1 SGE）
 
@@ -1052,22 +851,22 @@ def _pick_insertion_template(rng: random.Random, verbs: List[VerbCall], i: int, 
 
     # 新增：销毁类模板（支持点名 destroy_XXX，也支持 generic）
     def build_destroy(ctx, rng, snap):
-        return build_destroy_generic(ctx, rng, verbs, i)
+        return build_destroy_generic(snap, rng)
 
     def build_destroy_qp(ctx, rng, snap):
-        return _build_destroy_of_type(rng, verbs, i, "qp")
+        return _build_destroy_of_type(snap, "qp", rng)
 
     def build_destroy_cq(ctx, rng, snap):
-        return _build_destroy_of_type(rng, verbs, i, "cq")
+        return _build_destroy_of_type(snap, "cq", rng)
 
     def build_dealloc_pd(ctx, rng, snap):
-        return _build_destroy_of_type(rng, verbs, i, "pd")
+        return _build_destroy_of_type(snap, "pd", rng)
 
     def build_dereg_mr(ctx, rng, snap):
-        return _build_destroy_of_type(rng, verbs, i, "mr")
+        return _build_destroy_of_type(snap, "mr", rng)
 
     def build_dealloc_mw(ctx, rng, snap):
-        return _build_destroy_of_type(rng, verbs, i, "mw")
+        return _build_destroy_of_type(snap, "mw", rng)
 
     # ---------- SRQ ----------
     def build_create_srq(ctx, rng, snap):
@@ -1466,6 +1265,42 @@ def _contract_specs(
     return reqs, transitions, prods
 
 
+def destroyed_targets_stateful(verb: Any) -> List[Tuple[str, str, Any]]:
+    """
+    从一个 verb 的 transitions 中，抽出所有 to=DESTROYED 的目标，作为“种子”：
+      返回 [(rtype, name, State.ALLOCATED)]
+    说明：
+      - 作为 find_dependent_verbs_stateful 的 stateful 种子，它的传播逻辑是“凡是需要该资源存在/特定状态的后继都算依赖”
+      - 如果你的 find_dependent... 把 DESTROYED 当作“存在性的负面”，上游可以把目标降格为 (rtype, name, None) 也可。
+    """
+    _, trans, _ = _contract_specs(verb)
+    out = []
+    for rt, nm, frm, to in trans:
+        if to == State.DESTROYED:
+            out.append((rt, nm, State.ALLOCATED))
+    return out
+
+
+def _trim_forward_on_lost_stateful(verbs: List[Any], start_idx: int, lost: List[Tuple[str, str, Any]]) -> None:
+    """
+    用状态感知依赖分析统一裁剪：
+      - lost: [(rtype, name, state|None)] 作为种子
+      - 对每个种子调用 find_dependent_verbs_stateful，取并集
+      - 仅删除位于 start_idx 之后的依赖 verb
+    """
+    if not verbs or not lost:
+        return
+    victim_ids: Set[int] = set()
+    for seed in lost:
+        deps = find_dependent_verbs_stateful(verbs, seed)
+        for i in deps:
+            if i > start_idx:
+                victim_ids.add(i)
+    # 从后往前删
+    for i in sorted(victim_ids, reverse=True):
+        verbs.pop(i)
+
+
 # ---------- 判断 require 是“存在性需求”还是“状态需求” ----------
 def _is_existence_requirement(state) -> bool:
     """
@@ -1486,6 +1321,7 @@ def _ES_in_of_requires(verb: Any):
         if _is_existence_requirement(st):
             E_in.add((rt, nm))
         else:
+            E_in.add((rt, nm))
             S_in.add((rt, nm, str(st)))
     return E_in, S_in
 
@@ -1536,6 +1372,31 @@ def _kills_resource(verb: Any) -> Set[Tuple[str, str]]:
     return killed
 
 
+def consumers_of_resource_any_state(verbs, key: tuple[str, str]) -> list[int]:
+    """
+    返回所有“引用了这同一资源 (rtype,name) 的 verb 下标”，不关心其 requires 的状态取值。
+    用于 Destroy/Dealloc/Dereg 这类 Kill 动词的“最后消费者栅栏”。
+    """
+    rt0, nm0 = key
+    idxs: list[int] = []
+    for i, v in enumerate(verbs):
+        reqs, _trans, _prods = _contract_specs(v)  # 你已有：把 CONTRACT 实例化为 (reqs, trans, prods)
+        # reqs: List[(rtype, name, need_state)]
+        for rt, nm, _need_state in reqs:
+            if rt == rt0 and nm == nm0:
+                idxs.append(i)
+                break
+    return idxs
+
+
+def _last_consumer_before_any_state(verbs, key: tuple[str, str], limit_idx: int) -> int | None:
+    """
+    在 limit_idx 之前，找最后一个“存在性消费者”（不看状态）的下标。
+    """
+    idxs = [i for i in consumers_of_resource_any_state(verbs, key) if i < limit_idx]
+    return max(idxs) if idxs else None
+
+
 # ==== 单个 verb 的可移动窗口 ====
 
 
@@ -1568,16 +1429,19 @@ def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]
         S[key].add(str(st))
 
     # 初始种子
-    if _is_existence_requirement(state0):
+    if _is_existence_requirement(state0):  # State.ALLOCATED
         E.add((str(rtype0), str(name0)))
         # 如果给了具体 RESET 之类的也可以同步到 S
         if state0 not in (None,):
             S_add(str(rtype0), str(name0), state0)
     else:
+        # E.add((str(rtype0), str(name0)))
         S_add(str(rtype0), str(name0), state0)
     # 预解析 CONTRACT
     parsed = [_contract_specs(v) for v in verbs]
+    # parsed2 = [verb_effect_targets(v) for v in verbs]
     # print(f"parsed contract: {parsed}")
+    # print(f"parsed2 contract: {parsed2}")
     dependents: List[int] = []
 
     for i, (reqs, trans, prods) in enumerate(parsed):
@@ -1694,7 +1558,7 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
 
     for j in range(idx + 1, n):
         killed = _kills_resource(verbs[j])
-        logging.debug("killed at %d: %s", j, killed)
+        # logging.debug("killed at %d: %s", j, killed)
         if killed & need_keys:
             hi = min(hi, j - 1)
             break
@@ -1703,9 +1567,13 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
 
     K = list(_kills_resource(v))
     if K:
-        for rtype, name in K:
-            dependent_verb_indices = find_dependent_verbs_stateful(verbs, (rtype, name, State.ALLOCATED))[:-1]
-            lo = max(lo, max(dependent_verb_indices) if dependent_verb_indices else -1)
+        for key in K:
+            # dependent_verb_indices = find_dependent_verbs_stateful(verbs, (rtype, name, State.ALLOCATED))[:-1]
+            # lo = max(lo, max(dependent_verb_indices) + 1 if dependent_verb_indices else -1)
+            # logging.debug(f"{rtype}, {name}, {dependent_verb_indices}")
+            last_cons = _last_consumer_before_any_state(verbs, key, idx)
+            if last_cons is not None:
+                lo = max(lo, last_cons + 1)
 
     # 避免 (lo > hi) 的退化：把窗口收缩到原位置
     if lo > hi:
@@ -1718,8 +1586,9 @@ def _swap_in_place(lst, i, j):
     lst[i], lst[j] = lst[j], lst[i]
 
 
-def _dryrun_sequence(verbs: List[VerbCall]) -> bool:
-    ctx = FakeCtx()
+def _dryrun_sequence(verbs: List[VerbCall], ctx=None) -> bool:
+    if not ctx:
+        ctx = FakeCtx()
     try:
         for v in verbs:
             v.apply(ctx)
@@ -1893,18 +1762,16 @@ class ContractAwareMutator:
         # 可选：安静/详细输出
         verbose = getattr(getattr(self, "cfg", None), "verbose", False)
         # verbose = True
-        if verbose:
-            print("=== VERBS (before) ===")
-            for j, v in enumerate(verbs):
-                print(f"[{j:02d}] {summarize_verb(v, deep=True)}")
 
         # 1) 收集可行位置
-        # global_snapshot = _make_snapshot(verbs, len(verbs))
+        global_snapshot = _make_snapshot(verbs, len(verbs))
         for i in candidate_indices:  # 这个居然有随机性？
             # logging.debug(f"Trying to insert at index {i}")
 
             # 1.1 选模板
-            builder = _pick_insertion_template(rng, verbs, i, choice)
+            builder = _pick_insertion_template(
+                rng, verbs, i, choice, global_snapshot
+            )  # 传入verbs的原因是，有些builder需要根据后面的verbs才能确定（对，我说的就是ModifyQP）
             build_fn = builder if callable(builder) else builder[0]
 
             # 1.2 先用“全局 live”生成；失败再用“当前位置 live”补试一次
@@ -1920,9 +1787,10 @@ class ContractAwareMutator:
             #     logging.debug("  + new:" + summarize_verb(nv, deep=True))
 
             # 1.3 在该位置做可行性干运行检查（允许 destroy 清理后判定）
-            if not _check_feasible_position(verbs, ins_list, i, try_trim_on_destroy=True):
-                # logging.debug("  -> not feasible at this position")
-                continue
+            # TODO: 我觉得这一步应该不需要才对？
+            # if not _check_feasible_position(verbs, ins_list, i, try_trim_on_destroy=True):
+            #     # logging.debug("  -> not feasible at this position")
+            #     continue
 
             feasible.append((i, ins_list))
         # logging.debug(f"Feasible insertion points: {feasible}")
@@ -1935,29 +1803,40 @@ class ContractAwareMutator:
             return False
 
         pos, ins_list = choice_pair
+        logging.debug(f"Inserting at position {pos}:")
+        for nv in ins_list:
+            logging.debug("  + new:" + summarize_verb(nv, deep=True))
 
         # 3) 真插入 + destroy 前向切片清理
         verbs[pos:pos] = ins_list
-        lost = _lost_from_ins(ins_list)
-        # print("lost from ins:", lost)
-        if lost:
-            _trim_forward_on_lost(verbs, pos + len(ins_list), lost)
+        seeds = []
+        for v in ins_list:
+            seeds.extend(destroyed_targets_stateful(v))  # [(rtype, name, State.ALLOCATED)]
+        suffix = verbs[pos + len(ins_list) :]
+        all_dep_global_idx = set()
+        for seed in seeds:
+            try:
+                dep_local = find_dependent_verbs_stateful(suffix, seed)  # 返回 suffix 内的局部下标
+            except Exception:
+                dep_local = []
+            for j in dep_local:
+                all_dep_global_idx.add(pos + len(ins_list) + j)
+
+        delete_idx = sorted(all_dep_global_idx, reverse=True)
+        for k in delete_idx:
+            if 0 <= k < len(verbs):
+                verbs.pop(k)
+        # lost = _lost_from_ins(ins_list)
+        # # print("lost from ins:", lost)
+        # if lost:  # TODO: 同样，这个也需要统一一下结构
+        #     _trim_forward_on_lost(verbs, pos + len(ins_list), lost)
 
         # 4) 最终一次干运行校验
-        ctx = FakeCtx()
-        try:
-            _apply_slice(ctx, verbs)
-            if verbose:
-                print("=== VERBS (after) ===")
-                for j, v in enumerate(verbs):
-                    print(f"[{j:02d}] {summarize_verb(v, deep=True)}")
+        dryrun_flag = _dryrun_sequence(verbs)
+        if dryrun_flag:
             return True
-        except ContractError:
-            # 理论上不应触发（pos 源自可行集），但回退以保证幂等
+        else:
             del verbs[pos : pos + len(ins_list)]
-            print(traceback.format_exc())
-            if verbose:
-                print("Final dry-run failed; reverted insertion.")
             return False
 
     def mutate_param(self, verbs: List[VerbCall], idx: Optional[int] = None) -> bool:
@@ -1971,6 +1850,7 @@ class ContractAwareMutator:
             # 1) 随机选 verb
             idx = rng.randrange(len(verbs))
             v = verbs[idx]
+
         # 2) 枚举可变路径
         snap = _make_snapshot(verbs, idx)
         contract = v.get_contract()
@@ -1982,10 +1862,24 @@ class ContractAwareMutator:
         logging.debug(f"mutate param: verb idx={idx}, path={path}, leaf={leaf}")
         logging.debug(f"type of leaf:{type(leaf)}")
         leaf.mutate(snap=snap, contract=contract, rng=rng, path=path)
-        # 禁止对“创建”的资源进行变异，但是可以对“销毁”的资源进行变异
-        lost = destroyed_targets(v)  # TODO: 这个函数是否够用？
-        if lost:
-            _trim_forward_on_lost(verbs, idx, lost)
+        # 已经禁止对“创建”的资源进行变异，但是可以对“销毁”的资源进行变异
+        # 对ResourceValue的变异基本上已经考虑到了前向依赖
+        # 不允许变异ModifyQP的state参数，否则会导致比较难以修复的问题
+        seeds = destroyed_targets_stateful(v)  # [(rtype, name, State.ALLOCATED)]
+        suffix = verbs[idx + 1 :]
+        all_dep_global_idx = set()
+        for seed in seeds:
+            try:
+                dep_local = find_dependent_verbs_stateful(suffix, seed)  # 返回 suffix 内的局部下标
+            except Exception:
+                dep_local = []
+            for j in dep_local:
+                all_dep_global_idx.add(idx + 1 + j)
+
+        delete_idx = sorted(all_dep_global_idx, reverse=True)
+        for k in delete_idx:
+            if 0 <= k < len(verbs):
+                verbs.pop(k)
 
     def mutate_move(self, verbs: List[Any], idx: Optional[int] = None, new_pos: Optional[int] = None) -> bool:
         """
@@ -2000,6 +1894,7 @@ class ContractAwareMutator:
 
         lo, hi = compute_move_window(verbs, idx)  # 计算可以移到哪里
         # 没有可移动空间
+        logging.debug(f"Move window for idx {idx}: [{lo}, {hi}]")
         if lo == hi == idx:
             return False
 
@@ -2018,6 +1913,7 @@ class ContractAwareMutator:
         if new_pos > idx:
             new_pos -= 1
         verbs.insert(new_pos, v)
+        logging.debug(f"Moved verb from {idx} to {new_pos}")
 
         # 可选：一次轻量校验（不强制回滚，也可以回滚）
         # if getattr(self, "dryrun_contract", False):

@@ -26,9 +26,9 @@ class IbvModerateCQ(Attr):
     MUTABLE_FIELDS = ["cq_count", "cq_period"]
 
     def __init__(self, cq_count=None, cq_period=None):
-        self.cq_count = OptionalValue(IntValue(cq_count) if cq_count is not None else None, factory=lambda: IntValue())
+        self.cq_count = OptionalValue(IntValue(cq_count) if cq_count is not None else None, factory=lambda: IntValue(0))
         self.cq_period = OptionalValue(
-            IntValue(cq_period) if cq_period is not None else None, factory=lambda: IntValue()
+            IntValue(cq_period) if cq_period is not None else None, factory=lambda: IntValue(0)
         )
 
     @classmethod

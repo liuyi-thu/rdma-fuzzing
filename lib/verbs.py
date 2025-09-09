@@ -4297,46 +4297,37 @@ class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数
         return cls(cq=cq)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        cq_name = self.cq
+        cq_name = str(self.cq)
         return f"""
-    /* Poll completion queue */
-
-    /* poll the completion for a while before giving up of doing it .. */
-    gettimeofday(&cur_time, NULL);
-    start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
-    do
-    {{
-        poll_result = ibv_poll_cq({cq_name}, 1, &wc);
-        gettimeofday(&cur_time, NULL);
-        cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
-    }}
-    while((poll_result == 0) && ((cur_time_msec - start_time_msec) < MAX_POLL_CQ_TIMEOUT));
-
-    if(poll_result < 0)
-    {{
-        /* poll CQ failed */
-        fprintf(stderr, "poll CQ failed\\n");
-        rc = 1;
-    }}
-    else if(poll_result == 0)
-    {{
-        /* the CQ is empty */
-        fprintf(stderr, "completion wasn't found in the CQ after timeout\\n");
-        rc = 1;
-    }}
-    else
-    {{
-        /* CQE found */
-        fprintf(stdout, "completion was found in CQ with status 0x%x\\n", wc.status);
-        /* check the completion status (here we don't care about the completion opcode */
-        if(wc.status != IBV_WC_SUCCESS)
+        /* ibv_poll_cq — self-contained minimal polling */
         {{
-            fprintf(stderr, "got bad completion with status: 0x%x, vendor syndrome: 0x%x\\n", 
-                    wc.status, wc.vendor_err);
-            rc = 1;
+            struct ibv_wc wc;
+            int n = 0;
+            int attempts = 100;   /* ~100 * 100us ≈ 10ms */
+            while (attempts-- > 0) {{
+                n = ibv_poll_cq({cq_name}, 1, &wc);
+                if (n < 0) {{
+                    fprintf(stderr, "ibv_poll_cq failed\\n");
+                    return -1;
+                }}
+                if (n == 1) {{
+                    if (wc.status != IBV_WC_SUCCESS) {{
+                        fprintf(stderr, "bad completion: status=0x%x vendor=0x%x\\n",
+                                wc.status, wc.vendor_err);
+                        return -1;
+                    }}
+                    /* success – got one completion */
+                    break;
+                }}
+                /* n == 0: no CQE yet, back off briefly */
+                usleep(100); /* 100us */
+            }}
+            if (n == 0) {{
+                fprintf(stderr, "no completion within budget\\n");
+                return -1;
+            }}
         }}
-    }}
-"""
+    """
 
 
 class PostRecv(VerbCall):
