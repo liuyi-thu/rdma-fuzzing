@@ -63,7 +63,7 @@ from lib.verbs import (
 )
 
 INITIAL_VERBS = [
-    # GetDeviceList("dev_list"),
+    # GetDeviceList("de8v_list"),
     # OpenDevice("dev_list"),
     # FreeDeviceList(),
     # QueryDeviceAttr(),
@@ -86,7 +86,7 @@ INITIAL_VERBS = [
     ),
     RegMR(
         pd="pd1",
-        addr="bufs[0]",
+        addr="bufs[1]",
         length=1024,
         mr="mr1",
         access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
@@ -224,7 +224,8 @@ if __name__ == "__main__":
     verbs = copy.deepcopy(INITIAL_VERBS)
     mutator = fuzz_mutate.ContractAwareMutator()
     for _ in range(100):
-        mutator.mutate(verbs)
+        # mutator.mutate(verbs)
+        mutator.mutate_param(verbs, idx=8)
     print(summarize_verb_list(verbs, deep=True))
     # print("\n\nGenerated C++ Code:\n")
     rendered = render(verbs)

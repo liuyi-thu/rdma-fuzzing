@@ -86,7 +86,7 @@ INITIAL_VERBS = [
     ),
     RegMR(
         pd="pd1",
-        addr="bufs[0]",
+        addr="bufs[1]",
         length=1024,
         mr="mr1",
         access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",

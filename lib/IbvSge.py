@@ -22,9 +22,8 @@ except ImportError:
 
 
 class IbvSge(Attr):
-    # FIELD_LIST = ["addr", "length", "lkey"]
-    FIELD_LIST = ["mr"]
-    MUTABLE_FIELDS = FIELD_LIST
+    FIELD_LIST = ["addr", "length", "lkey"]
+    MUTABLE_FIELDS = ["mr"]
 
     def __init__(self, addr=None, length=None, lkey=None, mr=None):
         self.addr = None

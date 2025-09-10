@@ -171,6 +171,7 @@ class State(Enum):
     RTS = auto()
     DESTROYED = auto()
     IMPORTED = auto()
+    USED = auto()  # for local resources only
 
 
 @dataclass(frozen=True)
@@ -323,6 +324,9 @@ class ContractTable:
 
     def __init__(self):
         self._store: Dict[ResourceKey, ResourceRec] = {}
+
+        for i in range(100):
+            self.put("buf", f"bufs[{i}]", State.ALLOCATED)
 
     # ===== 基本操作 =====
     def put(self, rtype: str, name: str, state: State):

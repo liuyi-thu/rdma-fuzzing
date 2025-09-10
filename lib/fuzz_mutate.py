@@ -29,6 +29,7 @@ except Exception:
         RTR = "RTR"
         RTS = "RTS"
         DESTROYED = "DESTROYED"
+        USED = "USED"  # for local resources only
 
 
 # ========================= Config =========================
@@ -705,6 +706,14 @@ def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | No
     return rng.choice(cands) if cands else None
 
 
+def _pick_unused_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | None:
+    cands = []
+    for (rt, nm), st in (snap or {}).items():
+        if rt == rtype and st not in (State.USED,):
+            cands.append(nm)
+    return rng.choice(cands) if cands else None
+
+
 # ========================= Insertion templates =========================
 def _pick_insertion_template(
     rng: random.Random, verbs: List[VerbCall], i: int, choice: str = None, global_snapshot=None
@@ -774,7 +783,15 @@ def _pick_insertion_template(
             if pd is None:
                 return None  # 现场既没 MR 也没 PD，无法自举
             mr_name = gen_new_name("mr", snap, rng)
-            ins_list.append(RegMR(pd=pd, mr=mr_name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE"))
+            ins_list.append(
+                RegMR(
+                    pd=pd,
+                    mr=mr_name,
+                    addr=_pick_unused_from_snap(global_snapshot, "buf", rng),
+                    length=4096,
+                    access="IBV_ACCESS_LOCAL_WRITE",
+                )
+            )
 
         wr = _mk_min_send_wr_with_mr(mr_name)
         ins_list.append(PostSend(qp=qp, wr_obj=wr))
@@ -791,7 +808,13 @@ def _pick_insertion_template(
         if not pd:
             return None
         mr_name = gen_new_name("mr", snap, rng)
-        return RegMR(pd=pd, mr=mr_name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE")
+        return RegMR(
+            pd=pd,
+            mr=mr_name,
+            addr=_pick_unused_from_snap(global_snapshot, "buf", rng),
+            length=4096,
+            access="IBV_ACCESS_LOCAL_WRITE",
+        )
 
     # 5) CreateCQ（纯创建）
     def build_create_cq(ctx, rng, snap):
@@ -810,7 +833,15 @@ def _pick_insertion_template(
             if pd is None:
                 return None
             mr_name = gen_new_name("mr", snap, rng)
-            ins_list.append(RegMR(pd=pd, mr=mr_name, addr="buf0", length=4096, access="IBV_ACCESS_LOCAL_WRITE"))
+            ins_list.append(
+                RegMR(
+                    pd=pd,
+                    mr=mr_name,
+                    addr=_pick_unused_from_snap(global_snapshot, "buf", rng),
+                    length=4096,
+                    access="IBV_ACCESS_LOCAL_WRITE",
+                )
+            )
 
         wr = _mk_min_recv_wr_with_mr(mr_name)
         ins_list.append(PostRecv(qp=qp, wr_obj=wr))
@@ -991,7 +1022,7 @@ def _pick_insertion_template(
         return ReRegMR(
             mr=mr,
             pd=pd,
-            addr="buf0",
+            addr=_pick_unused_from_snap(global_snapshot, "buf", rng),
             length=length,
             access="IBV_ACCESS_LOCAL_WRITE",
             flags="IBV_REREG_MR_CHANGE_TRANSLATION | IBV_REREG_MR_CHANGE_ACCESS",
@@ -1070,7 +1101,17 @@ def _enumerate_mutable_paths(obj, prefix=""):
       - OptionalValue/ListValue/ResourceValue 等 wrapper 继续深入其 .value / 内部元素
     """
     # 1) 如果是你的 wrapper，递归 value
-    from lib.value import ConstantValue, EnumValue, FlagValue, IntValue, ListValue, OptionalValue, ResourceValue, Value
+    from lib.value import (
+        ConstantValue,
+        EnumValue,
+        FlagValue,
+        IntValue,
+        ListValue,
+        OptionalValue,
+        ResourceValue,
+        Value,
+        LocalResourceValue,
+    )
 
     out = []
     if obj is None or isinstance(obj, Value):  # Value有自己的mutate方法，故不用进一步深入（个人观点）
@@ -1118,7 +1159,7 @@ def _enumerate_mutable_paths(obj, prefix=""):
             continue
 
         # 简单 wrapper：Resource/Int/Enum/Flag/Constant
-        if isinstance(val, (ResourceValue, IntValue, EnumValue, FlagValue, ConstantValue)):
+        if isinstance(val, (ResourceValue, IntValue, EnumValue, FlagValue, ConstantValue, LocalResourceValue)):
             add(path, val)
             continue
 
@@ -1853,15 +1894,17 @@ class ContractAwareMutator:
 
         # 2) 枚举可变路径
         snap = _make_snapshot(verbs, idx)
+        global_snap = _make_snapshot(verbs, len(verbs))
         contract = v.get_contract()
         paths = _enumerate_mutable_paths(v)
         if not paths:
             return False
         path, leaf = rng.choice(paths)
+        logging.debug(f"Enumerated mutable paths: {paths}.")
         # path, leaf = paths[3]  # for debugging only
         logging.debug(f"mutate param: verb idx={idx}, path={path}, leaf={leaf}")
         logging.debug(f"type of leaf:{type(leaf)}")
-        leaf.mutate(snap=snap, contract=contract, rng=rng, path=path)
+        leaf.mutate(snap=snap, contract=contract, rng=rng, path=path, global_snap=global_snap)
         # 已经禁止对“创建”的资源进行变异，但是可以对“销毁”的资源进行变异
         # 对ResourceValue的变异基本上已经考虑到了前向依赖
         # 不允许变异ModifyQP的state参数，否则会导致比较难以修复的问题

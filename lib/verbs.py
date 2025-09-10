@@ -22,7 +22,16 @@ from .IbvTdInitAttr import IbvTdInitAttr
 from .IbvWQAttr import IbvWQAttr
 from .IbvWQInitAttr import IbvWQInitAttr
 from .IbvXRCDInitAttr import IbvXRCDInitAttr
-from .value import ConstantValue, DeferredValue, EnumValue, FlagValue, IntValue, ListValue, ResourceValue
+from .value import (
+    ConstantValue,
+    DeferredValue,
+    EnumValue,
+    FlagValue,
+    IntValue,
+    ListValue,
+    ResourceValue,
+    LocalResourceValue,
+)
 
 # verbs.py 顶部新增
 try:
@@ -5141,9 +5150,11 @@ class RegDmaBufMR(VerbCall):
 class RegMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr", "addr", "length", "access"]
     CONTRACT = Contract(
-        requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
+        requires=[RequireSpec("pd", State.ALLOCATED, "pd"), RequireSpec("buf", State.ALLOCATED, "addr")],
         produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
-        transitions=[],
+        transitions=[
+            TransitionSpec("buf", from_state=State.ALLOCATED, to_state=State.USED, name_attr="addr")
+        ],  # 简单设计，禁止在同一个verb序列里重复使用，所以dereg不需要改
     )
     """Register a memory region (MR) with the specified protection domain (PD)."""
 
@@ -5161,7 +5172,8 @@ class RegMR(VerbCall):
         if not mr:
             raise ValueError("MR name must be provided")
         self.mr = ResourceValue(resource_type="mr", value=mr, mutable=False)
-        self.addr = ConstantValue(addr or "buf")  # Default buffer variable name
+        # self.addr = ConstantValue(addr or "buf")  # Default buffer variable name
+        self.addr = LocalResourceValue(value=addr or "buf", resource_type="buf")
         self.length = IntValue(length or 4096)  # Default length
         self.access = FlagValue(access or "IBV_ACCESS_LOCAL_WRITE", flag_type="IBV_ACCESS_FLAGS_ENUM")
         self.tracker = None
@@ -5337,10 +5349,14 @@ class ReqNotifyCQ(VerbCall):
 class ReRegMR(VerbCall):
     MUTABLE_FIELDS = ["mr", "flags", "pd", "addr", "length", "access"]
     CONTRACT = Contract(
-        requires=[RequireSpec("mr", State.ALLOCATED, "mr"), RequireSpec("pd", State.ALLOCATED, "pd")],
+        requires=[
+            RequireSpec("mr", State.ALLOCATED, "mr"),
+            RequireSpec("pd", State.ALLOCATED, "pd"),
+            RequireSpec("buf", State.ALLOCATED, "addr"),
+        ],
         # produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
         produces=[],
-        transitions=[],
+        transitions=[TransitionSpec("buf", from_state=State.ALLOCATED, to_state=State.USED, name_attr="addr")],
     )
     """Re-register a memory region (MR) with the specified protection domain (PD)."""
 

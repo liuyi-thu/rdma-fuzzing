@@ -1,5 +1,6 @@
 import logging
 import random
+import re
 from abc import ABC, abstractmethod
 
 try:
@@ -8,9 +9,9 @@ except ImportError:
     from .objtracker import ObjectTracker
 
 try:
-    from contracts import ContractTable, RequireSpec
+    from contracts import ContractTable, RequireSpec, State
 except ImportError:
-    from .contracts import ContractTable, RequireSpec
+    from .contracts import ContractTable, RequireSpec, State
 
 # ===== 在文件开头加一个全局开关和工具函数 =====
 DEBUG = True  # 改成 True 就能打开所有调试信息
@@ -21,9 +22,6 @@ def debug_print(*args, **kwargs):
     # if DEBUG:
     #     print(*args, **kwargs)
     logging.debug(*args, **kwargs)
-
-
-import re
 
 
 def _tokenize(path: str):
@@ -48,9 +46,9 @@ def _path_matches(pattern: str, path: str) -> bool:
     # 回溯匹配，** 可“吃掉”0~N段
     p = _tokenize(pattern)
     s = _tokenize(path)
-    logging.debug(f"Matching path '{path}' against pattern '{pattern}'")
-    logging.debug(f"Tokenized pattern: {p}")
-    logging.debug(f"Tokenized path: {s}")
+    # logging.debug(f"Matching path '{path}' against pattern '{pattern}'")
+    # logging.debug(f"Tokenized pattern: {p}")
+    # logging.debug(f"Tokenized path: {s}")
 
     def dfs(i, j):
         if i == len(p) and j == len(s):
@@ -111,7 +109,7 @@ class Value(ABC):
         return hash(self.value)
 
     # @abstractmethod
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         raise NotImplementedError("Mutate method not implemented for Value class")
 
     def is_none(self):
@@ -163,7 +161,7 @@ class IntValue(Value):
         self.step = step
         # self.rng = rng or random
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         # rng = rng or random
         if not self.mutable:
             debug_print("This IntValue is not mutable.")
@@ -189,7 +187,7 @@ class BoolValue(Value):
     def __init__(self, value: bool = None, mutable: bool = True):
         super().__init__(value, mutable)
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         if not self.mutable:
             debug_print("This BoolValue is not mutable.")
             return
@@ -202,7 +200,7 @@ class ConstantValue(Value):
     def __init__(self, value: str = None):
         super().__init__(value)
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         # Constants do not change, so this method does nothing
         debug_print("ConstantValue does not mutate.")
         pass
@@ -323,7 +321,7 @@ class EnumValue(Value):
         else:
             raise ValueError(f"Enum type {enum_type} not found in EnumValue class.")
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         rng = rng or random
         if not self.mutable:
             debug_print("This EnumValue is not mutable.")
@@ -445,7 +443,7 @@ class FlagValue(Value):
         else:
             raise ValueError(f"Flag type {flag_type} not found in FlagValue class.")
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         rng = rng or random
         if not self.mutable:
             return
@@ -492,7 +490,7 @@ class ResourceValue(Value):
             return True
         return False
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, **kwargs):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         if not self.mutable or not path or not contract:
             return
 
@@ -524,56 +522,6 @@ class ResourceValue(Value):
         # 尽量换个名字
         choices = [x for x in cands if x != self.value] or cands
         self.value = rng.choice(choices)
-
-    # def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
-    #     if not self.mutable:
-    #         debug_print("This ResourceValue is not mutable.")
-    #         return
-    #     if not path:
-    #         debug_print("No path provided for ResourceValue mutation.")
-    #         return
-
-    #     # 应该是这样，判断该value属于produces还是requires（transition类）
-    #     # produces类禁止mutate
-    #     logging.debug(f"Mutating ResourceValue at {path}")
-    #     reqs = []
-    #     for item in contract.requires or []:  # TODO: 这里的实现其实是错误的，但是先这样凑合着用
-    #         if item.name_attr == path:
-    #             reqs.append(item)
-
-    #     produces = []
-    #     for item in contract.produces or []:
-    #         if item.name_attr == path:
-    #             produces.append(item)
-
-    #     assert len(reqs) <= 1
-    #     logging.debug(f"ResourceValue mutate at {path}, reqs: {reqs}, produces: {produces}")
-
-    #     # print(required_state, required_type)
-    #     if reqs:
-    #         req: RequireSpec = reqs[0]
-    #         assert req.rtype == self.resource_type
-    #         cands = []
-    #         for (t, name), st in (snap or {}).items():
-    #             if t == req.rtype and (req.state is None or st == req.state) and st not in (req.exclude_states or []):
-    #                 logging.debug(f"  candidate: {(t, name)} with state {st}")
-    #                 cands.append(name)
-    #         if cands:
-    #             rng = rng or random
-    #             cands = [x for x in cands if x != self.value] or cands
-    #             self.value = rng.choice(cands)
-    #             return
-    #     else:
-    #         return
-    #     # if snap is not None and hasattr(snap, "snapshot"):
-    #     #     typ = self.resource_type
-    #     #     snap_dict = snap.snapshot()
-    #     #     cands = [name for (t, name), st in snap_dict.items() if t == typ and st != "DESTROYED"]
-    #     #     if cands:
-    #     #         rng = rng or random
-    #     #         self.value = rng.choice([x for x in cands if x != self.value] or cands)
-    #     #         return
-    #     pass
 
 
 class ListValue(Value):  # 能不能限定：列表的元素都一样；传入时知道元素类型，比如IbvSge
@@ -608,7 +556,7 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
             # 退化为无参工厂：() -> Value
             return self.factory()
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         rng = rng or random
         if not self.mutable:
             debug_print("This ListValue is not mutable.")
@@ -722,7 +670,7 @@ class OptionalValue(Value):
         self.value = value  # 类型: Value 或 None
         self.factory = factory  # 新建时用，比如 lambda: IntValue(...)
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         if not self.mutable:
             debug_print("This OptionalValue is not mutable.")
             return
@@ -843,7 +791,7 @@ class DeferredValue(Value):
     def from_id(cls, kind: str, id_str: str, field: str, c_type: str = "uint32_t"):
         return cls(key=f"{kind}|{id_str}|{field}", c_type=c_type, source="runtime_by_id", by_id=(kind, id_str, field))
 
-    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None):
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
         # DeferredValue 不变异
         return
 
@@ -881,75 +829,28 @@ class DeferredValue(Value):
         return False
 
 
-# class DeferredValue:
-#     """
-#     表示“运行时（exec 时）才从外部解析器拿到”的值。
-#     - key:    逻辑键，如 "remote.QP[0].qpn" / "local.MR[0].lkey"
-#     - c_type: 目标C类型，"uint32_t" | "uint64_t" | "const char *" 等
-#     - source: 解析方式，当前固定用 runtime_resolver: rr_u32/rr_u64/rr_str
-#     - default: 兜底值（解析失败时的默认；一般不用）
-#     """
+class LocalResourceValue(Value):  # buf
+    def __init__(self, value: str = None, resource_type: str = None, mutable: bool = True):
+        super().__init__(value, mutable)
+        self.resource_type = resource_type
+        if not resource_type:
+            raise ValueError("LocalResourceValue must have a resource type defined.")
 
-#     __slots__ = ("key", "c_type", "source", "default")
+    def mutate(self, snap=None, contract=None, rng: random.Random = None, path: str = None, global_snap=None, *kwargs):
+        if not self.mutable:
+            return
 
-#     def __init__(self, key: str, c_type: str = "uint32_t", source: str = "runtime", default=None):
-#         self.key = key
-#         self.c_type = c_type
-#         self.source = source
-#         self.default = default
+        cands = []
+        for (t, name), st in (global_snap or {}).items():  # should filter by resource_type
+            if t == self.resource_type and name != self.value and st != State.USED:
+                cands.append(name)
 
-#     # === 供 orchestrator/mutator 使用的统一接口 ===
-#     def is_none(self) -> bool:
-#         # 对外表现为“有值”（只是延迟取），避免 OptionalValue 把它当空
-#         return False
-
-#     def get_value(self):
-#         # 返回自身即可；mutator 不应直接取字面量
-#         return self
-
-#     def mutate(self, *args, **kwargs) -> bool:
-#         # 不对延迟值做随机变异；structure-level 的 on/off 由 OptionalValue 负责
-#         return False
-
-#     def __str__(self) -> str:
-#         return f"Deferred({self.c_type}:{self.key})"
-
-#     # === 代码生成：把自身展开为 C 端取值逻辑 ===
-#     def to_cxx(self, varname: str, ctx=None) -> str:
-#         """
-#         生成：
-#           <c_type> <varname>;
-#           <varname> = rr_u32("remote.QP[0].qpn");  // 例如
-#         并要求编译单元已包含 runtime_resolver.h
-#         """
-#         if ctx:
-#             ctx.alloc_variable(varname, self.c_type)
-#         getter = _rr_getter_for_ctype(self.c_type)
-#         s = ""
-#         if self.source == "runtime":
-#             s += f'    {varname} = {getter}("{self.key}");\n'
-#         else:
-#             # 预留其它 source 的扩展点
-#             s += f"    /* TODO: load {self.c_type} {varname} from {self.source}:{self.key} */\n"
-#             if self.default is not None:
-#                 s += f"    {varname} = ({self.c_type})({self.default});\n"
-#             else:
-#                 # 给个零值兜底，避免未初始化警告
-#                 s += f"    {varname} = ({self.c_type})(0);\n"
-#         return s
-
-
-# def _rr_getter_for_ctype(c_type: str) -> str:
-#     """将 C 类型映射到运行时解析器函数名。"""
-#     t = c_type.strip().replace(" ", "").lower()
-#     if t in ("uint32_t", "unsignedint", "u32", "uint32t"):
-#         return "rr_u32"
-#     if t in ("uint64_t", "unsignedlong", "unsignedlonglong", "u64", "uint64t"):
-#         return "rr_u64"
-#     if t in ("constchar*", "char*", "constchar *", "char *"):
-#         return "rr_str"
-#     # 默认为 u32，可按需扩展
-#     return "rr_u32"
+        if not cands:
+            return
+        logging.debug(f"Mutating LocalResourceValue: {self.value} -> {cands}")
+        rng = rng or random
+        self.value = rng.choice(cands)
+        # do not need contract, for simplicity
 
 
 # --- 帮助函数：识别/解包延迟值（供 emit_assign / contracts 使用） ---
