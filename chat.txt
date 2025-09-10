@@ -1,0 +1,15 @@
+好，现在我希望你为我的项目生成Makefile
+
+编译命令：
+g++ -O2 -std=c++17 server.cpp pair_runtime.cpp runtime_resolver.c -lcjson -libverbs -o server
+g++ -O2 -std=c++17 client.cpp pair_runtime.cpp runtime_resolver.c -lcjson -libverbs -o client
+
+我希望编译后的结果放在./build目录下面
+
+运行命令：
+python3 coordinator.py --server-update server_update.json --client-update client_update.json --server-view   server_view.json --client-view   client_view.json
+
+RDMA_FUZZ_RUNTIME=<项目目录>/build/server_view.json ./server
+RDMA_FUZZ_RUNTIME=<项目目录>/client_view.json ./client
+
+三条命令依次启动，同时执行，有没有办法直接分屏？

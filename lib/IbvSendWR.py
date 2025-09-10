@@ -559,8 +559,11 @@ class IbvSendWR(Attr):
                     s += f"    {varname}.tso.{f} = {tso_var}.{f};\n"
             elif field in ["imm_data", "invalidate_rkey"]:
                 s += emit_assign(varname, field, val)
-            elif field == "next_wr":
-                s += f"    {varname}.next = {val};\n"
+            elif field == "next":
+                # s += f"    {varname}.next = {val};\n"
+                next_var = varname + "_next"
+                s += self.next.to_cxx(next_var, ctx)
+                s += f"    {varname}.next = &{next_var};\n"
             else:
                 s += emit_assign(varname, field, val, enum_fields)
         return s

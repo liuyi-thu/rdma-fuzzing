@@ -75,6 +75,8 @@ extern "C"
     // Parse colon-separated 16-byte GID string into out[16]; returns true on success.
     bool pr_parse_gid(const char *gid_str, uint8_t out16[16]);
 
+    bool pump_and_reload(const char *bundle_env);
+
 #ifdef __cplusplus
 }
 #endif

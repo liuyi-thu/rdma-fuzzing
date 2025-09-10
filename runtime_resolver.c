@@ -1,4 +1,6 @@
 // runtime_resolver.c
+#define _POSIX_C_SOURCE 200809L
+
 #include "runtime_resolver.h"
 #include <stdio.h>
 #include <stdlib.h>

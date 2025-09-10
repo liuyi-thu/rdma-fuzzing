@@ -37,3 +37,21 @@ PostRecv: qp (req.), wr_obj (IbvRecvWR: wr_id, next, sg_list(list of IbvSge), nu
 PostSend, qp(req.), wr_obj(IbvSendWR: wr_id, next, sg_list(list of IbvSge), num_sge, rdma (对面信息)， 其他为int或者非必须), wr_var (const)
 PostSRQRecv, qp (req.), wr_obj (IbvRecvWR: wr_id, next, sg_list(list of IbvSge), num_sge), wr_var (const)
 RegMR, pd (req.), mr (produced.), addr (应该是个变量，可以简化为binding), length, access (int)
+
+
+
+g++ -O2 -std=c++17 rdma_server_with_qp_pool_pairs.cpp runtime_resolver.c -lcjson -libverbs -o rdma_server_pairs
+g++ -O2 -std=c++17 rdma_client_pairs_demo.cpp        runtime_resolver.c -lcjson -libverbs -o rdma_client_pairs_demo
+g++ -O2 -std=c++17 rdma_client_pairs_multi_demo_runtime.cpp   pair_runtime.cpp   runtime_resolver.c -lcjson -libverbs -o rdma_client_pairs_multi_demo
+
+compile:
+
+g++ -O2 -std=c++17 server.cpp pair_runtime.cpp runtime_resolver.c -lcjson -libverbs -o server
+g++ -O2 -std=c++17 client.cpp pair_runtime.cpp runtime_resolver.c -lcjson -libverbs -o client
+
+run:
+
+python3 coordinator.py --server-update server_update.json --client-update client_update.json --server-view   server_view.json --client-view   client_view.json
+
+RDMA_FUZZ_RUNTIME=/home/liuyi/fuzzing-rdma/server_view.json ./server
+RDMA_FUZZ_RUNTIME=/home/liuyi/fuzzing-rdma/client_view.json ./client

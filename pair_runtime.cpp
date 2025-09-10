@@ -331,3 +331,10 @@ bool pr_resolve_remote_mr(const char *mr_id,
     }
     return false;
 }
+
+bool pump_and_reload(const char *bundle_env)
+{
+    // return g_rld.pump_and_reload(bundle_env);
+    rr_reload_locked(bundle_env);
+    return true;
+}

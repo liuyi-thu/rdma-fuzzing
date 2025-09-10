@@ -1079,7 +1079,7 @@ def _pick_insertion_template(
         (build_reg_mr, "mr"),
         (build_create_cq, "cq"),
         (build_bind_mw, "mw"),
-        (build_attach_mcast, "qp"),
+        # (build_attach_mcast, "qp"),
         # (build_reg_dmabuf_mr, "mr"),  # 如果想多产出 MR，可以打开
         (build_alloc_pd, "pd"),
         (build_create_qp, "qp"),

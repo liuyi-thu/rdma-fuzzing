@@ -58,17 +58,17 @@ class IbvSge(Attr):
     def bind_local_mr(self, mr):
         if not mr:
             return
-        self.addr = OptionalValue(  # invisible from mutation
-            DeferredValue.from_id("local.MR", mr, "addr", "uint64_t"),
-            factory=lambda: DeferredValue.from_id("local.MR", mr, "addr", "uint64_t"),
+        self.addr = OptionalValue(
+            ConstantValue(f"(uint64_t){mr}->addr"),
+            factory=lambda: ConstantValue(f"(uint64_t){mr}->addr"),
         )
         self.length = OptionalValue(
-            DeferredValue.from_id("local.MR", mr, "length", "uint32_t"),
-            factory=lambda: DeferredValue.from_id("local.MR", mr, "length", "uint32_t"),
+            ConstantValue(f"{mr}->length"),
+            factory=lambda: ConstantValue(f"{mr}->length"),
         )
         self.lkey = OptionalValue(
-            DeferredValue.from_id("local.MR", mr, "lkey", "uint32_t"),
-            factory=lambda: DeferredValue.from_id("local.MR", mr, "lkey", "uint32_t"),
+            ConstantValue(f"{mr}->lkey"),
+            factory=lambda: ConstantValue(f"{mr}->lkey"),
         )
 
 
