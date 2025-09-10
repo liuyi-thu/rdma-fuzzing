@@ -6,3 +6,6 @@ verbs_*.c
 *.json
 responses_*/
 debug/
+.pytest_cache/
+.vscode/*
+.stfolder/*
