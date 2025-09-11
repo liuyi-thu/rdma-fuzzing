@@ -33,31 +33,64 @@ struct ibv_context * ctx;
 struct ibv_device_attr dev_attr;
 struct ibv_port_attr port_attr;
 union ibv_gid gid;
-struct ibv_dm * dm0;
+struct ibv_pd * pd0 = NULL;
 struct ibv_pd * pd1 = NULL;
-struct ibv_dm * dm_61334;
+struct ibv_cq * cq0 = NULL;
+struct ibv_dm * dm1;
+struct ibv_pd * pd_35579 = NULL;
+struct ibv_qp * qp0 = NULL;
+struct ibv_srq * srq0;
+struct ibv_mr * mr0 = NULL;
 struct ibv_cq * cq1 = NULL;
-struct ibv_pd * pd_47248 = NULL;
 struct ibv_mr * mr1 = NULL;
-struct ibv_dm * dm_13388;
-struct ibv_cq * cq_29656 = NULL;
-struct ibv_cq * cq_37133 = NULL;
-struct ibv_mw * mw_60800;
-struct ibv_pd * pd_37095 = NULL;
-struct ibv_qp * qp_17856 = NULL;
-struct ibv_mr * mr_39021 = NULL;
-struct ibv_pd * pd_7294 = NULL;
-struct ibv_pd * pd_61895 = NULL;
-struct ibv_alloc_dm_attr dm_attr_dm0;
-struct ibv_alloc_dm_attr dm_attr_dm_61334;
-struct ibv_alloc_dm_attr dm_attr_dm_13388;
-struct ibv_qp_init_attr attr_init_qp_17856;
-struct ibv_qp_cap attr_init_qp_17856_cap;
-struct ibv_send_wr wr_qp_17856;
-struct ibv_sge wr_qp_17856_sge_0;
-struct ibv_send_wr * bad_wr_qp_17856 = NULL;
-struct ibv_mw_bind mw_bind_mw_60800;
-struct ibv_mw_bind_info mw_bind_mw_60800_bind_info;
+struct ibv_pd * pd_39513 = NULL;
+struct ibv_mr * mr_38828 = NULL;
+struct ibv_srq * srq_40319;
+struct ibv_cq * cq_49702 = NULL;
+struct ibv_srq * srq_34143;
+struct ibv_pd * pd_21963 = NULL;
+struct ibv_mr * mr_63561 = NULL;
+struct ibv_qp * qp_41329 = NULL;
+struct ibv_mr * mr_22281 = NULL;
+struct ibv_pd * pd_50064 = NULL;
+struct ibv_pd * pd_48924 = NULL;
+struct ibv_qp * qp_50439 = NULL;
+struct ibv_pd * pd_21596 = NULL;
+struct ibv_mr * mr_14707 = NULL;
+struct ibv_mr * mr_3124 = NULL;
+struct ibv_alloc_dm_attr dm_attr_dm1;
+struct ibv_qp_init_attr attr_init_qp0;
+struct ibv_qp_cap attr_init_qp0_cap;
+struct ibv_srq_init_attr srq_init_attr_0;
+struct ibv_srq_attr srq_init_attr_0_attr;
+struct ibv_qp_attr qp_attr_qp0;
+struct ibv_ah_attr qp_attr_qp0_ah;
+struct ibv_global_route qp_attr_qp0_ah_grh;
+struct ibv_send_wr wr_qp0;
+struct ibv_sge wr_qp0_sge_0;
+struct ibv_send_wr * bad_wr_qp0 = NULL;
+struct ibv_recv_wr recv_wr_srq0;
+struct ibv_sge recv_wr_srq0_sges[1];
+struct ibv_sge recv_wr_srq0_sges[0];
+struct ibv_recv_wr * bad_recv_wr_srq0 = NULL;
+struct ibv_modify_cq_attr modify_cq_attr;
+struct ibv_moderate_cq modify_cq_attr_moderate;
+struct ibv_srq_init_attr srq_init_attr__40319;
+struct ibv_srq_attr srq_init_attr__40319_attr;
+struct ibv_srq_init_attr srq_init_attr__34143;
+struct ibv_srq_attr srq_init_attr__34143_attr;
+struct ibv_qp_init_attr attr_init_qp_41329;
+struct ibv_qp_cap attr_init_qp_41329_cap;
+struct ibv_srq_attr srq_attr_srq0;
+struct ibv_qp_init_attr attr_init_qp_50439;
+struct ibv_qp_cap attr_init_qp_50439_cap;
+struct ibv_srq_attr srq_attr_srq_34143;
+struct ibv_qp_attr qp_attr_qp_50439;
+struct ibv_recv_wr recv_wr_srq_34143;
+struct ibv_sge recv_wr_srq_34143_sges[1];
+struct ibv_sge recv_wr_srq_34143_sges[0];
+struct ibv_recv_wr * bad_recv_wr_srq_34143 = NULL;
+struct ibv_srq_attr srq_attr_srq_40319;
 
 // --- Prepare PR_* for CLAIMED ---
 PR_QP  qps[1000];
@@ -122,24 +155,21 @@ int main(int argc, char** argv){
     }
     printf("[5] done.\n");
 
-    printf("[6] QueryGID(port_num=1, index=0) start.\n");
+    printf("[6] QueryGID(port_num=1, index=1) start.\n");
 
     /* ibv_query_gid */
-    if (ibv_query_gid(ctx, 1, 0, &gid)) {
+    if (ibv_query_gid(ctx, 1, 1, &gid)) {
         fprintf(stderr, "Failed to query GID\n");
         return -1;
     }
     printf("[6] done.\n");
 
-    printf("[7] AllocDM(dm=dm0, attr_obj=IbvAllocDmAttr{length=4096, log_align_req=12}, attr_var=dm_attr_dm0) start.\n");
+    printf("[7] AllocPD(pd=pd0) start.\n");
 
-    memset(&dm_attr_dm0, 0, sizeof(dm_attr_dm0));
-    dm_attr_dm0.length = 4096;
-    dm_attr_dm0.log_align_req = 12;
-
-    dm0 = ibv_alloc_dm(ctx, &dm_attr_dm0);
-    if (!dm0) {
-        fprintf(stderr, "Failed to allocate device memory (DM)\n");
+    /* ibv_alloc_pd */
+    pd0 = ibv_alloc_pd(ctx);
+    if (!pd0) {
+        fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
     printf("[7] done.\n");
@@ -154,169 +184,67 @@ int main(int argc, char** argv){
     }
     printf("[8] done.\n");
 
-    printf("[9] FreeDM(dm=dm0) start.\n");
+    printf("[9] CreateCQ(cqe=31, cq_context=NULL, channel=NULL, comp_vector=1, cq=cq0) start.\n");
 
-    /* ibv_free_dm */
-    if (ibv_free_dm(dm0)) {
-        fprintf(stderr, "Failed to free device memory (DM)\n");
+    /* ibv_create_cq */
+    cq0 = ibv_create_cq(ctx, 31, 
+                              NULL, NULL, 
+                              1);
+    if (!cq0) {
+        fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
     printf("[9] done.\n");
 
-    printf("[10] AllocDM(dm=dm_61334, attr_obj=IbvAllocDmAttr{length=8192, log_align_req=64}, attr_var=dm_attr_dm_61334) start.\n");
+    printf("[10] AllocDM(dm=dm1, attr_obj=IbvAllocDmAttr{length=4096, log_align_req=12}, attr_var=dm_attr_dm1) start.\n");
 
-    memset(&dm_attr_dm_61334, 0, sizeof(dm_attr_dm_61334));
-    dm_attr_dm_61334.length = 8192;
-    dm_attr_dm_61334.log_align_req = 64;
+    memset(&dm_attr_dm1, 0, sizeof(dm_attr_dm1));
+    dm_attr_dm1.length = 4096;
+    dm_attr_dm1.log_align_req = 12;
 
-    dm_61334 = ibv_alloc_dm(ctx, &dm_attr_dm_61334);
-    if (!dm_61334) {
+    dm1 = ibv_alloc_dm(ctx, &dm_attr_dm1);
+    if (!dm1) {
         fprintf(stderr, "Failed to allocate device memory (DM)\n");
         return -1;
     }
     printf("[10] done.\n");
 
-    printf("[11] CreateCQ(cqe=32, cq_context=NULL, channel=NULL, comp_vector=0, cq=cq1) start.\n");
+    printf("[11] AllocPD(pd=pd_35579) start.\n");
 
-    /* ibv_create_cq */
-    cq1 = ibv_create_cq(ctx, 32, 
-                              NULL, NULL, 
-                              0);
-    if (!cq1) {
-        fprintf(stderr, "Failed to create completion queue\n");
+    /* ibv_alloc_pd */
+    pd_35579 = ibv_alloc_pd(ctx);
+    if (!pd_35579) {
+        fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
     printf("[11] done.\n");
 
-    printf("[12] AllocPD(pd=pd_47248) start.\n");
-
-    /* ibv_alloc_pd */
-    pd_47248 = ibv_alloc_pd(ctx);
-    if (!pd_47248) {
-        fprintf(stderr, "Failed to allocate protection domain\n");
-        return -1;
-    }
-    printf("[12] done.\n");
-
-    printf("[13] RegMR(pd=pd1, mr=mr1, addr=bufs[1], length=1024, access=IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_RE...) start.\n");
-
-    /* ibv_reg_mr */
-    mr1 = ibv_reg_mr(pd1, bufs[1], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-    if (!mr1) {
-        fprintf(stderr, "Failed to register memory region\n");
-        return -1;
-    }
-    
-    mrs[mrs_size++] = (PR_MR){
-        .id = "mr1",
-        .addr = (uint64_t)(mr1->addr),
-        .length = 1024,
-        .lkey = mr1->lkey};
-        
-    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
-    
-    printf("[13] done.\n");
-
-    printf("[14] AllocDM(dm=dm_13388, attr_obj=IbvAllocDmAttr{length=8192, log_align_req=64}, attr_var=dm_attr_dm_13388) start.\n");
-
-    memset(&dm_attr_dm_13388, 0, sizeof(dm_attr_dm_13388));
-    dm_attr_dm_13388.length = 8192;
-    dm_attr_dm_13388.log_align_req = 64;
-
-    dm_13388 = ibv_alloc_dm(ctx, &dm_attr_dm_13388);
-    if (!dm_13388) {
-        fprintf(stderr, "Failed to allocate device memory (DM)\n");
-        return -1;
-    }
-    printf("[14] done.\n");
-
-    printf("[15] FreeDM(dm=dm_13388) start.\n");
-
-    /* ibv_free_dm */
-    if (ibv_free_dm(dm_13388)) {
-        fprintf(stderr, "Failed to free device memory (DM)\n");
-        return -1;
-    }
-    printf("[15] done.\n");
-
-    printf("[16] CreateCQ(cqe=16, cq_context=NULL, channel=NULL, comp_vector=0, cq=cq_29656) start.\n");
-
-    /* ibv_create_cq */
-    cq_29656 = ibv_create_cq(ctx, 16, 
-                              NULL, NULL, 
-                              0);
-    if (!cq_29656) {
-        fprintf(stderr, "Failed to create completion queue\n");
-        return -1;
-    }
-    printf("[16] done.\n");
-
-    printf("[17] DeallocPD(pd=pd1) start.\n");
-
-    /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd(pd1)) {
-        fprintf(stderr, "Failed to deallocate PD \n");
-        return -1;
-    }
-    printf("[17] done.\n");
-
-    printf("[18] CreateCQ(cqe=16, cq_context=NULL, channel=NULL, comp_vector=0, cq=cq_37133) start.\n");
-
-    /* ibv_create_cq */
-    cq_37133 = ibv_create_cq(ctx, 16, 
-                              NULL, NULL, 
-                              0);
-    if (!cq_37133) {
-        fprintf(stderr, "Failed to create completion queue\n");
-        return -1;
-    }
-    printf("[18] done.\n");
-
-    printf("[19] AllocMW(pd=pd_47248, mw=mw_60800, mw_type=IBV_MW_TYPE_1) start.\n");
-
-    /* ibv_alloc_mw */
-    mw_60800 = ibv_alloc_mw(pd_47248, IBV_MW_TYPE_1);
-    if (!mw_60800) {
-        fprintf(stderr, "Failed to allocate memory window\n");
-        return -1;
-    }
-    printf("[19] done.\n");
-
-    printf("[20] AllocPD(pd=pd_37095) start.\n");
-
-    /* ibv_alloc_pd */
-    pd_37095 = ibv_alloc_pd(ctx);
-    if (!pd_37095) {
-        fprintf(stderr, "Failed to allocate protection domain\n");
-        return -1;
-    }
-    printf("[20] done.\n");
-
-    printf("[21] CreateQP(pd=pd_37095, qp=qp_17856, init_attr_obj=IbvQPInitAttr{send_cq=cq_37133, recv_cq=cq_29656, qp_type=IBV_QPT_RC, cap=IbvQPCap{max_send_wr=1, max_recv_wr=1, max_send_sge=1, max_recv_sge=1}}) start.\n");
+    printf("[12] CreateQP(pd=pd0, qp=qp0, init_attr_obj=IbvQPInitAttr{send_cq=cq0, recv_cq=cq0, qp_type=IBV_QPT_RC, cap=IbvQPCap{max_send_wr=1, max_recv_wr=1, max_send_sge=1, max_recv_sge=1}, sq_sig_all=1}) start.\n");
 
     /* ibv_create_qp */
     
-    memset(&attr_init_qp_17856, 0, sizeof(attr_init_qp_17856));
-    attr_init_qp_17856.send_cq = cq_37133;
-    attr_init_qp_17856.recv_cq = cq_29656;
+    memset(&attr_init_qp0, 0, sizeof(attr_init_qp0));
+    attr_init_qp0.send_cq = cq0;
+    attr_init_qp0.recv_cq = cq0;
 
-    memset(&attr_init_qp_17856_cap, 0, sizeof(attr_init_qp_17856_cap));
-    attr_init_qp_17856_cap.max_send_wr = 1;
-    attr_init_qp_17856_cap.max_recv_wr = 1;
-    attr_init_qp_17856_cap.max_send_sge = 1;
-    attr_init_qp_17856_cap.max_recv_sge = 1;
-    attr_init_qp_17856.cap = attr_init_qp_17856_cap;
-    attr_init_qp_17856.qp_type = IBV_QPT_RC;
+    memset(&attr_init_qp0_cap, 0, sizeof(attr_init_qp0_cap));
+    attr_init_qp0_cap.max_send_wr = 1;
+    attr_init_qp0_cap.max_recv_wr = 1;
+    attr_init_qp0_cap.max_send_sge = 1;
+    attr_init_qp0_cap.max_recv_sge = 1;
+    attr_init_qp0.cap = attr_init_qp0_cap;
+    attr_init_qp0.qp_type = IBV_QPT_RC;
+    attr_init_qp0.sq_sig_all = 1;
 
-    qp_17856 = ibv_create_qp(pd_37095, &attr_init_qp_17856);
-    if (!qp_17856) {
+    qp0 = ibv_create_qp(pd0, &attr_init_qp0);
+    if (!qp0) {
         fprintf(stderr, "Failed to create QP\n");
         return -1;
     }
     
     qps[qps_size++] = (PR_QP){
-        .id = "qp_17856",
-        .qpn = qp_17856->qp_num,
+        .id = "qp0",
+        .qpn = qp0->qp_num,
         .psn = 0,
         .port = 1,
         .lid = 0,
@@ -328,44 +256,165 @@ int main(int argc, char** argv){
                  gid.raw[0], gid.raw[1], gid.raw[2], gid.raw[3], gid.raw[4], gid.raw[5], gid.raw[6], gid.raw[7], gid.raw[8], gid.raw[9], gid.raw[10], gid.raw[11], gid.raw[12], gid.raw[13], gid.raw[14], gid.raw[15]);
                  
     prs[prs_size++] = (PR_Pair){
-        .id = "pair-qp_17856-srv0",
-        .cli_id = "qp_17856",
+        .id = "pair-qp0-srv0",
+        .cli_id = "qp0",
         .srv_id = "srv0"
     };
     
     pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
-    printf("[21] done.\n");
+    printf("[12] done.\n");
 
-    printf("[22] RegMR(pd=pd_47248, mr=mr_39021, addr=bufs[12], length=4096, access=IBV_ACCESS_LOCAL_WRITE) start.\n");
+    printf("[13] CreateSRQ(pd=pd1, srq=srq0, srq_init_obj=IbvSrqInitAttr{attr=IbvSrqAttr{srq_limit=0}}) start.\n");
+
+    /* ibv_create_srq */
+    
+    memset(&srq_init_attr_0, 0, sizeof(srq_init_attr_0));
+
+    memset(&srq_init_attr_0_attr, 0, sizeof(srq_init_attr_0_attr));
+    srq_init_attr_0_attr.srq_limit = 0;
+    srq_init_attr_0.attr = srq_init_attr_0_attr;
+
+    srq0 = ibv_create_srq(pd1, &srq_init_attr_0);
+    if (!srq0) {
+        fprintf(stderr, "Failed to create SRQ\n");
+        return -1;
+    }
+    printf("[13] done.\n");
+
+    printf("[14] ModifyQP(qp=qp0, attr_obj=IbvQPAttr{qp_state=IBV_QPS_INIT, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\"), port_num=1, qp_access_flags=IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WR..., pkey_index=0}, attr_mask=IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_POR...) start.\n");
+
+    
+    memset(&qp_attr_qp0, 0, sizeof(qp_attr_qp0));
+    
+    memset(&qp_attr_qp0, 0, sizeof(qp_attr_qp0));
+    qp_attr_qp0.qp_state = IBV_QPS_INIT;
+    qp_attr_qp0.dest_qp_num = rr_u32_by_id("remote.QP", "srv0", "qpn");
+    qp_attr_qp0.qp_access_flags = IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr_qp0.pkey_index = 0;
+    qp_attr_qp0.port_num = 1;
+
+    ibv_modify_qp(qp0, &qp_attr_qp0, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+            printf("[14] done.\n");
+
+    printf("[15] RegMR(pd=pd0, mr=mr0, addr=bufs[0], length=1024, access=IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_RE...) start.\n");
 
     /* ibv_reg_mr */
-    mr_39021 = ibv_reg_mr(pd_47248, bufs[12], 4096, IBV_ACCESS_LOCAL_WRITE);
-    if (!mr_39021) {
+    mr0 = ibv_reg_mr(pd0, bufs[0], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!mr0) {
         fprintf(stderr, "Failed to register memory region\n");
         return -1;
     }
     
     mrs[mrs_size++] = (PR_MR){
-        .id = "mr_39021",
-        .addr = (uint64_t)(mr_39021->addr),
+        .id = "mr0",
+        .addr = (uint64_t)(mr0->addr),
         .length = 1024,
-        .lkey = mr_39021->lkey};
+        .lkey = mr0->lkey};
         
     pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
     
-    printf("[22] done.\n");
+    printf("[15] done.\n");
 
-    printf("[23] AllocPD(pd=pd_7294) start.\n");
+    printf("[16] ModifyQP(qp=qp0, attr_obj=IbvQPAttr{qp_state=IBV_QPS_RTR, path_mtu=IBV_MTU_1024, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\"), rq_psn=0, max_dest_rd_atomic=1, min_rnr_timer=12, ah_attr=IbvAHAttr{dlid=rr_u32_by_id(\"remote.QP\", \"srv0\", \"lid\"), is_global=1, port_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"port\"), grh=IbvGlobalRoute{sgid_index=1, hop_limit=1, traffic_class=0, flow_label=0, dgid=rr_str_by_id(\"remote.QP\", \"srv0\", \"gid\")}, sl=0, src_path_bits=0}}, attr_mask=IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | ...) start.\n");
 
-    /* ibv_alloc_pd */
-    pd_7294 = ibv_alloc_pd(ctx);
-    if (!pd_7294) {
-        fprintf(stderr, "Failed to allocate protection domain\n");
+    pr_wait_pair_state(BUNDLE_ENV, "pair-qp0-srv0", "BOTH_RTS", /*timeout_ms=*/15000);
+    memset(&qp_attr_qp0, 0, sizeof(qp_attr_qp0));
+    
+    memset(&qp_attr_qp0, 0, sizeof(qp_attr_qp0));
+    qp_attr_qp0.qp_state = IBV_QPS_RTR;
+    qp_attr_qp0.path_mtu = IBV_MTU_1024;
+    qp_attr_qp0.rq_psn = 0;
+    qp_attr_qp0.dest_qp_num = rr_u32_by_id("remote.QP", "srv0", "qpn");
+
+    memset(&qp_attr_qp0_ah, 0, sizeof(qp_attr_qp0_ah));
+
+    memset(&qp_attr_qp0_ah_grh, 0, sizeof(qp_attr_qp0_ah_grh));
+    pr_parse_gid(rr_str_by_id("remote.QP", "srv0", "gid"), qp_attr_qp0_ah_grh.dgid.raw);
+    qp_attr_qp0_ah_grh.flow_label = 0;
+    qp_attr_qp0_ah_grh.sgid_index = 1;
+    qp_attr_qp0_ah_grh.hop_limit = 1;
+    qp_attr_qp0_ah_grh.traffic_class = 0;
+    qp_attr_qp0_ah.grh = qp_attr_qp0_ah_grh;
+    qp_attr_qp0_ah.dlid = rr_u32_by_id("remote.QP", "srv0", "lid");
+    qp_attr_qp0_ah.sl = 0;
+    qp_attr_qp0_ah.src_path_bits = 0;
+    qp_attr_qp0_ah.is_global = 1;
+    qp_attr_qp0_ah.port_num = rr_u32_by_id("remote.QP", "srv0", "port");
+    qp_attr_qp0.ah_attr = qp_attr_qp0_ah;
+    qp_attr_qp0.max_dest_rd_atomic = 1;
+    qp_attr_qp0.min_rnr_timer = 12;
+
+    ibv_modify_qp(qp0, &qp_attr_qp0, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+            printf("[16] done.\n");
+
+    printf("[17] ModifyQP(qp=qp0, attr_obj=IbvQPAttr{qp_state=IBV_QPS_RTS, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\"), sq_psn=0, timeout=14, retry_cnt=7, rnr_retry=7, max_rd_atomic=1}, attr_mask=34484502) start.\n");
+
+    
+    memset(&qp_attr_qp0, 0, sizeof(qp_attr_qp0));
+    
+    memset(&qp_attr_qp0, 0, sizeof(qp_attr_qp0));
+    qp_attr_qp0.qp_state = IBV_QPS_RTS;
+    qp_attr_qp0.sq_psn = 0;
+    qp_attr_qp0.dest_qp_num = rr_u32_by_id("remote.QP", "srv0", "qpn");
+    qp_attr_qp0.max_rd_atomic = 1;
+    qp_attr_qp0.timeout = 14;
+    qp_attr_qp0.retry_cnt = 7;
+    qp_attr_qp0.rnr_retry = 7;
+
+    ibv_modify_qp(qp0, &qp_attr_qp0, 34484502);
+            printf("[17] done.\n");
+
+    printf("[18] CreateCQ(cqe=32, cq_context=NULL, channel=NULL, comp_vector=0, cq=cq1) start.\n");
+
+    /* ibv_create_cq */
+    cq1 = ibv_create_cq(ctx, 32, 
+                              NULL, NULL, 
+                              0);
+    if (!cq1) {
+        fprintf(stderr, "Failed to create completion queue\n");
         return -1;
     }
-    printf("[23] done.\n");
+    printf("[18] done.\n");
 
-    printf("[24] PollCQ(cq=cq_37133) start.\n");
+    printf("[19] PostSend(qp=qp0, wr_obj=IbvSendWR{opcode=IBV_WR_SEND, num_sge=1, sg_list=[IbvSge x1: IbvSge{addr=(uint64_t)mr0->addr, length=mr0->length, lkey=mr0->lkey}], wr_id=1, send_flags=IBV_SEND_SIGNALED}) start.\n");
+
+    /* ibv_post_send */
+    
+    memset(&wr_qp0, 0, sizeof(wr_qp0));
+    wr_qp0.wr_id = 1;
+
+    memset(&wr_qp0_sge_0, 0, sizeof(wr_qp0_sge_0));
+    wr_qp0_sge_0.addr = (uint64_t)mr0->addr;
+    wr_qp0_sge_0.length = mr0->length;
+    wr_qp0_sge_0.lkey = mr0->lkey;
+    wr_qp0.sg_list = &wr_qp0_sge_0;
+    wr_qp0.num_sge = 1;
+    wr_qp0.opcode = IBV_WR_SEND;
+    wr_qp0.send_flags = IBV_SEND_SIGNALED;
+
+    if (ibv_post_send(qp0, &wr_qp0, &bad_wr_qp0) != 0) {
+        fprintf(stderr, "Failed to post send work request\n");
+        return -1;
+    }
+        printf("[19] done.\n");
+
+    printf("[20] PostSRQRecv(srq=srq0, wr_obj=IbvRecvWR{num_sge=1, sg_list=[IbvSge x1: IbvSge{addr=\u2205, length=\u2205, lkey=\u2205}], wr_id=1}, wr_var=recv_wr_srq0, bad_wr_var=bad_recv_wr_srq0) start.\n");
+
+    memset(&recv_wr_srq0, 0, sizeof(recv_wr_srq0));
+    recv_wr_srq0.wr_id = 1;
+
+    memset(&recv_wr_srq0_sges[0], 0, sizeof(recv_wr_srq0_sges[0]));
+    recv_wr_srq0.sg_list = recv_wr_srq0_sges;
+    recv_wr_srq0.num_sge = 1;
+    recv_wr_srq0.next = NULL;
+
+    if (ibv_post_srq_recv(srq0, &recv_wr_srq0, &bad_recv_wr_srq0) != 0) {
+        fprintf(stderr, "ibv_post_srq_recv failed\n");
+        return -1;
+    }
+    printf("[20] done.\n");
+
+    printf("[21] PollCQ(cq=cq1) start.\n");
 
         /* ibv_poll_cq — self-contained minimal polling */
         {
@@ -373,7 +422,7 @@ int main(int argc, char** argv){
             int n = 0;
             int attempts = 100;   /* ~100 * 100us ≈ 10ms */
             while (attempts-- > 0) {
-                n = ibv_poll_cq(cq_37133, 1, &wc);
+                n = ibv_poll_cq(cq1, 1, &wc);
                 if (n < 0) {
                     fprintf(stderr, "ibv_poll_cq failed\n");
                     return -1;
@@ -395,54 +444,612 @@ int main(int argc, char** argv){
                 return -1;
             }
         }
-        printf("[24] done.\n");
+        printf("[21] done.\n");
 
-    printf("[25] AllocPD(pd=pd_61895) start.\n");
+    printf("[22] DestroyCQ(cq=cq1) start.\n");
 
-    /* ibv_alloc_pd */
-    pd_61895 = ibv_alloc_pd(ctx);
-    if (!pd_61895) {
-        fprintf(stderr, "Failed to allocate protection domain\n");
+    /* ibv_destroy_cq */
+    if (ibv_destroy_cq(cq1)) {
+        fprintf(stderr, "Failed to destroy CQ\n");
+        return -1;
+    }
+    printf("[22] done.\n");
+
+    printf("[23] RegMR(pd=pd1, mr=mr1, addr=bufs[1], length=1024, access=IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_RE...) start.\n");
+
+    /* ibv_reg_mr */
+    mr1 = ibv_reg_mr(pd1, bufs[1], 1024, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if (!mr1) {
+        fprintf(stderr, "Failed to register memory region\n");
+        return -1;
+    }
+    
+    mrs[mrs_size++] = (PR_MR){
+        .id = "mr1",
+        .addr = (uint64_t)(mr1->addr),
+        .length = 1024,
+        .lkey = mr1->lkey};
+        
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    
+    printf("[23] done.\n");
+
+    printf("[24] DeregMR(mr=mr1) start.\n");
+
+    /* ibv_dereg_mr */
+    if (ibv_dereg_mr(mr1)) {
+        fprintf(stderr, "Failed to deregister MR\n");
+        return -1;
+    }
+    printf("[24] done.\n");
+
+    printf("[25] FreeDM(dm=dm1) start.\n");
+
+    /* ibv_free_dm */
+    if (ibv_free_dm(dm1)) {
+        fprintf(stderr, "Failed to free device memory (DM)\n");
         return -1;
     }
     printf("[25] done.\n");
 
-    printf("[26] PostSend(qp=qp_17856, wr_obj=IbvSendWR{opcode=IBV_WR_SEND, num_sge=1, sg_list=[IbvSge x1: IbvSge{addr=(uint64_t)mr_39021->addr, length=mr_39021->length, lkey=mr_39021->lkey}]}) start.\n");
+    printf("[26] ModifyCQ(cq=cq0, attr_obj=IbvModifyCQAttr{attr_mask=0, moderate=IbvModerateCQ{cq_count=0, cq_period=0}}, attr_var=modify_cq_attr) start.\n");
 
-    /* ibv_post_send */
-    
-    memset(&wr_qp_17856, 0, sizeof(wr_qp_17856));
+    memset(&modify_cq_attr, 0, sizeof(modify_cq_attr));
+    modify_cq_attr.attr_mask = 0;
 
-    memset(&wr_qp_17856_sge_0, 0, sizeof(wr_qp_17856_sge_0));
-    wr_qp_17856_sge_0.addr = (uint64_t)mr_39021->addr;
-    wr_qp_17856_sge_0.length = mr_39021->length;
-    wr_qp_17856_sge_0.lkey = mr_39021->lkey;
-    wr_qp_17856.sg_list = &wr_qp_17856_sge_0;
-    wr_qp_17856.num_sge = 1;
-    wr_qp_17856.opcode = IBV_WR_SEND;
+    memset(&modify_cq_attr_moderate, 0, sizeof(modify_cq_attr_moderate));
+    modify_cq_attr_moderate.cq_count = 0;
+    modify_cq_attr_moderate.cq_period = 0;
+    modify_cq_attr.moderate = modify_cq_attr_moderate;
 
-    if (ibv_post_send(qp_17856, &wr_qp_17856, &bad_wr_qp_17856) != 0) {
-        fprintf(stderr, "Failed to post send work request\n");
+    if (ibv_modify_cq(cq0, &modify_cq_attr) != 0) {
+        fprintf(stderr, "ibv_modify_cq failed\n");
         return -1;
     }
-        printf("[26] done.\n");
+    printf("[26] done.\n");
 
-    printf("[27] BindMW(qp=qp_17856, mw=mw_60800, mw_bind_var=mw_bind_mw_60800, mw_bind_obj=IbvMwBind{bind_info=IbvMwBindInfo{mr=mr_39021, addr=0, length=4096, mw_access_flags=0}}) start.\n");
+    printf("[27] AllocPD(pd=pd_39513) start.\n");
 
-    memset(&mw_bind_mw_60800, 0, sizeof(mw_bind_mw_60800));
-
-    memset(&mw_bind_mw_60800_bind_info, 0, sizeof(mw_bind_mw_60800_bind_info));
-    mw_bind_mw_60800_bind_info.addr = 0;
-    mw_bind_mw_60800_bind_info.length = 4096;
-    mw_bind_mw_60800_bind_info.mw_access_flags = 0;
-    mw_bind_mw_60800_bind_info.mr = mr_39021;
-    mw_bind_mw_60800.bind_info = mw_bind_mw_60800_bind_info;
-
-    if (ibv_bind_mw(qp_17856, mw_60800, &mw_bind_mw_60800) != 0) {
-        fprintf(stderr, "Failed to bind MW\n");
+    /* ibv_alloc_pd */
+    pd_39513 = ibv_alloc_pd(ctx);
+    if (!pd_39513) {
+        fprintf(stderr, "Failed to allocate protection domain\n");
         return -1;
     }
     printf("[27] done.\n");
+
+    printf("[28] RegMR(pd=pd_39513, mr=mr_38828, addr=bufs[78], length=4096, access=IBV_ACCESS_LOCAL_WRITE) start.\n");
+
+    /* ibv_reg_mr */
+    mr_38828 = ibv_reg_mr(pd_39513, bufs[78], 4096, IBV_ACCESS_LOCAL_WRITE);
+    if (!mr_38828) {
+        fprintf(stderr, "Failed to register memory region\n");
+        return -1;
+    }
+    
+    mrs[mrs_size++] = (PR_MR){
+        .id = "mr_38828",
+        .addr = (uint64_t)(mr_38828->addr),
+        .length = 1024,
+        .lkey = mr_38828->lkey};
+        
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    
+    printf("[28] done.\n");
+
+    printf("[29] CreateSRQ(pd=pd_39513, srq=srq_40319, srq_init_obj=IbvSrqInitAttr{attr=IbvSrqAttr{max_wr=1, max_sge=1, srq_limit=0}}) start.\n");
+
+    /* ibv_create_srq */
+    
+    memset(&srq_init_attr__40319, 0, sizeof(srq_init_attr__40319));
+
+    memset(&srq_init_attr__40319_attr, 0, sizeof(srq_init_attr__40319_attr));
+    srq_init_attr__40319_attr.max_wr = 1;
+    srq_init_attr__40319_attr.max_sge = 1;
+    srq_init_attr__40319_attr.srq_limit = 0;
+    srq_init_attr__40319.attr = srq_init_attr__40319_attr;
+
+    srq_40319 = ibv_create_srq(pd_39513, &srq_init_attr__40319);
+    if (!srq_40319) {
+        fprintf(stderr, "Failed to create SRQ\n");
+        return -1;
+    }
+    printf("[29] done.\n");
+
+    printf("[30] DeallocPD(pd=pd_39513) start.\n");
+
+    /* ibv_dealloc_pd */
+    if (ibv_dealloc_pd(pd_39513)) {
+        fprintf(stderr, "Failed to deallocate PD \n");
+        return -1;
+    }
+    printf("[30] done.\n");
+
+    printf("[31] CreateCQ(cqe=16, cq_context=NULL, channel=NULL, comp_vector=0, cq=cq_49702) start.\n");
+
+    /* ibv_create_cq */
+    cq_49702 = ibv_create_cq(ctx, 16, 
+                              NULL, NULL, 
+                              0);
+    if (!cq_49702) {
+        fprintf(stderr, "Failed to create completion queue\n");
+        return -1;
+    }
+    printf("[31] done.\n");
+
+    printf("[32] CreateSRQ(pd=pd1, srq=srq_34143, srq_init_obj=IbvSrqInitAttr{attr=IbvSrqAttr{max_wr=1, max_sge=1, srq_limit=0}}) start.\n");
+
+    /* ibv_create_srq */
+    
+    memset(&srq_init_attr__34143, 0, sizeof(srq_init_attr__34143));
+
+    memset(&srq_init_attr__34143_attr, 0, sizeof(srq_init_attr__34143_attr));
+    srq_init_attr__34143_attr.max_wr = 1;
+    srq_init_attr__34143_attr.max_sge = 1;
+    srq_init_attr__34143_attr.srq_limit = 0;
+    srq_init_attr__34143.attr = srq_init_attr__34143_attr;
+
+    srq_34143 = ibv_create_srq(pd1, &srq_init_attr__34143);
+    if (!srq_34143) {
+        fprintf(stderr, "Failed to create SRQ\n");
+        return -1;
+    }
+    printf("[32] done.\n");
+
+    printf("[33] DeregMR(mr=mr_38828) start.\n");
+
+    /* ibv_dereg_mr */
+    if (ibv_dereg_mr(mr_38828)) {
+        fprintf(stderr, "Failed to deregister MR\n");
+        return -1;
+    }
+    printf("[33] done.\n");
+
+    printf("[34] AllocPD(pd=pd_21963) start.\n");
+
+    /* ibv_alloc_pd */
+    pd_21963 = ibv_alloc_pd(ctx);
+    if (!pd_21963) {
+        fprintf(stderr, "Failed to allocate protection domain\n");
+        return -1;
+    }
+    printf("[34] done.\n");
+
+    printf("[35] RegMR(pd=pd1, mr=mr_63561, addr=bufs[98], length=4096, access=1049484) start.\n");
+
+    /* ibv_reg_mr */
+    mr_63561 = ibv_reg_mr(pd1, bufs[98], 4096, 1049484);
+    if (!mr_63561) {
+        fprintf(stderr, "Failed to register memory region\n");
+        return -1;
+    }
+    
+    mrs[mrs_size++] = (PR_MR){
+        .id = "mr_63561",
+        .addr = (uint64_t)(mr_63561->addr),
+        .length = 1024,
+        .lkey = mr_63561->lkey};
+        
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    
+    printf("[35] done.\n");
+
+    printf("[36] CreateQP(pd=pd1, qp=qp_41329, init_attr_obj=IbvQPInitAttr{send_cq=cq0, recv_cq=cq0, qp_type=IBV_QPT_RC, cap=IbvQPCap{max_send_wr=1, max_recv_wr=1, max_send_sge=1, max_recv_sge=1}}) start.\n");
+
+    /* ibv_create_qp */
+    
+    memset(&attr_init_qp_41329, 0, sizeof(attr_init_qp_41329));
+    attr_init_qp_41329.send_cq = cq0;
+    attr_init_qp_41329.recv_cq = cq0;
+
+    memset(&attr_init_qp_41329_cap, 0, sizeof(attr_init_qp_41329_cap));
+    attr_init_qp_41329_cap.max_send_wr = 1;
+    attr_init_qp_41329_cap.max_recv_wr = 1;
+    attr_init_qp_41329_cap.max_send_sge = 1;
+    attr_init_qp_41329_cap.max_recv_sge = 1;
+    attr_init_qp_41329.cap = attr_init_qp_41329_cap;
+    attr_init_qp_41329.qp_type = IBV_QPT_RC;
+
+    qp_41329 = ibv_create_qp(pd1, &attr_init_qp_41329);
+    if (!qp_41329) {
+        fprintf(stderr, "Failed to create QP\n");
+        return -1;
+    }
+    
+    qps[qps_size++] = (PR_QP){
+        .id = "qp_41329",
+        .qpn = qp_41329->qp_num,
+        .psn = 0,
+        .port = 1,
+        .lid = 0,
+        .gid = "" // will set below
+    };
+    
+    snprintf(qps[qps_size-1].gid, sizeof(qps[qps_size-1].gid),
+                 "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+                 gid.raw[0], gid.raw[1], gid.raw[2], gid.raw[3], gid.raw[4], gid.raw[5], gid.raw[6], gid.raw[7], gid.raw[8], gid.raw[9], gid.raw[10], gid.raw[11], gid.raw[12], gid.raw[13], gid.raw[14], gid.raw[15]);
+                 
+    prs[prs_size++] = (PR_Pair){
+        .id = "pair-qp_41329-srv0",
+        .cli_id = "qp_41329",
+        .srv_id = "srv0"
+    };
+    
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    printf("[36] done.\n");
+
+    printf("[37] PollCQ(cq=cq0) start.\n");
+
+        /* ibv_poll_cq — self-contained minimal polling */
+        {
+            struct ibv_wc wc;
+            int n = 0;
+            int attempts = 100;   /* ~100 * 100us ≈ 10ms */
+            while (attempts-- > 0) {
+                n = ibv_poll_cq(cq0, 1, &wc);
+                if (n < 0) {
+                    fprintf(stderr, "ibv_poll_cq failed\n");
+                    return -1;
+                }
+                if (n == 1) {
+                    if (wc.status != IBV_WC_SUCCESS) {
+                        fprintf(stderr, "bad completion: status=0x%x vendor=0x%x\n",
+                                wc.status, wc.vendor_err);
+                        return -1;
+                    }
+                    /* success – got one completion */
+                    break;
+                }
+                /* n == 0: no CQE yet, back off briefly */
+                usleep(100); /* 100us */
+            }
+            if (n == 0) {
+                fprintf(stderr, "no completion within budget\n");
+                return -1;
+            }
+        }
+        printf("[37] done.\n");
+
+    printf("[38] RegMR(pd=pd1, mr=mr_22281, addr=bufs[86], length=4096, access=IBV_ACCESS_LOCAL_WRITE) start.\n");
+
+    /* ibv_reg_mr */
+    mr_22281 = ibv_reg_mr(pd1, bufs[86], 4096, IBV_ACCESS_LOCAL_WRITE);
+    if (!mr_22281) {
+        fprintf(stderr, "Failed to register memory region\n");
+        return -1;
+    }
+    
+    mrs[mrs_size++] = (PR_MR){
+        .id = "mr_22281",
+        .addr = (uint64_t)(mr_22281->addr),
+        .length = 1024,
+        .lkey = mr_22281->lkey};
+        
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    
+    printf("[38] done.\n");
+
+    printf("[39] DeregMR(mr=mr_63561) start.\n");
+
+    /* ibv_dereg_mr */
+    if (ibv_dereg_mr(mr_63561)) {
+        fprintf(stderr, "Failed to deregister MR\n");
+        return -1;
+    }
+    printf("[39] done.\n");
+
+    printf("[40] AllocPD(pd=pd_50064) start.\n");
+
+    /* ibv_alloc_pd */
+    pd_50064 = ibv_alloc_pd(ctx);
+    if (!pd_50064) {
+        fprintf(stderr, "Failed to allocate protection domain\n");
+        return -1;
+    }
+    printf("[40] done.\n");
+
+    printf("[41] ModifySRQ(srq=srq0, attr_var=srq_attr_srq0, attr_obj=IbvSrqAttr{max_wr=1024, max_sge=1}, attr_mask=0) start.\n");
+
+    memset(&srq_attr_srq0, 0, sizeof(srq_attr_srq0));
+    srq_attr_srq0.max_wr = 1024;
+    srq_attr_srq0.max_sge = 1;
+
+    if (ibv_modify_srq(srq0, &srq_attr_srq0, 0) != 0) {
+        fprintf(stderr, "ibv_modify_srq failed\n");
+        return -1;
+    }
+    printf("[41] done.\n");
+
+    printf("[42] DeallocPD(pd=pd1) start.\n");
+
+    /* ibv_dealloc_pd */
+    if (ibv_dealloc_pd(pd1)) {
+        fprintf(stderr, "Failed to deallocate PD \n");
+        return -1;
+    }
+    printf("[42] done.\n");
+
+    printf("[43] AllocPD(pd=pd_48924) start.\n");
+
+    /* ibv_alloc_pd */
+    pd_48924 = ibv_alloc_pd(ctx);
+    if (!pd_48924) {
+        fprintf(stderr, "Failed to allocate protection domain\n");
+        return -1;
+    }
+    printf("[43] done.\n");
+
+    printf("[44] CreateQP(pd=pd_35579, qp=qp_50439, init_attr_obj=IbvQPInitAttr{send_cq=cq0, recv_cq=cq0, qp_type=IBV_QPT_RC, cap=IbvQPCap{max_send_wr=1, max_recv_wr=1, max_send_sge=1, max_recv_sge=1}}) start.\n");
+
+    /* ibv_create_qp */
+    
+    memset(&attr_init_qp_50439, 0, sizeof(attr_init_qp_50439));
+    attr_init_qp_50439.send_cq = cq0;
+    attr_init_qp_50439.recv_cq = cq0;
+
+    memset(&attr_init_qp_50439_cap, 0, sizeof(attr_init_qp_50439_cap));
+    attr_init_qp_50439_cap.max_send_wr = 1;
+    attr_init_qp_50439_cap.max_recv_wr = 1;
+    attr_init_qp_50439_cap.max_send_sge = 1;
+    attr_init_qp_50439_cap.max_recv_sge = 1;
+    attr_init_qp_50439.cap = attr_init_qp_50439_cap;
+    attr_init_qp_50439.qp_type = IBV_QPT_RC;
+
+    qp_50439 = ibv_create_qp(pd_35579, &attr_init_qp_50439);
+    if (!qp_50439) {
+        fprintf(stderr, "Failed to create QP\n");
+        return -1;
+    }
+    
+    qps[qps_size++] = (PR_QP){
+        .id = "qp_50439",
+        .qpn = qp_50439->qp_num,
+        .psn = 0,
+        .port = 1,
+        .lid = 0,
+        .gid = "" // will set below
+    };
+    
+    snprintf(qps[qps_size-1].gid, sizeof(qps[qps_size-1].gid),
+                 "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+                 gid.raw[0], gid.raw[1], gid.raw[2], gid.raw[3], gid.raw[4], gid.raw[5], gid.raw[6], gid.raw[7], gid.raw[8], gid.raw[9], gid.raw[10], gid.raw[11], gid.raw[12], gid.raw[13], gid.raw[14], gid.raw[15]);
+                 
+    prs[prs_size++] = (PR_Pair){
+        .id = "pair-qp_50439-srv0",
+        .cli_id = "qp_50439",
+        .srv_id = "srv0"
+    };
+    
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    printf("[44] done.\n");
+
+    printf("[45] DestroyCQ(cq=cq0) start.\n");
+
+    /* ibv_destroy_cq */
+    if (ibv_destroy_cq(cq0)) {
+        fprintf(stderr, "Failed to destroy CQ\n");
+        return -1;
+    }
+    printf("[45] done.\n");
+
+    printf("[46] ModifySRQ(srq=srq_34143, attr_var=srq_attr_srq_34143, attr_obj=IbvSrqAttr{max_wr=1, srq_limit=0}, attr_mask=IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT) start.\n");
+
+    memset(&srq_attr_srq_34143, 0, sizeof(srq_attr_srq_34143));
+    srq_attr_srq_34143.max_wr = 1;
+    srq_attr_srq_34143.srq_limit = 0;
+
+    if (ibv_modify_srq(srq_34143, &srq_attr_srq_34143, IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT) != 0) {
+        fprintf(stderr, "ibv_modify_srq failed\n");
+        return -1;
+    }
+    printf("[46] done.\n");
+
+    printf("[47] DestroyQP(qp=qp0) start.\n");
+
+    /* ibv_destroy_qp */
+    if (ibv_destroy_qp(qp0)) {
+        fprintf(stderr, "Failed to destroy QP\n");
+        return -1;
+    }
+    printf("[47] done.\n");
+
+    printf("[48] ModifySRQ(srq=srq_34143, attr_var=srq_attr_srq_34143, attr_obj=IbvSrqAttr{max_wr=1, srq_limit=0}, attr_mask=IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT) start.\n");
+
+    memset(&srq_attr_srq_34143, 0, sizeof(srq_attr_srq_34143));
+    srq_attr_srq_34143.max_wr = 1;
+    srq_attr_srq_34143.srq_limit = 0;
+
+    if (ibv_modify_srq(srq_34143, &srq_attr_srq_34143, IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT) != 0) {
+        fprintf(stderr, "ibv_modify_srq failed\n");
+        return -1;
+    }
+    printf("[48] done.\n");
+
+    printf("[49] DeregMR(mr=mr0) start.\n");
+
+    /* ibv_dereg_mr */
+    if (ibv_dereg_mr(mr0)) {
+        fprintf(stderr, "Failed to deregister MR\n");
+        return -1;
+    }
+    printf("[49] done.\n");
+
+    printf("[50] ModifyQP(qp=qp_50439, attr_obj=IbvQPAttr{qp_state=IBV_QPS_INIT, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\")}, attr_mask=34510625) start.\n");
+
+    
+    memset(&qp_attr_qp_50439, 0, sizeof(qp_attr_qp_50439));
+    
+    memset(&qp_attr_qp_50439, 0, sizeof(qp_attr_qp_50439));
+    qp_attr_qp_50439.qp_state = IBV_QPS_INIT;
+    qp_attr_qp_50439.dest_qp_num = rr_u32_by_id("remote.QP", "srv0", "qpn");
+
+    ibv_modify_qp(qp_50439, &qp_attr_qp_50439, 34510625);
+            printf("[50] done.\n");
+
+    printf("[51] ModifyQP(qp=qp_50439, attr_obj=IbvQPAttr{qp_state=IBV_QPS_RTR, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\")}, attr_mask=IBV_QP_STATE) start.\n");
+
+    pr_wait_pair_state(BUNDLE_ENV, "pair-qp_50439-srv0", "BOTH_RTS", /*timeout_ms=*/15000);
+    memset(&qp_attr_qp_50439, 0, sizeof(qp_attr_qp_50439));
+    
+    memset(&qp_attr_qp_50439, 0, sizeof(qp_attr_qp_50439));
+    qp_attr_qp_50439.qp_state = IBV_QPS_RTR;
+    qp_attr_qp_50439.dest_qp_num = rr_u32_by_id("remote.QP", "srv0", "qpn");
+
+    ibv_modify_qp(qp_50439, &qp_attr_qp_50439, IBV_QP_STATE);
+            printf("[51] done.\n");
+
+    printf("[52] AllocPD(pd=pd_21596) start.\n");
+
+    /* ibv_alloc_pd */
+    pd_21596 = ibv_alloc_pd(ctx);
+    if (!pd_21596) {
+        fprintf(stderr, "Failed to allocate protection domain\n");
+        return -1;
+    }
+    printf("[52] done.\n");
+
+    printf("[53] PostSRQRecv(srq=srq0, wr_obj=IbvRecvWR{num_sge=1, sg_list=[IbvSge x1: IbvSge{addr=\u2205, length=\u2205, lkey=\u2205}]}, wr_var=recv_wr_srq0, bad_wr_var=bad_recv_wr_srq0) start.\n");
+
+    memset(&recv_wr_srq0, 0, sizeof(recv_wr_srq0));
+
+    memset(&recv_wr_srq0_sges[0], 0, sizeof(recv_wr_srq0_sges[0]));
+    recv_wr_srq0.sg_list = recv_wr_srq0_sges;
+    recv_wr_srq0.num_sge = 1;
+    recv_wr_srq0.next = NULL;
+
+    if (ibv_post_srq_recv(srq0, &recv_wr_srq0, &bad_recv_wr_srq0) != 0) {
+        fprintf(stderr, "ibv_post_srq_recv failed\n");
+        return -1;
+    }
+    printf("[53] done.\n");
+
+    printf("[54] DeregMR(mr=mr_22281) start.\n");
+
+    /* ibv_dereg_mr */
+    if (ibv_dereg_mr(mr_22281)) {
+        fprintf(stderr, "Failed to deregister MR\n");
+        return -1;
+    }
+    printf("[54] done.\n");
+
+    printf("[55] DeallocPD(pd=pd_21963) start.\n");
+
+    /* ibv_dealloc_pd */
+    if (ibv_dealloc_pd(pd_21963)) {
+        fprintf(stderr, "Failed to deallocate PD \n");
+        return -1;
+    }
+    printf("[55] done.\n");
+
+    printf("[56] PostSRQRecv(srq=srq_34143, wr_obj=IbvRecvWR{num_sge=1, sg_list=[IbvSge x1: IbvSge{addr=\u2205, length=\u2205, lkey=\u2205}]}, wr_var=recv_wr_srq_34143, bad_wr_var=bad_recv_wr_srq_34143) start.\n");
+
+    memset(&recv_wr_srq_34143, 0, sizeof(recv_wr_srq_34143));
+
+    memset(&recv_wr_srq_34143_sges[0], 0, sizeof(recv_wr_srq_34143_sges[0]));
+    recv_wr_srq_34143.sg_list = recv_wr_srq_34143_sges;
+    recv_wr_srq_34143.num_sge = 1;
+    recv_wr_srq_34143.next = NULL;
+
+    if (ibv_post_srq_recv(srq_34143, &recv_wr_srq_34143, &bad_recv_wr_srq_34143) != 0) {
+        fprintf(stderr, "ibv_post_srq_recv failed\n");
+        return -1;
+    }
+    printf("[56] done.\n");
+
+    printf("[57] PostSRQRecv(srq=srq_34143, wr_obj=IbvRecvWR{num_sge=1, sg_list=[IbvSge x1: IbvSge{addr=\u2205, length=\u2205, lkey=\u2205}]}, wr_var=recv_wr_srq_34143, bad_wr_var=bad_recv_wr_srq_34143) start.\n");
+
+    memset(&recv_wr_srq_34143, 0, sizeof(recv_wr_srq_34143));
+
+    memset(&recv_wr_srq_34143_sges[0], 0, sizeof(recv_wr_srq_34143_sges[0]));
+    recv_wr_srq_34143.sg_list = recv_wr_srq_34143_sges;
+    recv_wr_srq_34143.num_sge = 1;
+    recv_wr_srq_34143.next = NULL;
+
+    if (ibv_post_srq_recv(srq_34143, &recv_wr_srq_34143, &bad_recv_wr_srq_34143) != 0) {
+        fprintf(stderr, "ibv_post_srq_recv failed\n");
+        return -1;
+    }
+    printf("[57] done.\n");
+
+    printf("[58] DeallocPD(pd=pd_21596) start.\n");
+
+    /* ibv_dealloc_pd */
+    if (ibv_dealloc_pd(pd_21596)) {
+        fprintf(stderr, "Failed to deallocate PD \n");
+        return -1;
+    }
+    printf("[58] done.\n");
+
+    printf("[59] DeallocPD(pd=pd_50064) start.\n");
+
+    /* ibv_dealloc_pd */
+    if (ibv_dealloc_pd(pd_50064)) {
+        fprintf(stderr, "Failed to deallocate PD \n");
+        return -1;
+    }
+    printf("[59] done.\n");
+
+    printf("[60] ModifySRQ(srq=srq_40319, attr_var=srq_attr_srq_40319, attr_obj=IbvSrqAttr{max_wr=1, srq_limit=0}, attr_mask=IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT) start.\n");
+
+    memset(&srq_attr_srq_40319, 0, sizeof(srq_attr_srq_40319));
+    srq_attr_srq_40319.max_wr = 1;
+    srq_attr_srq_40319.srq_limit = 0;
+
+    if (ibv_modify_srq(srq_40319, &srq_attr_srq_40319, IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT) != 0) {
+        fprintf(stderr, "ibv_modify_srq failed\n");
+        return -1;
+    }
+    printf("[60] done.\n");
+
+    printf("[61] ModifySRQ(srq=srq_40319, attr_var=srq_attr_srq_40319, attr_obj=IbvSrqAttr{max_wr=1, srq_limit=0}, attr_mask=IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT) start.\n");
+
+    memset(&srq_attr_srq_40319, 0, sizeof(srq_attr_srq_40319));
+    srq_attr_srq_40319.max_wr = 1;
+    srq_attr_srq_40319.srq_limit = 0;
+
+    if (ibv_modify_srq(srq_40319, &srq_attr_srq_40319, IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT) != 0) {
+        fprintf(stderr, "ibv_modify_srq failed\n");
+        return -1;
+    }
+    printf("[61] done.\n");
+
+    printf("[62] RegMR(pd=pd_35579, mr=mr_14707, addr=bufs[2], length=4096, access=IBV_ACCESS_LOCAL_WRITE) start.\n");
+
+    /* ibv_reg_mr */
+    mr_14707 = ibv_reg_mr(pd_35579, bufs[2], 4096, IBV_ACCESS_LOCAL_WRITE);
+    if (!mr_14707) {
+        fprintf(stderr, "Failed to register memory region\n");
+        return -1;
+    }
+    
+    mrs[mrs_size++] = (PR_MR){
+        .id = "mr_14707",
+        .addr = (uint64_t)(mr_14707->addr),
+        .length = 1024,
+        .lkey = mr_14707->lkey};
+        
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    
+    printf("[62] done.\n");
+
+    printf("[63] RegMR(pd=pd0, mr=mr_3124, addr=bufs[22], length=4096, access=IBV_ACCESS_LOCAL_WRITE) start.\n");
+
+    /* ibv_reg_mr */
+    mr_3124 = ibv_reg_mr(pd0, bufs[22], 4096, IBV_ACCESS_LOCAL_WRITE);
+    if (!mr_3124) {
+        fprintf(stderr, "Failed to register memory region\n");
+        return -1;
+    }
+    
+    mrs[mrs_size++] = (PR_MR){
+        .id = "mr_3124",
+        .addr = (uint64_t)(mr_3124->addr),
+        .length = 1024,
+        .lkey = mr_3124->lkey};
+        
+    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    
+    printf("[63] done.\n");
 
 
 

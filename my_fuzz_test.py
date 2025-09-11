@@ -183,6 +183,17 @@ INITIAL_VERBS = [
 ]
 
 
+def escape_c_string(s: str) -> str:
+    """
+    转义字符串为合法的 C 字符串常量内容。
+    会转义双引号、反斜杠、换行等特殊字符。
+    """
+    # json.dumps 会自动做 C 风格转义
+    escaped = json.dumps(s)
+    # 去掉最外层的引号
+    return escaped[1:-1]
+
+
 def render(verbs: List[VerbCall]) -> str:
     ctx = CodeGenContext()
     verbs = [
@@ -197,7 +208,8 @@ def render(verbs: List[VerbCall]) -> str:
         v.apply(ctx)
     body = ""
     for i, v in enumerate(verbs):
-        body += f'    printf("[{i + 1}] {summarize_verb(v, deep=True, max_items=1000)} start.\\n");\n'
+        summary = escape_c_string(summarize_verb(v, deep=True, max_items=1000))
+        body += f'    printf("[{i + 1}] {summary} start.\\n");\n'
         body += v.generate_c(ctx)
         body += f'    printf("[{i + 1}] done.\\n");\n\n'
     # body = "".join(v.generate_c(ctx) for v in verbs)
@@ -224,13 +236,29 @@ def render(verbs: List[VerbCall]) -> str:
 
 if __name__ == "__main__":
     print("This is my_fuzz_test.py")
+
+    logger = logging.getLogger()
     logging.basicConfig(level=logging.DEBUG)
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+
+    # 文件轮转（50MB * 3份备份）
+    # fh = RotatingFileHandler(log_file, mode="w", maxBytes=50 * 1024 * 1024, backupCount=3, encoding="utf-8") # 暂时不需要这个功能
+    fh = logging.FileHandler("out.txt", mode="w", encoding="utf-8")
+    # fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(process)d %(name)s: %(message)s")
+    fmt = logging.Formatter("%(message)s")
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
     verbs = copy.deepcopy(INITIAL_VERBS)
-    rng = random.Random(100)
-    random.seed(100)
+    # rng = random.Random(100)
+    # random.seed(100)
+    rng = None
     mutator = fuzz_mutate.ContractAwareMutator(rng)
     for _ in range(100):
         mutator.mutate(verbs)
+        # if random.random() < 0.5:
+        #     mutator.mutate_insert(verbs, idx=None, choice="modify_qp")
         # mutator.mutate_param(verbs, idx=8)
     print(summarize_verb_list(verbs, deep=True))
     # print("\n\nGenerated C++ Code:\n")

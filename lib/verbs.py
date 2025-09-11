@@ -4354,7 +4354,7 @@ class PostRecv(VerbCall):
     CONTRACT = Contract(
         requires=[
             # 需要 QP 存在（状态可不限制）
-            RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED]),
+            RequireSpec("qp", State.RTS, "qp", exclude_states=[State.DESTROYED]),
             # 需要 WR 链里每个 SGE 的 MR 存在（未销毁即可）
             # wr_obj**   ：遍历整条 RecvWR 链
             # sg_list[*]：每个 WR 的所有 SGE
@@ -4437,8 +4437,8 @@ class PostSend(VerbCall):
     # 关键：把整条 WR 链（wr_obj**）的所有 SGE（sg_list[*]）里的 MR 都声明为 requires
     CONTRACT = Contract(
         requires=[
-            RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED]),
-            RequireSpec("mr", None, "wr_obj.**.sg_list[*].mr"),
+            RequireSpec("qp", State.RTS, "qp", exclude_states=[State.DESTROYED]),
+            RequireSpec("mr", State.ALLOCATED, "wr_obj.**.sg_list[*].mr"),
         ],
         produces=[],
         transitions=[],
@@ -4710,7 +4710,7 @@ class QueryGID(VerbCall):
 
     def __init__(self, port_num: int = None, index: int = None, gid_var: str = None):
         self.port_num = IntValue(port_num or 1)  # Default port number
-        self.index = IntValue(index or 0)  # Default GID index
+        self.index = IntValue(index or 1)  # Default GID index
         self.gid_var = ConstantValue(gid_var or "gid")  # Variable name for the GID output
 
     @classmethod

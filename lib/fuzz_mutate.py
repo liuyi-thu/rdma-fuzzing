@@ -494,26 +494,50 @@ def build_modify_qp_out(verbs, i: int, snap, qp_name: str, rng):
         return build_modify_qp_stateless(snap, qp_name, rng)
 
 
+# def build_modify_qp_safe_chain(verbs, i: int, snap, qp_name: str, rng) -> List[VerbCall]:
+#     from lib.ibv_all import IbvQPAttr
+
+#     cur = _qp_state_before(snap, qp_name)  # 也可从 snapshot 里取
+#     cur = str(cur).replace("State.", "")
+#     succ = _first_successor_target_after(verbs, i, qp_name)  # 真的要用到完整verbs了
+
+#     def _rand_target_from(s, rng):
+#         idx = _QP_ORDER.index(s) if s in _QP_ORDER else 0
+#         end = min(idx + 2, len(_QP_ORDER) - 1)
+#         return _QP_ORDER[rng.randint(idx + 1, end)]
+
+#     target = succ if succ is not None and _state_leq(cur, succ) else _rand_target_from(cur, rng)
+#     path = _qp_path(cur, target)
+#     logging.debug("build_modify_qp_safe_chain: qp=%s, cur=%s, target=%s, path=%s", qp_name, cur, target, path)
+#     if not path:
+#         return []
+#     L = rng.randrange(1, len(path) + 1)
+#     prefix = path[:L]
+#     return [
+#         ModifyQP(qp=qp_name, attr_obj=IbvQPAttr(qp_state=f"IBV_QPS_{st}"), attr_mask="IBV_QP_STATE") for st in prefix
+#     ]
+
+
 def build_modify_qp_safe_chain(verbs, i: int, snap, qp_name: str, rng) -> List[VerbCall]:
     from lib.ibv_all import IbvQPAttr
 
     cur = _qp_state_before(snap, qp_name)  # 也可从 snapshot 里取
+    cur = str(cur).replace("State.", "")
     succ = _first_successor_target_after(verbs, i, qp_name)  # 真的要用到完整verbs了
+    if succ:
+        return []
 
     def _rand_target_from(s, rng):
         idx = _QP_ORDER.index(s) if s in _QP_ORDER else 0
         end = min(idx + 2, len(_QP_ORDER) - 1)
         return _QP_ORDER[rng.randint(idx + 1, end)]
 
-    target = succ if succ is not None and _state_leq(cur, succ) else _rand_target_from(cur, rng)
+    target = _rand_target_from(cur, rng)
     path = _qp_path(cur, target)
+    logging.debug("build_modify_qp_safe_chain: qp=%s, cur=%s, target=%s, path=%s", qp_name, cur, target, path)
     if not path:
         return []
-    L = rng.randrange(1, len(path) + 1)
-    prefix = path[:L]
-    return [
-        ModifyQP(qp=qp_name, attr_obj=IbvQPAttr(qp_state=f"IBV_QPS_{st}"), attr_mask="IBV_QP_STATE") for st in prefix
-    ]
+    return [ModifyQP(qp=qp_name, attr_obj=IbvQPAttr(qp_state=f"IBV_QPS_{st}"), attr_mask="IBV_QP_STATE") for st in path]
 
 
 def build_modify_qp_stateless(snap, qp_name: str, rng) -> Optional[VerbCall]:
@@ -633,6 +657,8 @@ def _build_destroy_of_type(snap, rtype, rng):
     若该类型在现场没有实例，返回 None。
     """
     name = _pick_live_from_snap(snap, rtype, rng)
+    if not name:
+        return None
 
     # 映射：rtype -> (Class, param_name)
     from .verbs import (
@@ -698,11 +724,12 @@ def build_destroy_generic(snap, rng):
     return None
 
 
-def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | None:
+def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random, state: State = None) -> str | None:
     cands = []
     for (rt, nm), st in (snap or {}).items():
         if rt == rtype and st not in (State.DESTROYED,):
-            cands.append(nm)
+            if state is None or st == state:
+                cands.append(nm)
     return rng.choice(cands) if cands else None
 
 
@@ -764,6 +791,7 @@ def _pick_insertion_template(
     # 1) ModifyQP：复用你已有的有/无状态策略
     def build_modify_qp(ctx, rng, snap):
         qp = _pick_live_from_snap(snap, "qp", rng)
+        # logging.debug("build_modify_qp: picked qp %s", qp)
         if not qp:
             return None
         return build_modify_qp_out(verbs, i, snap, qp, rng)  # 你现有的包装
@@ -771,13 +799,17 @@ def _pick_insertion_template(
     # 2) PostSend：最小 WR（1 SGE）
 
     def build_post_send(ctx, rng, snap):
-        qp = _pick_live_from_snap(snap, "qp", rng)
+        ins_list = []
+        qp = _pick_live_from_snap(snap, "qp", rng, State.RTS)
         if not qp:
             return None
+            # if rng.random < 0.5:
+            #     return None
+            # else:
+            #     ins_list = build_modify_qp_safe_chain(verbs, i, snap, qp, rng)
 
         # 先找活着的 MR；没有就插入 RegMR（要有 PD）
         mr_name = _pick_live_from_snap(snap, "mr", rng)
-        ins_list = []
         if mr_name is None:
             pd = _pick_live_from_snap(snap, "pd", rng)
             if pd is None:
@@ -823,7 +855,7 @@ def _pick_insertion_template(
 
     # 6) **PostRecv**（最小 WR：1 SGE）
     def build_post_recv(ctx, rng, snap):
-        qp = _pick_live_from_snap(snap, "qp", rng)
+        qp = _pick_live_from_snap(snap, "qp", rng, State.RTS)
         if not qp:
             return None
         mr_name = _pick_live_from_snap(snap, "mr", rng)
@@ -910,17 +942,21 @@ def _pick_insertion_template(
 
     def build_post_srq_recv(ctx, rng, snap):
         srq = _pick_live_from_snap(snap, "srq", rng)
+        if not srq:
+            return None
         from lib.ibv_all import IbvRecvWR
 
-        return PostSRQRecv(srq=rng.choice(srq), wr_obj=_mk_min_recv_wr())
+        return PostSRQRecv(srq=srq, wr_obj=_mk_min_recv_wr())
 
     def build_modify_srq(ctx, rng, snap):
         srq = _pick_live_from_snap(snap, "srq", rng)
         # 你的 ModifySRQ 支持 IbvSrqAttr + mask（verbs 里定义了 attr_mask: IBV_SRQ_ATTR_*）
+        if not srq:
+            return None
         from lib.ibv_all import IbvSrqAttr
 
         return ModifySRQ(
-            srq=rng.choice(srq), attr_obj=IbvSrqAttr(max_wr=1, srq_limit=0), attr_mask="IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT"
+            srq=srq, attr_obj=IbvSrqAttr(max_wr=1, srq_limit=0), attr_mask="IBV_SRQ_MAX_WR | IBV_SRQ_LIMIT"
         )
 
     # ---------- WQ ----------
@@ -1033,36 +1069,22 @@ def _pick_insertion_template(
         # 你已有的：
         "modify_qp": build_modify_qp,
         "post_send": build_post_send,
+        "post_recv": build_post_recv,
         "poll_cq": build_poll_cq,
         "reg_mr": build_reg_mr,
         "create_cq": build_create_cq,
-        "post_recv": build_post_recv,
         "bind_mw": build_bind_mw,
-        "attach_mcast": build_attach_mcast,
-        "reg_dmabuf_mr": build_reg_dmabuf_mr,
-        "destroy": build_destroy,
+        "alloc_pd": build_alloc_pd,
+        "create_qp": build_create_qp,
         "destroy_qp": build_destroy_qp,
         "destroy_cq": build_destroy_cq,
         "dealloc_pd": build_dealloc_pd,
         "dereg_mr": build_dereg_mr,
         "dealloc_mw": build_dealloc_mw,
-        # 新增：
+        "modify_cq": build_modify_cq,
         "create_srq": build_create_srq,
         "post_srq_recv": build_post_srq_recv,
         "modify_srq": build_modify_srq,
-        "create_wq": build_create_wq,
-        "create_ah": build_create_ah,
-        "create_flow": build_create_flow,
-        "req_notify_cq": build_req_notify_cq,
-        "query_qp": build_query_qp,
-        "query_srq": build_query_srq,
-        "alloc_pd": build_alloc_pd,
-        "create_qp": build_create_qp,
-        "modify_cq": build_modify_cq,
-        "alloc_mw": build_alloc_mw,
-        "alloc_dm": build_alloc_dm,
-        "free_dm": build_free_dm,
-        "rereg_mr": build_rereg_mr,
     }
 
     if choice:
@@ -1070,26 +1092,7 @@ def _pick_insertion_template(
             raise ValueError(f"Unknown insertion template: {choice}")
         return dispatch[choice]
 
-    # 默认：混合分布（你可根据实验效果调整比例）
-    candidates = [
-        (build_modify_qp, "qp"),
-        (build_post_send, "qp"),
-        (build_post_recv, "qp"),
-        (build_poll_cq, "cq"),
-        (build_reg_mr, "mr"),
-        (build_create_cq, "cq"),
-        (build_bind_mw, "mw"),
-        # (build_attach_mcast, "qp"),
-        # (build_reg_dmabuf_mr, "mr"),  # 如果想多产出 MR，可以打开
-        (build_alloc_pd, "pd"),
-        (build_create_qp, "qp"),
-        (build_modify_cq, "cq"),
-        (build_alloc_mw, "mw"),
-        (build_alloc_dm, "dm"),
-        (build_free_dm, "dm"),
-        (build_rereg_mr, "mr"),
-    ]
-    return rng.choice(candidates)
+    return dispatch[rng.choice(sorted(list(dispatch.keys())))]
 
 
 # ====== 工具：枚举嵌套可变路径 ======
@@ -1813,7 +1816,7 @@ class ContractAwareMutator:
             builder = _pick_insertion_template(
                 rng, verbs, i, choice, global_snapshot
             )  # 传入verbs的原因是，有些builder需要根据后面的verbs才能确定（对，我说的就是ModifyQP）
-            build_fn = builder if callable(builder) else builder[0]
+            build_fn = builder
 
             # 1.2 先用“全局 live”生成；失败再用“当前位置 live”补试一次
             ins_list: Optional[List[VerbCall]] = None
