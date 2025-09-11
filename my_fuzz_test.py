@@ -227,65 +227,14 @@ if __name__ == "__main__":
     rng = random.Random(100)
     random.seed(100)
     mutator = fuzz_mutate.ContractAwareMutator(rng)
-    for _ in range(100):
-        mutator.mutate(verbs)
-        # mutator.mutate_param(verbs, idx=8)
+    # for _ in range(100):
+    #     mutator.mutate(verbs)
+    #     # mutator.mutate_param(verbs, idx=8)
+    print(summarize_verb_list(verbs, deep=True))
+    print()
+    mutator.mutate_delete(verbs, 13)
     print(summarize_verb_list(verbs, deep=True))
     # print("\n\nGenerated C++ Code:\n")
     rendered = render(verbs)
     with open("client.cpp", "w") as f:
         f.write(rendered)
-    # for v in verbs:
-    #     print(summarize_verb(v))
-    # ctx = CodeGenContext()
-    # for i in range(len(verbs)):
-    #     print(i, summarize_verb(verbs[i], deep=True, max_items=100))
-    #     verbs[i].apply(ctx)
-    #     print()
-    # mutator = fuzz_mutate.ContractAwareMutator()
-    # print(mutator.find_dependent_verbs_stateful(verbs, ("mr", "mr0", State.ALLOCATED)))
-
-    # for k in range(len(verbs)):
-    #     verbs = copy.deepcopy(INITIAL_VERBS)
-    #     print(f"=== Deleting verb {k} ===")
-    #     # for i in range(len(verbs)):
-    #     #     print(i, summarize_verb(verbs[i], deep=True, max_items=100))
-    #     #     verbs[i].apply(ctx)
-    #     print(summarize_verb_list(verbs, highlight=k, deep=True))
-    #     print("----- After Deletion -----")
-    #     mutator.mutate_param(verbs, idx=k)
-    #     print(summarize_verb_list(verbs, deep=True))
-    #     ctx = CodeGenContext()
-    #     for i in range(len(verbs)):
-    #         # print(i, summarize_verb(verbs[i], deep=True, max_items=100))
-    #         verbs[i].apply(ctx)
-
-    #     # print()
-    #     print()
-
-    # mutator.mutate_param(verbs, 21)
-    # # verbs[21].wr_obj.sg_list.mutate()
-    # print(i, summarize_verb(verbs[21], deep=True, max_items=100))
-    # print(ctx.contracts)
-    # mutator = fuzz_mutate.ContractAwareMutator()
-    # # target = ("qp", "qp0")
-    # # dependent_verbs = mutator.find_dependent_verbs(verbs, target)
-    # # print(f"Dependent verbs for {target}:")
-    # # for i in dependent_verbs:
-    # #     print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
-
-    # target_stateful = ("qp", "qp0", State.ALLOCATED)
-    # dependent_verbs = fuzz_mutate.find_dependent_verbs_stateful(verbs, target_stateful)
-    # print(dependent_verbs)
-    # print(dependent_verbs[:-1])
-    # print(f"Dependent verbs for {target_stateful}:")
-    # for i in dependent_verbs:
-    #     print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
-
-    # # for i in range(len(verbs)):
-    # #     print(f"[{i}]", summarize_verb(verbs[i], deep=True, max_items=100))
-    # #     # print()
-    # # for i in range(len(verbs)):
-    # #     mutator.mutate_move(verbs, i, None)
-
-    # # print(mutator.enumerate_mutable_paths(verbs[16]))

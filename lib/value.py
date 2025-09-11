@@ -481,7 +481,10 @@ class ResourceValue(Value):
         # print(required_state, required_type)
         cands = []
         for (t, name), st in (snap or {}).items():
-            if t == required_type and (required_state is None or st == required_state):
+            if t == required_type and (
+                required_state is None
+                or (st in required_state if isinstance(required_state, (tuple, set, list)) else st == required_state)
+            ):
                 cands.append(name)
         if cands:
             rng = rng or random
@@ -514,7 +517,10 @@ class ResourceValue(Value):
         for (t, name), st in (snap or {}).items():
             if t != req.rtype:
                 continue
-            if (req.state is None or st == req.state) and (st not in (req.exclude_states or [])):
+            if (
+                req.state is None
+                or st == (st in req.state if isinstance(req.state, (tuple, set, list)) else st == req.state)
+            ) and (st not in (req.exclude_states or [])):
                 cands.append(name)
 
         if not cands:
