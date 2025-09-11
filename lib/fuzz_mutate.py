@@ -1321,7 +1321,8 @@ def destroyed_targets_stateful(verb: Any) -> List[Tuple[str, str, Any]]:
     out = []
     for rt, nm, frm, to in trans:
         if to == State.DESTROYED:
-            out.append((rt, nm, State.ALLOCATED))
+            out.append((rt, nm, None))
+            # out.append((rt, nm, State.RESET))
     return out
 
 
@@ -1493,17 +1494,10 @@ def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]
         # excluded_states 不用管，因为当前序列只要合法，就一定不会触及
         hit = False
         for rt, nm, need_state in reqs:
-            if _is_existence_requirement(need_state):
-                # 只看 E
-                if (rt, nm) in E:
-                    hit = True
-                    break
-            else:
-                # 只看 S
-                key = (rt, nm)
-                if key in S and str(need_state) in S[key]:
-                    hit = True
-                    break
+            key = (rt, nm)
+            if key in E or (key in S and str(need_state) in S[key]):
+                hit = True
+                break
 
         if hit:
             dependents.append(i)
@@ -1612,9 +1606,6 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
     K = list(_kills_resource(v))
     if K:
         for key in K:
-            # dependent_verb_indices = find_dependent_verbs_stateful(verbs, (rtype, name, State.ALLOCATED))[:-1]
-            # lo = max(lo, max(dependent_verb_indices) + 1 if dependent_verb_indices else -1)
-            # logging.debug(f"{rtype}, {name}, {dependent_verb_indices}")
             last_cons = _last_consumer_before_any_state(verbs, key, idx)
             if last_cons is not None:
                 lo = max(lo, last_cons + 1)
@@ -1694,7 +1685,7 @@ class ContractAwareMutator:
         if not rng:
             rng = self.rng
         choices = ["insert", "delete", "param", "move", "swap"]
-        prob_dist = [0.3, 0.1, 0.2, 0.2, 0.2]
+        prob_dist = [0.45, 0.05, 0.2, 0.2, 0.1]
         if not choice:
             # randomly pick one
             choice = rng.choices(choices, weights=prob_dist, k=1)[0]
