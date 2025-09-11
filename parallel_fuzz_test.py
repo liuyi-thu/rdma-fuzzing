@@ -45,7 +45,7 @@ def run_fuzz(seed):
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
-seeds = range(25000, 28000)  # 你想要的不同 seed
+seeds = range(28000, 30000)  # 你想要的不同 seed
 
 with ProcessPoolExecutor(max_workers=50) as executor:
     futures = [executor.submit(run_fuzz, s) for s in seeds]

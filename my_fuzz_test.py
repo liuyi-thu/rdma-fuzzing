@@ -183,7 +183,7 @@ INITIAL_VERBS = [
 ]
 
 
-def render(verbs):
+def render(verbs: List[VerbCall]) -> str:
     ctx = CodeGenContext()
     verbs = [
         GetDeviceList("dev_list"),
@@ -195,8 +195,12 @@ def render(verbs):
     ] + verbs
     for v in verbs:
         v.apply(ctx)
-    print(verbs)
-    body = "".join(v.generate_c(ctx) for v in verbs)
+    body = ""
+    for i, v in enumerate(verbs):
+        body += f'    printf("[{i + 1}] {summarize_verb(v, deep=True, max_items=1000)} start.\\n");\n'
+        body += v.generate_c(ctx)
+        body += f'    printf("[{i + 1}] done.\\n");\n\n'
+    # body = "".join(v.generate_c(ctx) for v in verbs)
     template_dir = "./templates"
     template_name = "client.cpp.j2"
     env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
