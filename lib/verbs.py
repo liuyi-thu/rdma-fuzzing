@@ -1789,7 +1789,7 @@ class CreateQP(VerbCall):
         fprintf(stderr, "Failed to create QP\\n");
         return -1;
     }}
-    
+
     qps[qps_size++] = (PR_QP){{
         .id = "{qp_name}",
         .qpn = {qp_name}->qp_num,
@@ -1798,17 +1798,17 @@ class CreateQP(VerbCall):
         .lid = 0,
         .gid = "" // will set below
     }};
-    
+
     snprintf(qps[qps_size-1].gid, sizeof(qps[qps_size-1].gid),
                  "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
                  {self.context.gid_var}.raw[0], {self.context.gid_var}.raw[1], {self.context.gid_var}.raw[2], {self.context.gid_var}.raw[3], {self.context.gid_var}.raw[4], {self.context.gid_var}.raw[5], {self.context.gid_var}.raw[6], {self.context.gid_var}.raw[7], {self.context.gid_var}.raw[8], {self.context.gid_var}.raw[9], {self.context.gid_var}.raw[10], {self.context.gid_var}.raw[11], {self.context.gid_var}.raw[12], {self.context.gid_var}.raw[13], {self.context.gid_var}.raw[14], {self.context.gid_var}.raw[15]);
-                 
+
     prs[prs_size++] = (PR_Pair){{
         .id = "pair-{qp_name}-{self.srv_name}",
         .cli_id = "{qp_name}",
         .srv_id = "{self.srv_name}"
     }};
-    
+
     pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
 """
 
@@ -5221,15 +5221,15 @@ class RegMR(VerbCall):
         fprintf(stderr, "Failed to register memory region\\n");
         return -1;
     }}
-    
+
     mrs[mrs_size++] = (PR_MR){{
         .id = "{mr_name}",
         .addr = (uint64_t)({mr_name}->addr),
         .length = 1024,
         .lkey = {mr_name}->lkey}};
-        
+
     pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
-    
+
 """
 
 

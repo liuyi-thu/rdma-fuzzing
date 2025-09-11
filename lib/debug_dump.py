@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json
 import difflib
-from typing import Any, Dict, List
+from typing import Any
 from termcolor import colored
 
 # ========== 基础：值层序列化（支持 OptionalValue / ResourceValue / EnumValue / FlagValue 等） ==========
@@ -72,9 +72,9 @@ def _unwrap_for_debug(x: Any) -> Any:
 # ========== verb 层序列化/打印 ==========
 
 
-def verb_to_dict(v: Any) -> Dict[str, Any]:
+def verb_to_dict(v: Any) -> dict[str, Any]:
     """把单个 verb 摊平成结构化 dict。"""
-    d: Dict[str, Any] = {
+    d: dict[str, Any] = {
         "__verb__": v.__class__.__name__,
     }
     # 优先用类字段列表；否则用 __dict__
@@ -87,11 +87,11 @@ def verb_to_dict(v: Any) -> Dict[str, Any]:
     return d
 
 
-def verbs_to_dict_list(verbs: List[Any]) -> List[Dict[str, Any]]:
+def verbs_to_dict_list(verbs: list[Any]) -> list[dict[str, Any]]:
     return [verb_to_dict(v) for v in verbs]
 
 
-def dump_verbs(verbs: List[Any], *, indent: int = 2) -> str:
+def dump_verbs(verbs: list[Any], *, indent: int = 2) -> str:
     """
     美观打印 verb list（JSON 树），含 verb 种类与参数。
     - 用于人工 debug
@@ -107,12 +107,12 @@ def dump_verbs(verbs: List[Any], *, indent: int = 2) -> str:
 # ========== 快照与对比（前后 diff） ==========
 
 
-def snapshot_verbs(verbs: List[Any]) -> List[Dict[str, Any]]:
+def snapshot_verbs(verbs: list[Any]) -> list[dict[str, Any]]:
     """结构化快照，可持久保存或后续做深度对比。"""
     return verbs_to_dict_list(verbs)
 
 
-def diff_verb_snapshots(before: List[Dict[str, Any]], after: List[Dict[str, Any]]) -> str:
+def diff_verb_snapshots(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> str:
     """
     结构化快照的文本 diff（统一 diff 样式），适合快速查看“mutate 改了啥”。
     备注：这里用 JSON 行文本做 diff，足够直观且实现简单。
@@ -122,7 +122,7 @@ def diff_verb_snapshots(before: List[Dict[str, Any]], after: List[Dict[str, Any]
     return "".join(difflib.unified_diff(a, b, fromfile="before", tofile="after"))
 
 
-def diff_verb_lists(before_verbs: List[Any], after_verbs: List[Any]) -> str:
+def diff_verb_lists(before_verbs: list[Any], after_verbs: list[Any]) -> str:
     """直接对两个 verb 列表做 diff（内部先做快照）。"""
     return diff_verb_snapshots(snapshot_verbs(before_verbs), snapshot_verbs(after_verbs))
 
@@ -380,7 +380,7 @@ def summarize_verb(v: Any, max_fields: int = 6, *, deep: bool = False, max_items
     return f"{name}(" + ", ".join(parts) + extra + ")"
 
 
-def summarize_verb_list(verbs: List[Any], *, deep: bool = False, highlight: int = None, color: str = "red") -> str:
+def summarize_verb_list(verbs: list[Any], *, deep: bool = False, highlight: int = None, color: str = "red") -> str:
     lines = []
     for i, v in enumerate(verbs):
         if i == highlight:

@@ -24,8 +24,12 @@
 #
 # This script uses only stdlib.
 
-import argparse, json, os, time, sys
-from typing import Dict, Any, Tuple
+import argparse
+import json
+import os
+import time
+import sys
+from typing import Any
 
 POLL_INTERVAL = 0.1  # seconds
 CACHED_FILES = ["server_update.json", "client_update.json", "server_view.json", "client_view.json"]
@@ -39,22 +43,22 @@ def clean_cached_files():
             pass
 
 
-def load_json(path: str) -> Dict[str, Any]:
+def load_json(path: str) -> dict[str, Any]:
     try:
-        with open(path, "r") as f:
+        with open(path) as f:
             return json.load(f)
     except Exception:
         return {}
 
 
-def atomic_write_json(path: str, obj: Dict[str, Any]):
+def atomic_write_json(path: str, obj: dict[str, Any]):
     tmp = f"{path}.tmp"
     with open(tmp, "w") as f:
         json.dump(obj, f, indent=2, ensure_ascii=False)
     os.replace(tmp, path)
 
 
-def extract_pairs(obj: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def extract_pairs(obj: dict[str, Any]) -> dict[str, dict[str, Any]]:
     out = {}
     pairs = obj.get("local", {}).get("pairs", [])
     # Also accept top-level "pairs" for client demo
@@ -77,8 +81,8 @@ def max_state(state_a: str, state_b: str) -> str:
 
 
 def merge_states(
-    cli_pairs: Dict[str, Any], srv_pairs: Dict[str, Any], prev_view: Dict[str, Any]
-) -> Dict[str, Dict[str, Any]]:
+    cli_pairs: dict[str, Any], srv_pairs: dict[str, Any], prev_view: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
     # previous epochs from last output to preserve epoch unless state changes
     prev_epochs = {}
     prev_state = {}
@@ -105,11 +109,11 @@ def merge_states(
 
 
 def build_view(
-    local_update: Dict[str, Any],
-    remote_update: Dict[str, Any],
-    merged_pairs: Dict[str, Dict[str, Any]],
-    prev_view: Dict[str, Any],
-) -> Dict[str, Any]:
+    local_update: dict[str, Any],
+    remote_update: dict[str, Any],
+    merged_pairs: dict[str, dict[str, Any]],
+    prev_view: dict[str, Any],
+) -> dict[str, Any]:
     view = {}
     # local
     view["local"] = local_update.get("local", {})
@@ -148,7 +152,7 @@ def main():
     prev_server_view = load_json(args.server_view)
     prev_client_view = load_json(args.client_view)
 
-    def one_round(prev_sv, prev_cv) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def one_round(prev_sv, prev_cv) -> tuple[dict[str, Any], dict[str, Any]]:
         srv_u = load_json(args.server_update)
         cli_u = load_json(args.client_update)
 

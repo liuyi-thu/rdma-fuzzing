@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # ===== 在文件开头加一个全局开关和工具函数 =====
 DEBUG = False  # 改成 True 就能打开所有调试信息
@@ -193,9 +193,9 @@ class ContractError(RuntimeError):
 @dataclass
 class RequireSpec:
     rtype: str  # 资源类型
-    state: Optional[State] | Optional[list[State]]  # 允许的状态（可为 None 表示只要求存在）
+    state: State | None | list[State] | None  # 允许的状态（可为 None 表示只要求存在）
     name_attr: str  # 从 verb 上读取资源名的属性名（如 'pd' / 'qp'）
-    exclude_states: Optional[List[State]] = None  # 排除的状态列表（可选）
+    exclude_states: list[State] | None = None  # 排除的状态列表（可选）
 
 
 @dataclass
@@ -208,16 +208,16 @@ class ProduceSpec:
 @dataclass
 class TransitionSpec:
     rtype: str
-    from_state: Optional[State]  # 可为 None 表示不检查来源状态
+    from_state: State | None  # 可为 None 表示不检查来源状态
     to_state: State
     name_attr: str  # 从 verb 上读取目标资源名（如 'qp'）
 
 
 @dataclass
 class Contract:
-    requires: List[RequireSpec]
-    produces: List[ProduceSpec]
-    transitions: List[TransitionSpec]
+    requires: list[RequireSpec]
+    produces: list[ProduceSpec]
+    transitions: list[TransitionSpec]
 
     @staticmethod
     def empty() -> Contract:
@@ -277,7 +277,7 @@ class InstantiatedContract(Contract):
     #         produces=self.produces + other.produces,
     #         transitions=self.transitions + other.transitions,
     #     )
-    def merge(list_of_contracts: List[InstantiatedContract]) -> InstantiatedContract:
+    def merge(list_of_contracts: list[InstantiatedContract]) -> InstantiatedContract:
         """
         合并多个契约实例，返回一个新的实例。
         """
@@ -323,7 +323,7 @@ class ContractTable:
     """
 
     def __init__(self):
-        self._store: Dict[ResourceKey, ResourceRec] = {}
+        self._store: dict[ResourceKey, ResourceRec] = {}
 
         for i in range(100):
             self.put("buf", f"bufs[{i}]", State.ALLOCATED)
@@ -341,8 +341,8 @@ class ContractTable:
         self,
         rtype: str,
         name: str,
-        state: Optional[State] | Optional[list[State]] = None,
-        exclude_states: Optional[List[State]] = None,
+        state: State | None | list[State] | None = None,
+        exclude_states: list[State] | None = None,
     ):
         key = ResourceKey(rtype, str(name))
         rec = self._store.get(key)
@@ -356,7 +356,7 @@ class ContractTable:
                 f"resource {rtype} {name} in state {rec.state.name}, excluded states {exclude_state_names}"
             )
 
-    def transition(self, rtype: str, name: str, to_state: State, from_state: Optional[State] = None):
+    def transition(self, rtype: str, name: str, to_state: State, from_state: State | None = None):
         key = ResourceKey(rtype, str(name))
         rec = self._store.get(key)
         if not rec:
@@ -428,7 +428,7 @@ class ContractTable:
                 self.put(spec.rtype, str(name), spec.state)
 
     # ===== 查询 / 调试 =====
-    def snapshot(self) -> Dict[Tuple[str, str], str]:
+    def snapshot(self) -> dict[tuple[str, str], str]:
         return {(k.rtype, k.name): v.state for k, v in self._store.items()}
 
     # @staticmethod

@@ -2,7 +2,7 @@ import os
 import re
 
 def process_ibv_py_file(filepath):
-    with open(filepath, 'r', encoding='utf-8') as f:
+    with open(filepath, encoding='utf-8') as f:
         code = f.read()
 
     # 1. 插入import

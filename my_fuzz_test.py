@@ -8,8 +8,6 @@ import random
 import sys
 import traceback
 from logging.handlers import RotatingFileHandler
-from typing import Dict, List
-
 import dill
 from jinja2 import Environment, FileSystemLoader
 from termcolor import colored
@@ -183,7 +181,7 @@ INITIAL_VERBS = [
 ]
 
 
-def render(verbs: List[VerbCall]) -> str:
+def render(verbs: list[VerbCall]) -> str:
     ctx = CodeGenContext()
     verbs = [
         GetDeviceList("dev_list"),

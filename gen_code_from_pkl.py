@@ -10,7 +10,6 @@ import pickle
 import dill
 
 from logging.handlers import RotatingFileHandler
-from typing import Dict, List
 from jinja2 import Environment, FileSystemLoader
 from termcolor import colored
 from lib import fuzz_mutate

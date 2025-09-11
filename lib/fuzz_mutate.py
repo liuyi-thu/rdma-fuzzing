@@ -6,7 +6,7 @@ import random
 import re
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Callable
+from typing import Any, Callable
 
 from termcolor import colored
 
@@ -134,7 +134,7 @@ def _unwrap(x):
     return x
 
 
-def listify(x) -> List[Any]:
+def listify(x) -> list[Any]:
     x = _unwrap(x)
     if x is None:
         return []
@@ -181,7 +181,7 @@ _illegal_re = re.compile(
 )
 
 
-def classify_contract_error(msg: str) -> Tuple[str, dict]:
+def classify_contract_error(msg: str) -> tuple[str, dict]:
     m = _missing_re.search(msg or "")
     if m:
         return ErrKind.MISSING_RESOURCE, {"rtype": m.group(1), "name": m.group(2)}
@@ -494,7 +494,7 @@ def build_modify_qp_out(verbs, i: int, snap, qp_name: str, rng):
         return build_modify_qp_stateless(snap, qp_name, rng)
 
 
-def build_modify_qp_safe_chain(verbs, i: int, snap, qp_name: str, rng) -> List[VerbCall]:
+def build_modify_qp_safe_chain(verbs, i: int, snap, qp_name: str, rng) -> list[VerbCall]:
     from lib.ibv_all import IbvQPAttr
 
     cur = _qp_state_before(snap, qp_name)  # 也可从 snapshot 里取
@@ -516,7 +516,7 @@ def build_modify_qp_safe_chain(verbs, i: int, snap, qp_name: str, rng) -> List[V
     ]
 
 
-def build_modify_qp_stateless(snap, qp_name: str, rng) -> Optional[VerbCall]:
+def build_modify_qp_stateless(snap, qp_name: str, rng) -> VerbCall | None:
     from lib.ibv_all import IbvQPAttr
 
     cur = _qp_state_before(snap, qp_name)
@@ -718,8 +718,8 @@ def _pick_unused_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | 
 
 # ========================= Insertion templates =========================
 def _pick_insertion_template(
-    rng: random.Random, verbs: List[VerbCall], i: int, choice: str = None, global_snapshot=None
-) -> Optional[Callable]:
+    rng: random.Random, verbs: list[VerbCall], i: int, choice: str = None, global_snapshot=None
+) -> Callable | None:
     from lib.ibv_all import IbvQPAttr  # 你已聚合的话
 
     from .verbs import (
@@ -1111,7 +1111,6 @@ def _enumerate_mutable_paths(obj, prefix=""):
         ListValue,
         OptionalValue,
         ResourceValue,
-        Value,
         LocalResourceValue,
     )
 
@@ -1186,11 +1185,11 @@ def _as_str_name(x: Any) -> str:
 
 
 # --- 递归遍历对象树，收集所有 ResourceValue 出现，返回 {(rtype,name), ...} ---
-def _collect_resource_refs(obj: Any) -> Set[Tuple[str, str]]:  # this is a contract-free implementation
+def _collect_resource_refs(obj: Any) -> set[tuple[str, str]]:  # this is a contract-free implementation
     from lib.value import ListValue, OptionalValue, ResourceValue  # 按你的路径调整
 
-    seen: Set[int] = set()
-    out: Set[Tuple[str, str]] = set()
+    seen: set[int] = set()
+    out: set[tuple[str, str]] = set()
 
     def walk(o: Any):
         if o is None:
@@ -1237,13 +1236,13 @@ def _collect_resource_refs(obj: Any) -> Set[Tuple[str, str]]:  # this is a contr
 
 
 # --- 收集 verb 的 requires（优先走 get_required_resources_recursively，其次静态扫描） ---
-def _requires_of(verb: Any) -> Set[Tuple[str, str]]:
+def _requires_of(verb: Any) -> set[tuple[str, str]]:
     return _collect_resource_refs(verb)
 
 
 # --- 收集 verb 的 produces（优先 CONTRACT，然后 allocated_resources，然后静态推断） ---
-def _produces_of(verb: VerbCall) -> Set[Tuple[str, str]]:
-    prods: Set[Tuple[str, str]] = set()
+def _produces_of(verb: VerbCall) -> set[tuple[str, str]]:
+    prods: set[tuple[str, str]] = set()
     # 1) CONTRACT.produces
     contract = verb.get_contract()
     if contract and hasattr(contract, "produces"):
@@ -1262,7 +1261,7 @@ def _produces_of(verb: VerbCall) -> Set[Tuple[str, str]]:
 # ---------- 从 CONTRACT 提取 requires / transitions / produces ----------
 def _contract_specs(
     verb: VerbCall,
-) -> Tuple[Set[Tuple[str, str, Any, Any]], List[Tuple[str, str, Any, Any]], Set[Tuple[str, str, Any]]]:
+) -> tuple[set[tuple[str, str, Any, Any]], list[tuple[str, str, Any, Any]], set[tuple[str, str, Any]]]:
     """
     返回：
       - reqs: Set[(rtype, name, state_or_None)]
@@ -1272,9 +1271,9 @@ def _contract_specs(
 
     from .contracts import _as_iter, _get_by_path
 
-    reqs: Set[Tuple[str, str, Any]] = set()
-    prods: Set[Tuple[str, str, Any]] = set()
-    transitions: List[Tuple[str, str, Any, Any]] = []
+    reqs: set[tuple[str, str, Any]] = set()
+    prods: set[tuple[str, str, Any]] = set()
+    transitions: list[tuple[str, str, Any, Any]] = []
 
     # contract = getattr(verb, "CONTRACT", None)
     contract = verb.get_contract()
@@ -1308,7 +1307,7 @@ def _contract_specs(
     return reqs, transitions, prods
 
 
-def destroyed_targets_stateful(verb: Any) -> List[Tuple[str, str, Any]]:
+def destroyed_targets_stateful(verb: Any) -> list[tuple[str, str, Any]]:
     """
     从一个 verb 的 transitions 中，抽出所有 to=DESTROYED 的目标，作为“种子”：
       返回 [(rtype, name, State.ALLOCATED)]
@@ -1360,8 +1359,8 @@ def _ES_out_of_verb(verb: Any):
       - S_out: 产生了哪些“已达成状态” {(rtype,name,state)}；来自 produces(state!=None) 或 transitions(to_state)
     """
     _, trans, prods = _contract_specs(verb)
-    E_out: Set[Tuple[str, str]] = set()
-    S_out: Set[Tuple[str, str, str]] = set()
+    E_out: set[tuple[str, str]] = set()
+    S_out: set[tuple[str, str, str]] = set()
 
     for rt, nm, st in prods:
         E_out.add((rt, nm))
@@ -1374,7 +1373,7 @@ def _ES_out_of_verb(verb: Any):
     return E_out, S_out
 
 
-def _kills_resource(verb: Any) -> Set[Tuple[str, str]]:
+def _kills_resource(verb: Any) -> set[tuple[str, str]]:
     """
     返回该 verb 杀伤（使之后不可再用）的资源集合 {(rtype, name)}。
     规则：
@@ -1382,7 +1381,7 @@ def _kills_resource(verb: Any) -> Set[Tuple[str, str]]:
       - 也可按需扩展：DeallocPD/DeregMR/DestroyCQ/DestroyQP 若用 produces 显式表示“free”，
         也将其加入杀伤集（见注释）。
     """
-    killed: Set[Tuple[str, str]] = set()
+    killed: set[tuple[str, str]] = set()
     reqs, transitions, prods = _contract_specs(verb)
 
     # A) 通过状态机：to_state == DESTROYED
@@ -1443,7 +1442,7 @@ def _need_state_matches(have_set: set[str], need_state: Any) -> bool:
     return str(need_state) in have_set
 
 
-def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]) -> List[int]:
+def find_dependent_verbs_stateful(verbs: list[Any], target: tuple[str, str, Any]) -> list[int]:
     """
     目标带状态：(rtype, name, state)
     - 若 state 为 None 或 ALLOCATED：以“存在性”种子初始化；
@@ -1459,9 +1458,9 @@ def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]
     rtype0, name0, state0 = target[0], target[1], target[2] if len(target) > 2 else None
 
     # E: 存在性集合 {(rtype, name)}
-    E: Set[Tuple[str, str]] = set()
+    E: set[tuple[str, str]] = set()
     # S: 状态集合 {(rtype, name) -> set(states)}
-    S: Dict[Tuple[str, str], Set[str]] = {}
+    S: dict[tuple[str, str], set[str]] = {}
 
     def S_add(rt: str, nm: str, st: Any):
         if st is None:
@@ -1485,7 +1484,7 @@ def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]
     # parsed2 = [verb_effect_targets(v) for v in verbs]
     # print(f"parsed contract: {parsed}")
     # print(f"parsed2 contract: {parsed2}")
-    dependents: List[int] = []
+    dependents: list[int] = []
 
     for i, (reqs, trans, prods) in enumerate(parsed):
         # 1) 判断是否命中依赖
@@ -1527,7 +1526,7 @@ def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]
     return dependents
 
 
-def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
+def compute_move_window(verbs: list[Any], idx: int) -> tuple[int, int]:
     """
     返回 (lo, hi)：把 verbs[idx] 移动到 [lo, hi] 之间都不破坏基于 CONTRACT 的因果关系。
       - lo：所有输入（E_in / S_in）被满足的“最后一次提供点”之后
@@ -1545,7 +1544,7 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
     # 1) 计算 lo：所有输入的“最后提供点” + 1
     lo = 0
 
-    def last_provider_for_E(rt: str, nm: str, before: int) -> Optional[int]:
+    def last_provider_for_E(rt: str, nm: str, before: int) -> int | None:
         # 找 < before 的最大 j，使得 verbs[j] 的 E_out 包含 (rt,nm)
         for j in range(before - 1, -1, -1):
             Ej, _ = _ES_out_of_verb(verbs[j])
@@ -1553,7 +1552,7 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
                 return j
         return None
 
-    def last_provider_for_S(rt: str, nm: str, st: str | tuple[str], before: int) -> Optional[int]:
+    def last_provider_for_S(rt: str, nm: str, st: str | tuple[str], before: int) -> int | None:
         # 找 < before 的最大 j，使得 verbs[j] 的 S_out 包含 (rt,nm,st)
         if isinstance(st, str):
             for j in range(before - 1, -1, -1):
@@ -1589,7 +1588,7 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
     # 2) 计算 hi：第一个消费者位置 - 1
     hi = n - 1
 
-    def first_consumer_after(i0: int, Eset: Set[Tuple[str, str]], Sset: Set[Tuple[str, str, str]]) -> Optional[int]:
+    def first_consumer_after(i0: int, Eset: set[tuple[str, str]], Sset: set[tuple[str, str, str]]) -> int | None:
         for k in range(i0 + 1, n):
             Ein_k, Sin_k = _ES_in_of_requires(verbs[k])
             if (Ein_k & Eset) or (Sin_k & Sset):
@@ -1605,7 +1604,7 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
     # === 新增：根据“杀伤点”进一步限制 hi ===
     # 思想：一旦后续某个 verb 把我们“依赖的资源”（E_in 或 S_in 中的 rtype,name）杀死，
     # 那么当前 verb 必须在这个“杀伤点”之前。
-    need_keys: Set[Tuple[str, str]] = set()
+    need_keys: set[tuple[str, str]] = set()
     need_keys |= E_in  # {(rt,nm)}
     need_keys |= {(rt, nm) for (rt, nm, _) in S_in}
 
@@ -1639,7 +1638,7 @@ def _swap_in_place(lst, i, j):
     lst[i], lst[j] = lst[j], lst[i]
 
 
-def _dryrun_sequence(verbs: List[VerbCall], ctx=None) -> bool:
+def _dryrun_sequence(verbs: list[VerbCall], ctx=None) -> bool:
     if not ctx:
         ctx = FakeCtx()
     try:
@@ -1660,7 +1659,7 @@ class ContractAwareMutator:
         self.rng = rng or random.Random()
         self.cfg = cfg or MutatorConfig()
 
-    def find_dependent_verbs(self, verbs: List[Any], target: Tuple[str, str]) -> List[int]:
+    def find_dependent_verbs(self, verbs: list[Any], target: tuple[str, str]) -> list[int]:
         """
         找出所有依赖于 target 资源的 verb 索引（直接或间接依赖）。
         target: (rtype, name)
@@ -1671,15 +1670,15 @@ class ContractAwareMutator:
             return []
 
         # 预计算每个 verb 的 requires / produces
-        reqs_list: List[Set[Tuple[str, str]]] = []
-        prods_list: List[Set[Tuple[str, str]]] = []
+        reqs_list: list[set[tuple[str, str]]] = []
+        prods_list: list[set[tuple[str, str]]] = []
         for v in verbs:
             reqs_list.append(_requires_of(v))
             prods_list.append(_produces_of(v))
 
         # 传递式前向传播
-        S: Set[Tuple[str, str]] = {(str(target[0]), str(target[1]))}
-        deps: List[int] = []
+        S: set[tuple[str, str]] = {(str(target[0]), str(target[1]))}
+        deps: list[int] = []
 
         for i, (reqs, prods) in enumerate(zip(reqs_list, prods_list)):
             # 命中依赖集合即认为该 verb 依赖于 target
@@ -1691,14 +1690,14 @@ class ContractAwareMutator:
 
         return deps
 
-    def enumerate_mutable_paths(self, verb: VerbCall) -> List[Tuple[List[str], Any]]:
+    def enumerate_mutable_paths(self, verb: VerbCall) -> list[tuple[list[str], Any]]:
         return _enumerate_mutable_paths(verb)
 
-    def find_dependent_verbs_stateful(self, verbs: List[Any], target: Tuple[str, str, Any]) -> List[int]:
+    def find_dependent_verbs_stateful(self, verbs: list[Any], target: tuple[str, str, Any]) -> list[int]:
         return find_dependent_verbs_stateful(verbs, target)
 
     def mutate(
-        self, verbs: List[VerbCall], idx: Optional[int] = None, idx2: Optional[int] = None, choice: str = None, rng=None
+        self, verbs: list[VerbCall], idx: int | None = None, idx2: int | None = None, choice: str = None, rng=None
     ) -> bool:
         if not rng:
             rng = self.rng
@@ -1722,7 +1721,7 @@ class ContractAwareMutator:
         else:
             raise ValueError(f"Unknown mutation choice: {choice}")
 
-    def mutate_delete(self, verbs: List[VerbCall], idx_: Optional[int] = None) -> bool:
+    def mutate_delete(self, verbs: list[VerbCall], idx_: int | None = None) -> bool:
         """
         基于 contract 的统一删除策略：
         1) 选中一个 victim；
@@ -1795,7 +1794,7 @@ class ContractAwareMutator:
 
         return True
 
-    def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
+    def mutate_insert(self, verbs: list[VerbCall], idx: int | None = None, choice: str = None) -> bool:
         """
         先生成候选 ins_list，再在候选位置中寻找可行点插入：
         1) 位置列表：若 idx 指定则只用该点，否则扫描 [0..len].
@@ -1810,7 +1809,7 @@ class ContractAwareMutator:
 
         rng = self.rng
         candidate_indices = [idx] if idx is not None else list(range(len(verbs) + 1))
-        feasible: List[Tuple[int, List[VerbCall]]] = []
+        feasible: list[tuple[int, list[VerbCall]]] = []
 
         # 可选：安静/详细输出
         verbose = getattr(getattr(self, "cfg", None), "verbose", False)
@@ -1828,7 +1827,7 @@ class ContractAwareMutator:
             build_fn = builder if callable(builder) else builder[0]
 
             # 1.2 先用“全局 live”生成；失败再用“当前位置 live”补试一次
-            ins_list: Optional[List[VerbCall]] = None
+            ins_list: list[VerbCall] | None = None
             cand = build_fn(None, rng, _make_snapshot(verbs, i))
 
             if cand is None:
@@ -1892,7 +1891,7 @@ class ContractAwareMutator:
             del verbs[pos : pos + len(ins_list)]
             return False
 
-    def mutate_param(self, verbs: List[VerbCall], idx: Optional[int] = None) -> bool:
+    def mutate_param(self, verbs: list[VerbCall], idx: int | None = None) -> bool:
         if not verbs:
             return False
         rng = self.rng
@@ -1936,7 +1935,7 @@ class ContractAwareMutator:
             if 0 <= k < len(verbs):
                 verbs.pop(k)
 
-    def mutate_move(self, verbs: List[Any], idx: Optional[int] = None, new_pos: Optional[int] = None) -> bool:
+    def mutate_move(self, verbs: list[Any], idx: int | None = None, new_pos: int | None = None) -> bool:
         """
         移动单个 verb：
         - 若 new_pos 未指定，则在可行窗口内随机选择一个位置（不等于原 idx）
@@ -1982,9 +1981,9 @@ class ContractAwareMutator:
 
     def mutate_swap(
         self,
-        verbs: List[VerbCall],
-        i: Optional[int] = None,
-        j: Optional[int] = None,
+        verbs: list[VerbCall],
+        i: int | None = None,
+        j: int | None = None,
         *,
         do_precheck: bool = True,
         dryrun: bool = True,

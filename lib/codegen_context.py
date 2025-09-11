@@ -1,5 +1,3 @@
-from typing import Dict
-
 try:
     from .objtracker import ObjectTracker
 except ImportError:

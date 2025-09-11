@@ -8,7 +8,6 @@ import random
 import sys
 import traceback
 from logging.handlers import RotatingFileHandler
-from typing import Dict, List
 
 import dill
 from jinja2 import Environment, FileSystemLoader

@@ -1,5 +1,3 @@
-from typing import Dict, List
-
 try:
     from .codegen_context import CodeGenContext
 except ImportError:
@@ -60,13 +58,13 @@ class Attr:
         #     if hasattr(self, 'allocated_resources'):
         #         self.allocated_resources.append((res_type, new_res_name))
 
-    def get_required_resources(self) -> List[Dict[str, str]]:
+    def get_required_resources(self) -> list[dict[str, str]]:
         """Get the list of required resources for this verb call."""
         if hasattr(self, "required_resources"):
             return self.required_resources
         return []
 
-    def get_required_resources_recursively(self) -> List[Dict[str, str]]:
+    def get_required_resources_recursively(self) -> list[dict[str, str]]:
         """Get all required resources recursively."""
         resources = self.get_required_resources()
         # if hasattr(self, 'tracker') and self.tracker:
