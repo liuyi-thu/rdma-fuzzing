@@ -698,10 +698,12 @@ def build_destroy_generic(snap, rng):
     return None
 
 
-def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | None:
+def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random, state: State | list[State] = None) -> str | None:
     cands = []
     for (rt, nm), st in (snap or {}).items():
         if rt == rtype and st not in (State.DESTROYED,):
+            if state is not None and st not in (state if isinstance(state, list) else [state]):
+                continue
             cands.append(nm)
     return rng.choice(cands) if cands else None
 
@@ -771,7 +773,7 @@ def _pick_insertion_template(
     # 2) PostSend：最小 WR（1 SGE）
 
     def build_post_send(ctx, rng, snap):
-        qp = _pick_live_from_snap(snap, "qp", rng)
+        qp = _pick_live_from_snap(snap, "qp", rng, State.RTS)
         if not qp:
             return None
 
@@ -823,7 +825,7 @@ def _pick_insertion_template(
 
     # 6) **PostRecv**（最小 WR：1 SGE）
     def build_post_recv(ctx, rng, snap):
-        qp = _pick_live_from_snap(snap, "qp", rng)
+        qp = _pick_live_from_snap(snap, "qp", rng, [State.RTS, State.RTR])
         if not qp:
             return None
         mr_name = _pick_live_from_snap(snap, "mr", rng)
@@ -1322,26 +1324,6 @@ def destroyed_targets_stateful(verb: Any) -> List[Tuple[str, str, Any]]:
     return out
 
 
-def _trim_forward_on_lost_stateful(verbs: List[Any], start_idx: int, lost: List[Tuple[str, str, Any]]) -> None:
-    """
-    用状态感知依赖分析统一裁剪：
-      - lost: [(rtype, name, state|None)] 作为种子
-      - 对每个种子调用 find_dependent_verbs_stateful，取并集
-      - 仅删除位于 start_idx 之后的依赖 verb
-    """
-    if not verbs or not lost:
-        return
-    victim_ids: Set[int] = set()
-    for seed in lost:
-        deps = find_dependent_verbs_stateful(verbs, seed)
-        for i in deps:
-            if i > start_idx:
-                victim_ids.add(i)
-    # 从后往前删
-    for i in sorted(victim_ids, reverse=True):
-        verbs.pop(i)
-
-
 # ---------- 判断 require 是“存在性需求”还是“状态需求” ----------
 def _is_existence_requirement(state) -> bool:
     """
@@ -1356,14 +1338,18 @@ def _is_existence_requirement(state) -> bool:
 def _ES_in_of_requires(verb: Any):
     """把 requires 切分成 E_in(存在) 和 S_in(状态) 两类输入。"""
     reqs, _, _ = _contract_specs(verb)
-    E_in: Set[Tuple[str, str]] = set()
-    S_in: Set[Tuple[str, str, str]] = set()
+    E_in: set[tuple[str, str]] = set()
+    S_in: set[tuple[str, str, Any]] = set()
     for rt, nm, st in reqs:
         if _is_existence_requirement(st):
             E_in.add((rt, nm))
         else:
+            # 状态需求也要把存在性带上（便于 hi 端“被杀伤”裁剪）
             E_in.add((rt, nm))
-            S_in.add((rt, nm, str(st)))
+            if isinstance(st, (tuple, list, set)):
+                S_in.add((rt, nm, tuple(str(x) for x in st)))
+            else:
+                S_in.add((rt, nm, str(st)))
     return E_in, S_in
 
 
@@ -1441,6 +1427,22 @@ def _last_consumer_before_any_state(verbs, key: tuple[str, str], limit_idx: int)
 # ==== 单个 verb 的可移动窗口 ====
 
 
+# === utils: 状态匹配辅助 ===
+def _need_state_matches(have_set: set[str], need_state: Any) -> bool:
+    """
+    have_set: S[key] 里已知的状态集合（字符串）
+    need_state:
+      - None / State.ALLOCATED → 按存在性（由上层处理，不看 have_set）
+      - 'RTR' / 'RTS' 这样的单一状态字符串
+      - ('RTR', 'RTS') / list[...] / set[...] 表示任意一个满足即可
+    """
+    if need_state is None:
+        return True  # 上层会把它当存在性需求处理，这里返回 True 仅用于一致性
+    if isinstance(need_state, (tuple, list, set)):
+        return any(str(s) in have_set for s in need_state)
+    return str(need_state) in have_set
+
+
 def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]) -> List[int]:
     """
     目标带状态：(rtype, name, state)
@@ -1498,7 +1500,7 @@ def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]
             else:
                 # 只看 S
                 key = (rt, nm)
-                if key in S and str(need_state) in S[key]:
+                if key in S and _need_state_matches(S[key], need_state):
                     hit = True
                     break
 
@@ -1512,13 +1514,13 @@ def find_dependent_verbs_stateful(verbs: List[Any], target: Tuple[str, str, Any]
             # 3) 命中后：根据 transitions 推进 S
             for rt, nm, frm, to in trans:
                 key = (rt, nm)
-                if (frm is None and key in E) or (key in S and str(frm) in S[key]):
+                if (frm is None and key in E) or (key in S and _need_state_matches(S[key], frm)):
                     S_add(rt, nm, to)
         else:
             # 未命中：仅允许 transitions 在“已存在”或“已知状态”上推进 S（不影响 E）
             for rt, nm, frm, to in trans:
                 key = (rt, nm)
-                if key in E or (key in S and (frm is None or str(frm) in S[key])):
+                if key in E or (key in S and (frm is None or _need_state_matches(S[key], frm))):
                     S_add(rt, nm, to)
             # 未命中时，不把 produces 纳入 E（避免把与目标无关的创建当作依赖路径）
 
@@ -1551,12 +1553,22 @@ def compute_move_window(verbs: List[Any], idx: int) -> Tuple[int, int]:
                 return j
         return None
 
-    def last_provider_for_S(rt: str, nm: str, st: str, before: int) -> Optional[int]:
+    def last_provider_for_S(rt: str, nm: str, st: str | tuple[str], before: int) -> Optional[int]:
         # 找 < before 的最大 j，使得 verbs[j] 的 S_out 包含 (rt,nm,st)
-        for j in range(before - 1, -1, -1):
-            _, Sj = _ES_out_of_verb(verbs[j])
-            if (rt, nm, st) in Sj:
-                return j
+        if isinstance(st, str):
+            for j in range(before - 1, -1, -1):
+                _, Sj = _ES_out_of_verb(verbs[j])
+                if (rt, nm, st) in Sj:
+                    return j
+        if isinstance(st, tuple):
+            res = []
+            for s in st:
+                for j in range(before - 1, -1, -1):
+                    _, Sj = _ES_out_of_verb(verbs[j])
+                    if (rt, nm, s) in Sj:
+                        res.append(j)
+                        break
+            return max(res) if res else None
         return None
 
     for rt, nm in E_in:
@@ -1739,7 +1751,7 @@ class ContractAwareMutator:
 
         # 2) 解析 victim 的 CONTRACT，提取 produces / transitions
         try:
-            reqs, trans, prods = _contract_specs(victim)  # [(rt,nm,state)], [(rt,nm,from,to)], [(rt,nm,state)]
+            _reqs, trans, prods = _contract_specs(victim)  # [(rt,nm,state)], [(rt,nm,from,to)], [(rt,nm,state)]
         except Exception:
             # 回退：如果拿不到 CONTRACT，就只删自己
             del verbs[idx]

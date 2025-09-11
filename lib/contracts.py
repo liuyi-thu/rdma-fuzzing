@@ -193,7 +193,7 @@ class ContractError(RuntimeError):
 @dataclass
 class RequireSpec:
     rtype: str  # 资源类型
-    state: Optional[State]  # 允许的状态（可为 None 表示只要求存在）
+    state: Optional[State] | Optional[list[State]]  # 允许的状态（可为 None 表示只要求存在）
     name_attr: str  # 从 verb 上读取资源名的属性名（如 'pd' / 'qp'）
     exclude_states: Optional[List[State]] = None  # 排除的状态列表（可选）
 
@@ -338,14 +338,18 @@ class ContractTable:
         self._store[key] = ResourceRec(key, state)
 
     def require(
-        self, rtype: str, name: str, state: Optional[State] = None, exclude_states: Optional[List[State]] = None
+        self,
+        rtype: str,
+        name: str,
+        state: Optional[State] | Optional[list[State]] = None,
+        exclude_states: Optional[List[State]] = None,
     ):
         key = ResourceKey(rtype, str(name))
         rec = self._store.get(key)
         if not rec:
             raise ContractError(f"required resource not found: {rtype} {name}")
-        if state is not None and rec.state is not state:
-            raise ContractError(f"resource {rtype} {name} in state {rec.state.name}, required {state.name}")
+        if state is not None and rec.state not in (state if isinstance(state, tuple) else [state]):
+            raise ContractError(f"resource {rtype} {name} in state {rec.state.name}, required {state}")
         if exclude_states is not None and rec.state in exclude_states:
             exclude_state_names = [s.name for s in exclude_states]
             raise ContractError(
