@@ -1,57 +1,54 @@
-AllocDM——全是整数
-AllocPD——无参数
-CreateCQ——整数
-CreateQP——IbvQPInitAttr含有ResourceValue（cq）
-CreateSRQ——整数
-DeallocPD
-DeregMR
-DestroyCQ
-DestroyQP
-DestroySRQ
-FreeDM
-ModifyCQ——整数
-ModifyQP
-ModifySRQ
-PollCQ——CQ only
-PostRecv——含有sg_list
-PostSend——含有sg_list，rdma info等
-PostSRQRecv
-RegMR——pd
+# RDMA Fuzzing
 
+## 目前支持的 verbs
 
-AllocDM: dm (produced), attr_obj(IbvAllocDmAttr: length, log_align_req, comp_mask (int)), attr_var
-AllocPD: pd (produced)
-CreateCQ: cqe (int), cq_context (const), channel (const), comp_vector (int), cq (produced)
-CreateQP: pd (required), qp (produced), init_attr_obj (IbvQPInitAttr: qp_context(const), send_cq, recv_cq (required), srq(required), cap: IbvQPCap (all int), qp_type (enum), sg_sig_all (int))
-CreateSRQ: pd (required), srq (produced), srq_init_obj (IbvSrqInitAttr: srq_context (const), attr (IbvSrqAttr, all int))
-DeallocPD: pd
-DeregMR: mr
-DestroyCQ: cq
-DestroyQP: qp
-DestroySRQ: srq
-ModifyCQ: cq(req.), attr_obj: IbvModifyCQAttr(ints)
-ModifyQP: qp(req.), attr_obj: IbvQPAttr(qp_state（可能影响FSM）, dest_qp_num（取决于对端），ah_attr(IbvAHAttr: 部分取决于对端（grh之类的，全场通用）))
-ModifySRQ,
-PollCQ: cq
-PostRecv: qp (req.), wr_obj (IbvRecvWR: wr_id, next, sg_list(list of IbvSge), num_sge), wr_var (const)
-PostSend, qp(req.), wr_obj(IbvSendWR: wr_id, next, sg_list(list of IbvSge), num_sge, rdma (对面信息)， 其他为int或者非必须), wr_var (const)
-PostSRQRecv, qp (req.), wr_obj (IbvRecvWR: wr_id, next, sg_list(list of IbvSge), num_sge), wr_var (const)
-RegMR, pd (req.), mr (produced.), addr (应该是个变量，可以简化为binding), length, access (int)
+- AllocDM
+- AllocPD
+- CreateCQ
+- CreateQP
+- CreateSRQ
+- DeallocPD
+- DeregMR
+- DestroyCQ
+- DestroyQP
+- DestroySRQ
+- FreeDM
+- ModifyCQ
+- ModifyQP
+- ModifySRQ
+- PollCQ
+- PostRecv
+- PostSend
+- PostSRQRecv
+- RegMR
 
+## 用法
+`my_fuzz_test.py` 提供了一个示例，基于预定义的 `verbs` 进行变异，并生成 `client.cpp` 代码。`server.cpp`是通用的，无需变异。
+变异完成后，用以下命令进行编译：
 
-
-g++ -O2 -std=c++17 rdma_server_with_qp_pool_pairs.cpp runtime_resolver.c -lcjson -libverbs -o rdma_server_pairs
-g++ -O2 -std=c++17 rdma_client_pairs_demo.cpp        runtime_resolver.c -lcjson -libverbs -o rdma_client_pairs_demo
-g++ -O2 -std=c++17 rdma_client_pairs_multi_demo_runtime.cpp   pair_runtime.cpp   runtime_resolver.c -lcjson -libverbs -o rdma_client_pairs_multi_demo
-
-compile:
-
+```bash
 g++ -O2 -std=c++17 server.cpp pair_runtime.cpp runtime_resolver.c -lcjson -libverbs -o server
 g++ -O2 -std=c++17 client.cpp pair_runtime.cpp runtime_resolver.c -lcjson -libverbs -o client
+```
 
-run:
+用以下命令运行：
 
-python3 coordinator.py --server-update server_update.json --client-update client_update.json --server-view   server_view.json --client-view   client_view.json
+```bash
+python3 coordinator.py --server-update server_update.json --client-update client_update.json --server-viewserver_view.json --client-view client_view.json
 
-RDMA_FUZZ_RUNTIME=/home/liuyi/fuzzing-rdma/server_view.json ./server
-RDMA_FUZZ_RUNTIME=/home/liuyi/fuzzing-rdma/client_view.json ./client
+RDMA_FUZZ_RUNTIME=<PATH_TO_THE_PROJECT>/server_view.json ./server
+RDMA_FUZZ_RUNTIME=<PATH_TO_THE_PROJECT>/client_view.json ./client
+```
+
+也提供了 `all-in-on` 的脚本，直接执行：
+```bash
+make run
+```
+或者启动 `ASAN`：
+```bash
+make SAN=asan run
+```
+会自动编译并运行，采用 `tmux` 分屏方式呈现结果。如果需要停止运行，可以在另一个终端下执行：
+```bash
+make tmux-kill
+```

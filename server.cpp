@@ -35,7 +35,7 @@ using std::string;
 using std::vector;
 
 static const int IB_PORT = 1;
-static const int QP_POOL_SIZE = 20;
+static const int QP_POOL_SIZE = 100;
 static const int RECV_POOL_SIZE = 16;
 static const int MSG_SIZE = 4096;
 
@@ -366,6 +366,14 @@ static bool claim_and_pair(ServerState &S, int slot, const RemoteQP &R, uint8_t 
 {
     auto &pr = S.pairs[slot];
     auto &qp = S.pool[slot].qp;
+    pr.in_use = true;
+    pr.peer_id = R.id;
+    pr.peer_qpn = R.qpn;
+    pr.last_seen_ts = R.ts ? R.ts : now_ms();
+    pr.lease = R.lease;
+    // 无论配对成功与否都进行标记，防止重复尝试失败配对（experimental）
+    printf("[srv] trying to pair slot %d with '%s' (qpn=%u, lid=%u, gid=%02x...)\n",
+           slot, pr.peer_id.c_str(), pr.peer_qpn, R.lid, R.dgid[15]);
     if (modify_qp_to_rtr(qp, R.qpn, R.lid, R.dgid, local_port, R.psn))
     {
         perror("RTR");
@@ -381,11 +389,11 @@ static bool claim_and_pair(ServerState &S, int slot, const RemoteQP &R, uint8_t 
         perror("post_recv");
         return false;
     }
-    pr.in_use = true;
-    pr.peer_id = R.id;
-    pr.peer_qpn = R.qpn;
-    pr.last_seen_ts = R.ts ? R.ts : now_ms();
-    pr.lease = R.lease;
+    // pr.in_use = true;
+    // pr.peer_id = R.id;
+    // pr.peer_qpn = R.qpn;
+    // pr.last_seen_ts = R.ts ? R.ts : now_ms();
+    // pr.lease = R.lease;
     fprintf(stdout, "[srv] paired slot %d with '%s' (qpn=%u)\n", slot, pr.peer_id.c_str(), pr.peer_qpn);
     return true;
 }
@@ -578,6 +586,7 @@ int main(int argc, char **argv)
         if (now_ms() - last_dump >= DUMP_INTERVAL_MS)
         {
             dump_server_update("server_update.json", S, port_attr.lid, my_gid.raw, IB_PORT);
+            printf("[srv] dump server_update.json\n");
             last_dump = now_ms();
         }
         usleep(TICK_INTERVAL_MS * 1000);

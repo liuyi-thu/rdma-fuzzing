@@ -63,12 +63,6 @@ from lib.verbs import (
 
 PICKLE = False
 INITIAL_VERBS = [
-    GetDeviceList("dev_list"),
-    OpenDevice("dev_list"),
-    FreeDeviceList(),
-    QueryDeviceAttr(),
-    QueryPortAttr(),
-    QueryGID(),
     AllocPD(pd="pd0"),
     AllocPD(pd="pd1"),
     AllocDM(dm="dm0", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
@@ -101,6 +95,7 @@ INITIAL_VERBS = [
             qp_type="IBV_QPT_RC",
             sq_sig_all=1,
         ),
+        remote_qp="srv0",
     ),
     ModifyQP(
         qp="qp0",
@@ -262,6 +257,22 @@ def run(args):
                 # logging.info("Mutated verbs:\n%s", summarize_verb_list(verbs=mutated, deep=True))
                 raise
 
+            with open(f"/tmp/{seed}_{_round}.cpp", "w") as f:
+                f.write(render(verbs))
+
+            # try to compile
+            import subprocess
+
+            compile_cmd = f"g++ -g -O0 -std=c++11 -o /tmp/{seed}_{_round} /tmp/{seed}_{_round}.cpp /home/liuyi/fuzzing-rdma/pair_runtime.cpp /home/liuyi/fuzzing-rdma/runtime_resolver.c -I /home/liuyi/fuzzing-rdma -lcjson -libverbs -lpthread"
+            logging.info("Compiling with command: %s", compile_cmd)
+            result = subprocess.run(compile_cmd, shell=True, capture_output=True, text=True)
+            if result.returncode != 0:
+                logging.error("Compilation failed with return code %d", result.returncode)
+                logging.error("Compiler stdout: %s", result.stdout)
+                logging.error("Compiler stderr: %s", result.stderr)
+            else:
+                logging.info("Compilation succeeded.")
+
         # f.close()
 
         pass
@@ -270,10 +281,18 @@ def run(args):
         raise  # 继续抛出也行，交给上面的 excepthook 再记一遍
 
 
-def render(verbs, ctx):
+def render(verbs):
+    ctx = CodeGenContext()
+    verbs = [
+        GetDeviceList("dev_list"),
+        OpenDevice("dev_list"),
+        FreeDeviceList(),
+        QueryDeviceAttr(),
+        QueryPortAttr(),
+        QueryGID(),
+    ] + verbs
     for v in verbs:
         v.apply(ctx)
-    print(verbs)
     body = "".join(v.generate_c(ctx) for v in verbs)
     template_dir = "./templates"
     template_name = "client.cpp.j2"

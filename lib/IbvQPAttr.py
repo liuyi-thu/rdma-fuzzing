@@ -242,7 +242,10 @@ class IbvQPAttr(Attr):
 
     def bind_remote_qp(self, remote_qp):
         self.remote_qp = remote_qp
-        self.dest_qp_num = DeferredValue.from_id("remote.QP", remote_qp, "qpn", "uint32_t")
+        self.dest_qp_num = OptionalValue(
+            DeferredValue.from_id("remote.QP", remote_qp, "qpn", "uint32_t"),
+            factory=lambda: DeferredValue.from_id("remote.QP", remote_qp, "qpn", "uint32_t"),
+        )
         if self.ah_attr.value and remote_qp:
             self.ah_attr.value.bind_remote_qp(remote_qp)
 

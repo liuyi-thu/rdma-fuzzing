@@ -1685,28 +1685,32 @@ class CreateFlow(VerbCall):
 
 
 class CreateQP(VerbCall):
-    MUTABLE_FIELDS = ["pd", "qp", "init_attr_obj"]
+    MUTABLE_FIELDS = ["pd", "qp", "init_attr_obj", "remote_qp"]
     CONTRACT = Contract(
         requires=[
             RequireSpec(rtype="pd", state=State.ALLOCATED, name_attr="pd"),
             RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="init_attr_obj.send_cq"),
             RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="init_attr_obj.recv_cq"),
             RequireSpec(rtype="srq", state=State.ALLOCATED, name_attr="init_attr_obj.srq"),
+            RequireSpec(rtype="remote_qp", state=State.ALLOCATED, name_attr="remote_qp"),
         ],
         produces=[
             # ProduceSpec(rtype="qp", state=State.ALLOCATED, name_attr="qp"),
             ProduceSpec(rtype="qp", state=State.RESET, name_attr="qp"),
         ],
-        transitions=[],
+        transitions=[
+            TransitionSpec(rtype="remote_qp", from_state=State.ALLOCATED, to_state=State.USED, name_attr="remote_qp"),
+        ],
     )
 
-    def __init__(self, pd: str = None, qp: str = None, init_attr_obj: IbvQPInitAttr = None):
+    def __init__(self, pd: str = None, qp: str = None, init_attr_obj: IbvQPInitAttr = None, remote_qp: str = None):
         self.pd = ResourceValue(resource_type="pd", value=pd) if pd else "NULL"
         if not qp:
             raise ValueError("qp must be provided for CreateQP")
         self.qp = ResourceValue(resource_type="qp", value=qp, mutable=False)
         # QP变量名
         self.init_attr_obj = init_attr_obj  # IbvQPInitAttr实例（如自动生成/trace重放）
+        self.remote_qp = LocalResourceValue(resource_type="remote_qp", value=remote_qp)
 
         self.tracker = None
         self.required_resources = []
@@ -1728,9 +1732,10 @@ class CreateQP(VerbCall):
         if self.context:
             self.context.alloc_variable(str(self.qp), "struct ibv_qp *", "NULL")
 
-            self.srv_name = self.context.gen_var_name("srv", "")
-            qp_name = str(self.qp)
-            self.context.make_qp_binding(qp_name, self.srv_name)
+            # self.srv_name = self.context.gen_var_name("srv", "")
+            # qp_name = str(self.qp)
+            # self.context.make_qp_binding(qp_name, self.srv_name)
+            self.context.make_qp_binding(str(self.qp), self.remote_qp.value)
 
         if self.tracker:
             # Register the PD and QP addresses in the tracker
@@ -1804,9 +1809,9 @@ class CreateQP(VerbCall):
                  {self.context.gid_var}.raw[0], {self.context.gid_var}.raw[1], {self.context.gid_var}.raw[2], {self.context.gid_var}.raw[3], {self.context.gid_var}.raw[4], {self.context.gid_var}.raw[5], {self.context.gid_var}.raw[6], {self.context.gid_var}.raw[7], {self.context.gid_var}.raw[8], {self.context.gid_var}.raw[9], {self.context.gid_var}.raw[10], {self.context.gid_var}.raw[11], {self.context.gid_var}.raw[12], {self.context.gid_var}.raw[13], {self.context.gid_var}.raw[14], {self.context.gid_var}.raw[15]);
                  
     prs[prs_size++] = (PR_Pair){{
-        .id = "pair-{qp_name}-{self.srv_name}",
+        .id = "pair-{qp_name}-{self.remote_qp}",
         .cli_id = "{qp_name}",
-        .srv_id = "{self.srv_name}"
+        .srv_id = "{self.remote_qp}"
     }};
     
     pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
@@ -3806,19 +3811,6 @@ class ModifyQP(VerbCall):
         # 如果有 attr_obj，尝试替换其中的 remote 信息为 DeferredValue
         if self.attr_obj:
             self.attr_obj.bind_remote_qp(ctx.get_peer_qp_num(self.qp.value))
-            # self.attr_obj.dest_qp_num = DeferredValue.from_id(
-            #     "remote.QP", ctx.get_peer_qp_num(self.qp.value), "qpn", "uint32_t"
-            # )
-            # if self.attr_obj.ah_attr:
-            #     self.attr_obj.ah_attr.value.port_num = DeferredValue.from_id(
-            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "port", "uint32_t"
-            #     )
-            #     self.attr_obj.ah_attr.value.dlid = DeferredValue.from_id(
-            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "lid", "uint32_t"
-            #     )
-            #     self.attr_obj.ah_attr.value.grh.value.dgid = DeferredValue.from_id(
-            #         "remote.QP", ctx.get_peer_qp_num(self.qp.value), "gid", "char*"
-            #     )
 
         self.context = ctx
 

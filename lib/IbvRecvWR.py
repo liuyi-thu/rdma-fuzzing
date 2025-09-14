@@ -138,13 +138,17 @@ class IbvRecvWR(Attr):
             s += emit_assign(varname, "wr_id", self.wr_id)
         # sg_list
         if self.sg_list:
-            sge_array_var = str(varname) + "_sges"
-            if ctx:
-                ctx.alloc_variable(sge_array_var + f"[{len(self.sg_list)}]", "struct ibv_sge")
+            # sge_array_var = str(varname) + "_sges"
+            # if ctx:
+            #     ctx.alloc_variable(sge_array_var + f"[{len(self.sg_list)}]", "struct ibv_sge")
+            # for idx, sge in enumerate(self.sg_list):
+            #     s += sge.to_cxx(f"{sge_array_var}[{idx}]", ctx)
+            # s += f"    {varname}.sg_list = {sge_array_var};\n"
+            # # s += f"    {varname}.num_sge = {len(self.sg_list)};\n"
             for idx, sge in enumerate(self.sg_list):
-                s += sge.to_cxx(f"{sge_array_var}[{idx}]", ctx)
-            s += f"    {varname}.sg_list = {sge_array_var};\n"
-            # s += f"    {varname}.num_sge = {len(self.sg_list)};\n"
+                sge_var = f"{varname}_sge_{idx}"
+                s += sge.to_cxx(sge_var, ctx)
+            s += f"    {varname}.sg_list = &{varname}_sge_0;\n"
         if self.num_sge:
             s += emit_assign(varname, "num_sge", self.num_sge)
         # next

@@ -39,6 +39,7 @@ extern "C"
     const char *rr_try_str_by_id(const char *arr_key, const char *id, const char *field, const char *def);
     uint32_t rr_try_u32(const char *key, uint32_t default_val);
     const char *rr_try_str(const char *key, const char *default_val);
+    void rr_free(void); // 释放当前 JSON 树
 
 // runtime_resolver.h
 #define RR_U32_ID(kind, id, field) rr_u32_by_id((kind), (id), (field))

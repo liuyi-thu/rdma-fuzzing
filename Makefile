@@ -17,10 +17,40 @@ CLIENT_UPDATE := $(BUILD_DIR)/client_update.json
 SERVER_VIEW   := $(BUILD_DIR)/server_view.json
 CLIENT_VIEW   := $(BUILD_DIR)/client_view.json
 
-# 运行命令
+# ---- Sanitizer Switches ----
+# 用法： make SAN=asan        # 开启 AddressSanitizer 构建到 build/asan
+SAN ?=
+ASAN_OPTIONS ?= halt_on_error=1,detect_leaks=1,detect_stack_use_after_return=1,allocator_may_return_null=1,fast_unwind_on_malloc=0
+LSAN_OPTIONS ?= report_objects=1
+
+# 根据 SAN 改写构建目录，避免和非SAN产物混淆
+ifneq ($(SAN),)
+BUILD_DIR := build/$(SAN)
+BIN_DIR   := $(BUILD_DIR)
+BIN_SERVER:= $(BIN_DIR)/server
+BIN_CLIENT:= $(BIN_DIR)/client
+SERVER_UPDATE := $(BUILD_DIR)/server_update.json
+CLIENT_UPDATE := $(BUILD_DIR)/client_update.json
+SERVER_VIEW   := $(BUILD_DIR)/server_view.json
+CLIENT_VIEW   := $(BUILD_DIR)/client_view.json
+endif
+
+# 运行命令前缀：把工作目录切到 BIN_DIR 再执行
+RUN_PREFIX := cd $(BIN_DIR) &&
+
+# 默认运行命令（在 BIN_DIR 下运行二进制）
 COORD_CMD := python3 coordinator.py --server-update $(SERVER_UPDATE) --client-update $(CLIENT_UPDATE) --server-view $(SERVER_VIEW) --client-view $(CLIENT_VIEW)
-SERVER_CMD := RDMA_FUZZ_RUNTIME=$(abspath $(SERVER_VIEW)) $(BIN_SERVER)
-CLIENT_CMD := RDMA_FUZZ_RUNTIME=$(abspath $(CLIENT_VIEW)) $(BIN_CLIENT)
+SERVER_CMD := $(RUN_PREFIX) RDMA_FUZZ_RUNTIME=$(abspath $(SERVER_VIEW)) ./server
+CLIENT_CMD := $(RUN_PREFIX) RDMA_FUZZ_RUNTIME=$(abspath $(CLIENT_VIEW)) ./client
+
+# 注入 ASan 编译/链接参数 + 覆盖运行命令（仍在 BIN_DIR 下运行）
+ifeq ($(SAN),asan)
+CXXFLAGS += -fsanitize=address -fno-omit-frame-pointer -g -O1
+CFLAGS   += -fsanitize=address -fno-omit-frame-pointer -g -O1
+LDFLAGS  += -fsanitize=address
+SERVER_CMD := $(RUN_PREFIX) env ASAN_OPTIONS=$(ASAN_OPTIONS) LSAN_OPTIONS=$(LSAN_OPTIONS) RDMA_FUZZ_RUNTIME=$(abspath $(SERVER_VIEW)) ./server
+CLIENT_CMD := $(RUN_PREFIX) env ASAN_OPTIONS=$(ASAN_OPTIONS) LSAN_OPTIONS=$(LSAN_OPTIONS) RDMA_FUZZ_RUNTIME=$(abspath $(CLIENT_VIEW)) ./client
+endif
 
 # ====== Sources & Objects ======
 SRCS_CPP  := server.cpp client.cpp pair_runtime.cpp
@@ -61,9 +91,6 @@ $(SERVER_UPDATE) $(CLIENT_UPDATE) $(SERVER_VIEW) $(CLIENT_VIEW): | $(BUILD_DIR)
 	@touch $@
 
 # ====== Run (tmux split panes) ======
-# 说明：
-# make run       -> 构建 + 启动 tmux 会话（横竖分三窗格：coordinator / server / client）
-# make tmux-kill -> 结束该 tmux 会话
 TMUX_SESSION := rdma-fuzz
 
 run: all prepare tmux-run
@@ -71,44 +98,30 @@ run: all prepare tmux-run
 prepare: jsons
 	@echo "Prepared view/update JSONs in $(BUILD_DIR)/"
 
-# tmux-run:
-# 	@command -v tmux >/dev/null 2>&1 || { echo "Error: tmux 未安装。请先安装 tmux 或自行手动运行三条命令。"; exit 1; }
-# 	@echo "Starting tmux session '$(TMUX_SESSION)' ..."
-# 	@tmux new-session -d -s $(TMUX_SESSION) '$(COORD_CMD)'
-# 	@tmux split-window -h -t $(TMUX_SESSION) '$(SERVER_CMD)'
-# 	@tmux split-window -v -t $(TMUX_SESSION):0.1 '$(CLIENT_CMD)'
-# 	@tmux select-layout -t $(TMUX_SESSION) tiled
-# 	@tmux set-option -t $(TMUX_SESSION) mouse on >/dev/null 2>&1 || true
-# 	@tmux attach -t $(TMUX_SESSION)
-
 tmux-run:
 	@command -v tmux >/dev/null 2>&1 || { echo "Error: 未安装 tmux。使用 NO_TMUX=1 切换为后台运行模式：make run NO_TMUX=1"; exit 1; }
 	@echo "Starting tmux session '$(TMUX_SESSION)' ..."
-	# 1) 启动空会话与第一个 pane（左侧），再发送 coordinator 命令
+	# 1) 启动空会话与第一个 pane（左侧），再发送 coordinator 命令（在项目根运行）
 	@tmux new-session -d -s $(TMUX_SESSION)
 	@tmux send-keys  -t $(TMUX_SESSION):0 '$(COORD_CMD)' C-m
 
-	# 2) 水平切一刀得到右侧 pane，并在右侧启动 server
+	@sleep 1
+
+	# 2) 右侧 pane 运行 server（在 BIN_DIR 下执行）
 	@tmux split-window -h -t $(TMUX_SESSION):0
 	@tmux send-keys   -t $(TMUX_SESSION):0.1 '$(SERVER_CMD)' C-m
 
-	# 3) 选中右侧 pane，再垂直切一刀得到右上/右下，在右下启动 client
+	@sleep 1  # 等待 server 启动
+	
+	# 3) 右下 pane 运行 client（在 BIN_DIR 下执行）
 	@tmux select-pane  -t $(TMUX_SESSION):0.1
 	@tmux split-window -v -t $(TMUX_SESSION):0.1
 	@tmux send-keys    -t $(TMUX_SESSION):0.2 '$(CLIENT_CMD)' C-m
 
-	# 4) 美化布局 & 可选日志
+	# 4) 美化布局
 	@tmux select-layout -t $(TMUX_SESSION) tiled
 	@tmux set-option -t $(TMUX_SESSION) mouse on >/dev/null 2>&1 || true
-ifeq ($(LOG),1)
-	@$(MAKE) logs-dir >/dev/null
-	@tmux pipe-pane  -t $(TMUX_SESSION):0.0 -o "cat > $(LOG_DIR)/coordinator.log"
-	@tmux pipe-pane  -t $(TMUX_SESSION):0.1 -o "cat > $(LOG_DIR)/server.log"
-	@tmux pipe-pane  -t $(TMUX_SESSION):0.2 -o "cat > $(LOG_DIR)/client.log"
-	@echo "日志: $(LOG_DIR)/coordinator.log  $(LOG_DIR)/server.log  $(LOG_DIR)/client.log"
-endif
 	@tmux attach -t $(TMUX_SESSION)
-
 
 tmux-kill:
 	-@tmux kill-session -t $(TMUX_SESSION) 2>/dev/null || true

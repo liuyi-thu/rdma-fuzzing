@@ -73,16 +73,24 @@ IBV_WR_OPCODE_ENUM = {
 
 class IbvRdmaInfo(Attr):
     FIELD_LIST = ["remote_addr", "rkey"]
-    MUTABLE_FIELDS = FIELD_LIST
+    MUTABLE_FIELDS = ["remote_mr"]
 
-    def __init__(self, remote_addr=None, rkey=None):
+    def __init__(self, remote_addr=None, rkey=None, remote_mr=None):
         # self.remote_addr = IntValue(remote_addr, 2**64 - 1) if remote_addr is not None else None
         # self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
-        self.remote_addr = (
-            DeferredValue.from_id("remote.MR", remote_addr, "addr", "uint64_t") if remote_addr is not None else None
+        if not remote_mr:
+            pass
+
+        self.remote_mr = remote_mr
+        self.remote_addr = OptionalValue(
+            DeferredValue.from_id("remote.MR", remote_mr, "addr", "uint64_t"),
+            factory=DeferredValue.from_id("remote.MR", remote_mr, "addr", "uint64_t"),
         )
-        self.rkey = DeferredValue.from_id("remote.MR", rkey, "rkey", "uint32_t") if rkey is not None else None
-        # TODO: 这里没使用OptionalValue
+        self.rkey = OptionalValue(
+            DeferredValue.from_id("remote.MR", remote_mr, "rkey", "uint32_t"),
+            factory=DeferredValue.from_id("remote.MR", remote_mr, "rkey", "uint32_t"),
+        )
+        # TODO: 这里不要转换remote_mr的状态，允许复用
 
     @classmethod
     def random_mutation(cls):

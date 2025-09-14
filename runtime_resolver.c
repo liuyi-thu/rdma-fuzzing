@@ -57,6 +57,28 @@ static char *rr_slurp(const char *path, long *out_sz)
     return buf;
 }
 
+// void rr_load_json_or_die(const char *path)
+// {
+//     long sz = 0;
+//     char *text = rr_slurp(path, &sz);
+//     if (!text)
+//     {
+//         fprintf(stderr, "[rr] open failed: %s\n", path);
+//         exit(2);
+//     }
+//     g_root = cJSON_Parse(text);
+//     if (!g_root)
+//     {
+//         const char *ep = cJSON_GetErrorPtr();
+//         fprintf(stderr, "[rr] bad json at %s\n", ep ? ep : "(unknown)");
+//         fprintf(stderr, "[rr] path: %s\n", path);
+//         free(text);
+//         exit(2);
+//     }
+//     free(text);
+// }
+
+// 替换 rr_load_json_or_die()：解析成功后先删旧树再换新树
 void rr_load_json_or_die(const char *path)
 {
     long sz = 0;
@@ -66,14 +88,21 @@ void rr_load_json_or_die(const char *path)
         fprintf(stderr, "[rr] open failed: %s\n", path);
         exit(2);
     }
-    g_root = cJSON_Parse(text);
-    free(text);
-    if (!g_root)
+
+    cJSON *new_root = cJSON_Parse(text);
+    if (!new_root)
     {
         const char *ep = cJSON_GetErrorPtr();
         fprintf(stderr, "[rr] bad json at %s\n", ep ? ep : "(unknown)");
+        fprintf(stderr, "[rr] path: %s\n", path);
+        free(text);
         exit(2);
     }
+    free(text);
+
+    // 关键：先删旧树，再切换
+    rr_free();
+    g_root = new_root;
 }
 
 void rr_load_from_env_or_die(const char *envkey)
@@ -419,4 +448,13 @@ const char *rr_try_str(const char *key, const char *default_val)
         return default_val;
     }
     return rr_str(key);
+}
+
+void rr_free(void)
+{
+    if (g_root)
+    {
+        cJSON_Delete(g_root);
+        g_root = NULL;
+    }
 }

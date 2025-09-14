@@ -328,6 +328,9 @@ class ContractTable:
         for i in range(100):
             self.put("buf", f"bufs[{i}]", State.ALLOCATED)
 
+        for i in range(100):
+            self.put("remote_qp", f"srv{i}", State.ALLOCATED)
+
     # ===== 基本操作 =====
     def put(self, rtype: str, name: str, state: State):
         key = ResourceKey(rtype, str(name))

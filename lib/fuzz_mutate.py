@@ -1020,7 +1020,8 @@ def _pick_insertion_template(
         recv_cq = _pick_live_from_snap(snap, "cq", rng)
         init = _mk_min_qp_init(send_cq, recv_cq)
         qp_name = gen_new_name("qp", snap, rng)
-        return CreateQP(pd=pd, qp=qp_name, init_attr_obj=init)
+        remote_qp_name = _pick_unused_from_snap(global_snapshot, "remote_qp", rng)
+        return CreateQP(pd=pd, qp=qp_name, init_attr_obj=init, remote_qp=remote_qp_name)
 
     # --- ModifyCQ: 改调度/容量等（按你的 IbvCQAttr 定义）---
     def build_modify_cq(ctx, rng, snap):
