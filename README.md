@@ -23,7 +23,11 @@
 - RegMR
 
 ## 用法
+
+### 生成变异代码
 `my_fuzz_test.py` 提供了一个示例，基于预定义的 `verbs` 进行变异，并生成 `client.cpp` 代码。`server.cpp`是通用的，无需变异。
+
+### 编译`client`
 变异完成后，用以下命令进行编译：
 
 ```bash
