@@ -18,6 +18,28 @@
 using std::string;
 using std::vector;
 
+/* ---- fuzz-friendly guards ---- */
+static inline int res_ok_ptr(const void *p, const char *what) {
+    if (!p) {
+        fprintf(stderr, "[skip] missing resource: %s\n", what);
+        return 0;
+    }
+    return 1;
+}
+
+#define IF_OK_PTR(p, ...)                            \
+    do {                                             \
+        if (res_ok_ptr((p), #p)) {                   \
+            __VA_ARGS__                              \
+        }                                            \
+    } while (0)
+
+/* 布尔哨兵变量帮助宏：声明、置位 */
+#define DECL_OK(name)   int ok_##name = 0
+#define SET_OK(name,v)  do { ok_##name = ((v) != NULL); } while (0)
+#define IF_OK(name, CODE_BLOCK) \
+    do { if (ok_##name) { CODE_BLOCK } } while (0)
+
 static void die(const char* m){ perror(m); exit(1); }
 
 // --------- User-configurable knobs (autofilled by generator) ----------

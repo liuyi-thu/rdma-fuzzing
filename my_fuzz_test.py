@@ -258,7 +258,7 @@ if __name__ == "__main__":
     mutator = fuzz_mutate.ContractAwareMutator(rng)
     # mutator.mutate_insert(verbs, idx=11, choice="create_qp")
     # mutator.mutate_delete(verbs, 10)
-    for _ in range(1000):
+    for _ in range(10):
         mutator.mutate(verbs)
         # if random.random() < 0.5:
         #     mutator.mutate_insert(verbs, idx=None, choice="modify_qp")

@@ -29,8 +29,9 @@ from .value import (
     FlagValue,
     IntValue,
     ListValue,
-    ResourceValue,
     LocalResourceValue,
+    OptionalValue,
+    ResourceValue,
 )
 
 # verbs.py 顶部新增
@@ -246,214 +247,6 @@ class UtilityCall:  # 生成verbs之外的函数
         return resources
 
 
-# Utility functions for the generated code
-
-
-class AllocBuf(UtilityCall):
-    def __init__(self, buf_size: int = 4096):
-        self.buf_size = buf_size
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        return f"""
-    /* Allocate buffer */
-    char buf[{self.buf_size}];
-    if (!buf) {{
-        fprintf(stderr, "Failed to allocate buffer\\n");
-        return -1;
-    }}
-"""
-
-
-class SockConnect(UtilityCall):
-    """Generate code to establish a TCP connection.
-
-    When `server_name` is `None` the generated code waits for an incoming
-    connection, acting as a server. Otherwise it connects to `server_name`
-    as a client."""
-
-    def __init__(self, server_name: str | None, port: int):
-        self.server_name = server_name
-        self.port = port
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        if self.server_name:
-            server_arg = f'"{self.server_name}"'
-            fail_msg = f"Failed to connect to {self.server_name}:{self.port}"
-        else:
-            server_arg = "NULL"
-            fail_msg = f"Failed to accept connection on port {self.port}"
-
-        return f"""
-    /* Establish TCP connection */
-    sock = sock_connect({server_arg}, {self.port});
-    if (sock < 0) {{
-        fprintf(stderr, "{fail_msg}\\n");
-        return -1;
-    }}
-"""
-
-
-# class SockSyncData(UtilityCall):
-#     def __init__(self, xfer_size: int = 4096):
-#         self.xfer_size = xfer_size
-
-#     def generate_c(self, ctx: CodeGenContext) -> str:
-#         return f"""
-#     /* Synchronize data over socket */
-#     int rc = sock_sync_data(sock, {self.xfer_size}, buf, remote_con_data);
-#     if (rc < 0) {{
-#         fprintf(stderr, "Failed to sync data over socket\\n");
-#         return -1;
-#     }}
-# """
-
-# deprecated
-# class ExportQPInfo(UtilityCall):
-#     def __init__(self, qp: str = "QP", mr: str = "MR"):
-#         self.qp = qp  # QP address, used to get the QP number
-#         self.mr = mr
-
-#     @classmethod
-#     def from_trace(cls, info: str):
-#         kv = _parse_kv(info)
-#         qp = kv.get("qp", "QP")
-#         mr = kv.get("mr", "MR")
-#         return cls(qp=qp, mr=mr)
-
-#     def generate_c(self, ctx: CodeGenContext) -> str:
-#         qp = ctx.get_qp(self.qp)
-#         mr = ctx.get_mr(self.mr)
-#         qpn = qp.replace("qp[", "").replace("]", "")  # e.g., "0" for qp[0]
-
-#         return f"""
-#     /* Export connection data */
-#     local_con_data.addr = htonll((uintptr_t)bufs[{qpn}]);
-#     local_con_data.rkey = htonl({mr}->rkey);
-#     local_con_data.qp_num = htonl({qp}->qp_num);
-#     local_con_data.lid = htons(port_attr.lid);
-#     memcpy(local_con_data.gid, &my_gid, 16);
-# """
-
-
-class ExchangeQPInfo(UtilityCall):
-    def __init__(self, qp: str = "QP", remote_qp_index: int = 0):
-        self.qp = qp  # QP address, used to get the QP number
-        # Index of the remote QP, used for pairing
-        self.remote_qp_index = remote_qp_index
-
-    @classmethod
-    def from_trace(cls, info: str):
-        kv = _parse_kv(info)
-        qp = kv.get("qp", "QP")
-        return cls(qp=qp)
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        qp = self.qp
-        qpn = qp.replace("qp[", "").replace("]", "")  # e.g., "0" for qp[0]
-
-        return f"""
-    /* Export connection data */
-    req.local_qpn = {qp}->qp_num;
-    req.remote_qp_index = {self.remote_qp_index};
-    send_pair_request_to_controller(req, sockfd);
-    receive_metadata_from_controller(sockfd); // is that correct? 接收配对信息
-"""
-
-
-class ReceiveMR(UtilityCall):
-    def __init__(self):
-        pass
-
-    @classmethod
-    def from_trace(cls, info: str):
-        return cls()
-
-    def generate_c(self, ctx):
-        return """
-    receive_metadata_from_controller(sockfd); // get remote MRs, and remote GID
-"""
-
-
-class ImportQPInfo(UtilityCall):
-    def __init__(self, qpn: int = 0):
-        self.qpn = qpn  # QP address, used to get the QP number
-        pass
-
-    @classmethod
-    def from_trace(cls, info: str):
-        return cls()
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        qp_num = self.qpn
-        return f"""
-    /* Import connection data */
-    remote_con_datas[{qp_num}].addr = ntohll(tmp_con_data.addr);
-    remote_con_datas[{qp_num}].rkey = ntohl(tmp_con_data.rkey);
-    remote_con_datas[{qp_num}].qp_num = ntohl(tmp_con_data.qp_num);
-    remote_con_datas[{qp_num}].lid = ntohs(tmp_con_data.lid);
-    memcpy(remote_con_datas[{qp_num}].gid, tmp_con_data.gid, 16);
-"""
-
-
-#         return f"""
-#     /* Import connection data */
-#     remote_con_data.addr = ntohll(tmp_con_data.addr);
-#     remote_con_data.rkey = ntohl(tmp_con_data.rkey);
-#     remote_con_data.qp_num = ntohl(tmp_con_data.qp_num);
-#     remote_con_data.lid = ntohs(tmp_con_data.lid);
-#     memcpy(remote_con_data.gid, tmp_con_data.gid, 16);
-# """
-
-
-class SockSyncData(UtilityCall):
-    def __init__(self):
-        pass
-
-    @classmethod
-    def from_trace(cls, info: str):
-        return cls()
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        return """
-    if(sock_sync_data(sock, sizeof(struct cm_con_data_t), (char *) &local_con_data, (char *) &tmp_con_data) < 0)
-    {
-        fprintf(stderr, "failed to exchange connection data between sides\\n");
-        return 1;
-    }
-
-"""
-
-
-class SockSyncDummy(UtilityCall):
-    def __init__(self, char="Q"):
-        # This is a dummy synchronization character, not used in the actual data transfer.
-        self.char = char
-        pass
-
-    """Dummy synchronization, used when no actual data transfer is needed."""
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        return f"""
-    /* Dummy sync, no actual data transfer */
-    sock_sync_data(sock, 1, "{self.char}", &temp_char);
-"""
-
-
-class SocketClose(UtilityCall):
-    """Close the socket connection."""
-
-    def __init__(self, sock: str):
-        self.sock = sock
-
-    def generate_c(self, ctx: CodeGenContext) -> str:
-        return f"""
-    /* Close socket */
-    if (close({self.sock}) < 0) {{
-        fprintf(stderr, "Failed to close socket\\n");
-        return -1;
-    }}
-"""
-
 
 # ---------- Specific verb implementations ------------------------------------
 
@@ -521,7 +314,7 @@ class AckCQEvents(VerbCall):
 """
 
 
-class AdviseMR(VerbCall):
+class AdviseMR(VerbCall): # TODO: 暂时用不上，没改return -1
     """
     表示 ibv_advise_mr() 调用。支持多SGE/flags/advice参数自动生成。
     参数：
@@ -613,27 +406,6 @@ class AdviseMR(VerbCall):
         return s
 
 
-#     def generate_c(self, ctx: CodeGenContext) -> str:
-#         pd_name = self.pd
-#         # SGE数组生成
-#         # sg_var = str(self.sg_var)
-#         sg_var = self.sg_var
-#         s = ""
-#         if ctx:
-#             ctx.alloc_variable(f"{sg_var}[{self.num_sge}]", "struct ibv_sge")
-#         for idx, sge in enumerate(self.sg_list):
-#             s += sge.to_cxx(f"{sg_var}[{idx}]", ctx)
-#         # Advice宏
-#         advice_macro = self.advice.value
-#         s += f"""
-#     if (ibv_advise_mr({pd_name}, {advice_macro}, {self.flags}, {sg_var}, {self.num_sge}) != 0) {{
-#         fprintf(stderr, "ibv_advise_mr failed\\n");
-#         return -1;
-#     }}
-# """
-#         return s
-
-
 class AllocDM(VerbCall):
     MUTABLE_FIELDS = ["dm", "attr_obj", "attr_var"]
     CONTRACT = Contract(
@@ -688,8 +460,7 @@ class AllocDM(VerbCall):
         code += f"""
     {dm_name} = ibv_alloc_dm({ib_ctx}, &{self.attr_var});
     if (!{dm_name}) {{
-        fprintf(stderr, "Failed to allocate device memory (DM)\\n");
-        return -1;
+        fprintf(stderr, "Failed to allocate device memory (DM) {dm_name}\\n");
     }}
 """
         return code
@@ -750,11 +521,12 @@ class AllocMW(VerbCall):
 
         return f"""
     /* ibv_alloc_mw */
-    {mw_name} = ibv_alloc_mw({pd_name}, {self.mw_type});
-    if (!{mw_name}) {{
-        fprintf(stderr, "Failed to allocate memory window\\n");
-        return -1;
-    }}
+    IF_OK_PTR({pd_name}, {{
+        {mw_name} = ibv_alloc_mw({pd_name}, {self.mw_type});
+        if (!{mw_name}) {{
+            fprintf(stderr, "Failed to allocate memory window {mw_name}\\n");
+        }}
+    }});
 """
 
 
@@ -801,11 +573,12 @@ class AllocNullMR(VerbCall):
         mr_name = self.mr
         return f"""
     /* ibv_alloc_null_mr */
-    {mr_name} = ibv_alloc_null_mr({pd_name});
-    if (!{mr_name}) {{
-        fprintf(stderr, "Failed to allocate null MR\\n");
-        return -1;
-    }}
+    IF_OK_PTR({pd_name}, {{
+        {mr_name} = ibv_alloc_null_mr({pd_name});
+        if (!{mr_name}) {{
+            fprintf(stderr, "Failed to allocate null MR {mr_name}\\n");
+        }}
+    }});
 """
 
 
@@ -878,25 +651,14 @@ class AllocParentDomain(VerbCall):
     def generate_c(self, ctx: CodeGenContext) -> str:
         if self.pd is None and self.attr_obj is None:
             raise ValueError("Either pd or attr_obj must be provided for AllocParentDomain")
-        # if self.pd is not None:
-        #     pd_name = self.pd
         parent_pd_name = self.parent_pd
         code = ""
-        # 生成 struct ibv_parent_domain_init_attr 内容
         if self.attr_obj is not None:
             code += self.attr_obj.to_cxx(self.attr_var, ctx)
-        # else:
-        #     # fallback: 最简明手写（兼容旧trace）
-        #     code += f"\n    struct ibv_parent_domain_init_attr {self.attr_var} = {{0}};\n"
-        #     code += f"    {self.attr_var}.pd = {pd_name};\n"
-        #     code += f"    {self.attr_var}.td = NULL;\n"
-        #     code += f"    {self.attr_var}.comp_mask = 0;\n"
-        #     code += f"    {self.attr_var}.pd_context = NULL;\n"
         code += f"""
     {parent_pd_name} = ibv_alloc_parent_domain({self.context}, &{self.attr_var});
     if (!{parent_pd_name}) {{
-        fprintf(stderr, "Failed to allocate parent domain\\n");
-        return -1;
+        fprintf(stderr, "Failed to allocate parent domain {parent_pd_name}\\n");
     }}
 """
         return code
@@ -950,8 +712,7 @@ class AllocPD(VerbCall):
     /* ibv_alloc_pd */
     {pd_name} = ibv_alloc_pd({self.context.ib_ctx});
     if (!{pd_name}) {{
-        fprintf(stderr, "Failed to allocate protection domain\\n");
-        return -1;
+        fprintf(stderr, "Failed to allocate protection domain {pd_name}\\n");
     }}
 """
 
@@ -1055,10 +816,11 @@ class AttachMcast(VerbCall):
         gid_value = f"{self.gid}"
         return f"""
     /* ibv_attach_mcast */
-    if (ibv_attach_mcast({qp_name}, &{gid_value}, {self.lid})) {{
-        fprintf(stderr, "Failed to attach multicast group\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_name}, {{
+        if (ibv_attach_mcast({qp_name}, &{gid_value}, {self.lid})) {{
+            fprintf(stderr, "Failed to attach multicast group\\n");
+        }}
+    }});
 """
 
 
@@ -1146,10 +908,13 @@ class BindMW(VerbCall):
             code += self.mw_bind_obj.to_cxx(mw_bind_var, ctx)
 
         code += f"""
-    if (ibv_bind_mw({qp_name}, {mw_name}, &{mw_bind_var}) != 0) {{
-        fprintf(stderr, "Failed to bind MW\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_name}, {{
+        IF_OK_PTR({mw_name}, {{
+            if (ibv_bind_mw({qp_name}, {mw_name}, &{mw_bind_var}) != 0) {{
+                fprintf(stderr, "Failed to bind MW {mw_name}, {qp_name}\\n");
+            }}
+        }}
+    }});
 """
         return code
 
@@ -1172,10 +937,12 @@ class CloseDevice(VerbCall):
         context_name = ctx.ib_ctx
         return f"""
     /* ibv_close_device */
-    if (ibv_close_device({context_name})) {{
-        fprintf(stderr, "Failed to close device\\n");
-        return -1;
-    }}
+    IF_OK_PTR({context_name}, {{
+        if (ibv_close_device({context_name})) {{
+            fprintf(stderr, "Failed to close device\\n");
+            }}
+        }}
+    );
 """
 
 
@@ -1219,10 +986,11 @@ class CloseXRCD(VerbCall):
         xrcd_name = self.xrcd
         return f"""
     /* ibv_close_xrcd */
-    if (ibv_close_xrcd({xrcd_name})) {{
-        fprintf(stderr, "Failed to close XRCD\\n");
-        return -1;
-    }}
+    IF_OK_PTR({xrcd_name}, {{
+        if (ibv_close_xrcd({xrcd_name})) {{
+            fprintf(stderr, "Failed to close XRCD {xrcd_name}\\n");
+        }}
+    }});
 """
 
 
@@ -1293,11 +1061,12 @@ class CreateAH(VerbCall):
         if self.attr_obj is not None:
             code += self.attr_obj.to_cxx(self.attr_var, ctx)
         code += f"""
-    {ah_var} = ibv_create_ah({pd_name}, &{self.attr_var});
-    if (!{ah_var}) {{
-        fprintf(stderr, "ibv_create_ah failed\\n");
-        return -1;
-    }}
+    IF_OK_PTR({pd_name}, {{
+        {ah_var} = ibv_create_ah({pd_name}, &{self.attr_var});
+        if (!{ah_var}) {{
+            fprintf(stderr, "ibv_create_ah failed {ah_var}\\n");
+        }}
+    }});
 """
         return code
 
@@ -1376,11 +1145,14 @@ class CreateAHFromWC(VerbCall):
 
         return f"""
     /* ibv_create_ah_from_wc */
-    {self.ah} = ibv_create_ah_from_wc({pd_name}, &{wc_name}, &{grh_name}, {port_num});
-    if (!{self.ah}) {{
-        fprintf(stderr, "Failed to create AH from work completion\\n");
-        return -1;
-    }}
+    IF_OK_PTR({pd_name}, {{
+        IF_OK_PTR({wc_name}, {{
+            {self.ah} = ibv_create_ah_from_wc({pd_name}, &{wc_name}, &{grh_name}, {port_num});
+            if (!{self.ah}) {{
+                fprintf(stderr, "Failed to create AH from work completion {self.ah}\\n");
+            }}
+        }}
+    }});
 """
 
 
@@ -1422,8 +1194,7 @@ class CreateCompChannel(VerbCall):
     /* ibv_create_channel */
     {channel_name} = ibv_create_channel({ib_ctx});
     if (!{channel_name}) {{
-        fprintf(stderr, "Failed to create completion channel\\n");
-        return -1;
+        fprintf(stderr, "Failed to create completion channel {channel_name}\\n");
     }}
 """
 
@@ -1502,8 +1273,7 @@ class CreateCQ(VerbCall):
                               {cq_context}, {channel}, 
                               {comp_vector});
     if (!{cq_name}) {{
-        fprintf(stderr, "Failed to create completion queue\\n");
-        return -1;
+        fprintf(stderr, "Failed to create completion queue {cq_name}\\n");
     }}
 """
 
@@ -1596,7 +1366,6 @@ class CreateCQEx(VerbCall):
     {self.cq_ex} = ibv_create_cq_ex({self.ctx_name}, &{self.cq_attr_var});
     if (!{self.cq_ex}) {{
         fprintf(stderr, "ibv_create_cq_ex failed\\n");
-        return -1;
     }}
 """
         return code
@@ -1675,11 +1444,12 @@ class CreateFlow(VerbCall):
         if self.flow_attr_obj is not None:
             code += self.flow_attr_obj.to_cxx(flow_attr_var, ctx)
         code += f"""
-    {flow_var} = ibv_create_flow({qp_name}, &{flow_attr_var});
-    if (!{flow_var}) {{
-        fprintf(stderr, "ibv_create_flow failed\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_name}, {{
+        {flow_var} = ibv_create_flow({qp_name}, &{flow_attr_var});
+        if (!{flow_var}) {{
+            fprintf(stderr, "ibv_create_flow failed {flow_var}\\n");
+        }}
+    }});
 """
         return code
 
@@ -1788,33 +1558,36 @@ class CreateQP(VerbCall):
 
         return f"""
     /* ibv_create_qp */
-    {code}
-    {qp_name} = ibv_create_qp({pd_name}, &{attr_name});
-    if (!{qp_name}) {{
-        fprintf(stderr, "Failed to create QP\\n");
-        return -1;
-    }}
-    
-    qps[qps_size++] = (PR_QP){{
-        .id = "{qp_name}",
-        .qpn = {qp_name}->qp_num,
-        .psn = 0,
-        .port = 1,
-        .lid = 0,
-        .gid = "" // will set below
-    }};
-    
-    snprintf(qps[qps_size-1].gid, sizeof(qps[qps_size-1].gid),
-                 "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
-                 {self.context.gid_var}.raw[0], {self.context.gid_var}.raw[1], {self.context.gid_var}.raw[2], {self.context.gid_var}.raw[3], {self.context.gid_var}.raw[4], {self.context.gid_var}.raw[5], {self.context.gid_var}.raw[6], {self.context.gid_var}.raw[7], {self.context.gid_var}.raw[8], {self.context.gid_var}.raw[9], {self.context.gid_var}.raw[10], {self.context.gid_var}.raw[11], {self.context.gid_var}.raw[12], {self.context.gid_var}.raw[13], {self.context.gid_var}.raw[14], {self.context.gid_var}.raw[15]);
-                 
-    prs[prs_size++] = (PR_Pair){{
-        .id = "pair-{qp_name}-{self.remote_qp}",
-        .cli_id = "{qp_name}",
-        .srv_id = "{self.remote_qp}"
-    }};
-    
-    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    IF_OK_PTR({pd_name}, {{
+        {code}
+        {qp_name} = ibv_create_qp({pd_name}, &{attr_name});
+        if (!{qp_name}) {{
+            fprintf(stderr, "Failed to create QP {qp_name}\\n");
+        }}
+        
+        IF_OK_PTR({qp_name}, {{
+            qps[qps_size++] = (PR_QP){{
+                .id = "{qp_name}",
+                .qpn = {qp_name}->qp_num,
+                .psn = 0,
+                .port = 1,
+                .lid = 0,
+                .gid = "" // will set below
+            }};
+            
+            snprintf(qps[qps_size-1].gid, sizeof(qps[qps_size-1].gid),
+                        "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+                        {self.context.gid_var}.raw[0], {self.context.gid_var}.raw[1], {self.context.gid_var}.raw[2], {self.context.gid_var}.raw[3], {self.context.gid_var}.raw[4], {self.context.gid_var}.raw[5], {self.context.gid_var}.raw[6], {self.context.gid_var}.raw[7], {self.context.gid_var}.raw[8], {self.context.gid_var}.raw[9], {self.context.gid_var}.raw[10], {self.context.gid_var}.raw[11], {self.context.gid_var}.raw[12], {self.context.gid_var}.raw[13], {self.context.gid_var}.raw[14], {self.context.gid_var}.raw[15]);
+                        
+            prs[prs_size++] = (PR_Pair){{
+                .id = "pair-{qp_name}-{self.remote_qp}",
+                .cli_id = "{qp_name}",
+                .srv_id = "{self.remote_qp}"
+            }};
+            
+            pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+        }});
+    }});
 """
 
 
@@ -1898,16 +1671,15 @@ class CreateQPEx(VerbCall):
         return cls(ctx_name, qp_var, qp_attr_var, qp_attr_obj)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        self.qp_var = self.qp
+        qp_name = self.qp
         code = ""
         # 自动生成结构体内容
         if self.qp_attr_obj is not None:
             code += self.qp_attr_obj.to_cxx(str(self.qp_attr_var), ctx)
         code += f"""
-    {self.qp_var} = ibv_create_qp_ex({self.ctx_name}, &{self.qp_attr_var});
-    if (!{self.qp_var}) {{
-        fprintf(stderr, "ibv_create_qp_ex failed\\n");
-        return -1;
+    {qp_name} = ibv_create_qp_ex({self.ctx_name}, &{self.qp_attr_var});
+    if (!{qp_name}) {{
+        fprintf(stderr, "ibv_create_qp_ex failed {qp_name}\\n");
     }}
 """
         return code
@@ -2011,16 +1783,17 @@ class CreateSRQ(VerbCall):
 
         return f"""
     /* ibv_create_srq */
-    {code}
-    {srq_name} = ibv_create_srq({pd_name}, &{attr_name});
-    if (!{srq_name}) {{
-        fprintf(stderr, "Failed to create SRQ\\n");
-        return -1;
-    }}
+    IF_OK_PTR({pd_name}, {{
+        {code}
+        {srq_name} = ibv_create_srq({pd_name}, &{attr_name});
+        if (!{srq_name}) {{
+            fprintf(stderr, "Failed to create SRQ {srq_name}\\n");
+        }}
+    }});
 """
 
 
-class CreateSRQEx(VerbCall):
+class CreateSRQEx(VerbCall): # TODO: 暂时不用，没改return -1
     """
     表示 ibv_create_srq_ex() 调用，自动生成/重放 srq_init_attr_ex 的初始化与调用。
     参数：
@@ -2105,13 +1878,12 @@ class CreateSRQEx(VerbCall):
     {self.srq_var} = ibv_create_srq_ex({self.ctx_name}, &{self.srq_attr_var});
     if (!{self.srq_var}) {{
         fprintf(stderr, "ibv_create_srq_ex failed\\n");
-        return -1;
     }}
 """
         return code
 
 
-class CreateWQ(VerbCall):
+class CreateWQ(VerbCall): # TODO: 暂时不用，没改return -1
     """
     表示 ibv_create_wq() 调用，自动生成/重放 wq_init_attr 的初始化与调用。
     参数：
@@ -2202,7 +1974,6 @@ class CreateWQ(VerbCall):
     {self.wq_var} = ibv_create_wq({self.ctx_name}, &{self.wq_attr_var});
     if (!{self.wq_var}) {{
         fprintf(stderr, "ibv_create_wq failed\\n");
-        return -1;
     }}
 """
         return code
@@ -2243,10 +2014,11 @@ class DeallocMW(VerbCall):
         mw_name = self.mw
         return f"""
     /* ibv_dealloc_mw */
-    if (ibv_dealloc_mw({mw_name})) {{
-        fprintf(stderr, "Failed to deallocate MW\\n");
-        return -1;
-    }}
+    IF_OK_PTR({mw_name}, {{
+        if (ibv_dealloc_mw({mw_name})) {{
+            fprintf(stderr, "Failed to deallocate MW {mw_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2288,10 +2060,11 @@ class DeallocPD(VerbCall):
         pd_name = self.pd
         return f"""
     /* ibv_dealloc_pd */
-    if (ibv_dealloc_pd({pd_name})) {{
-        fprintf(stderr, "Failed to deallocate PD \\n");
-        return -1;
-    }}
+    IF_OK_PTR({pd_name}, {{
+        if (ibv_dealloc_pd({pd_name})) {{
+            fprintf(stderr, "Failed to deallocate PD {pd_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2333,10 +2106,11 @@ class DeallocTD(VerbCall):
         td_name = self.td
         return f"""
     /* ibv_dealloc_td */
-    if (ibv_dealloc_td({td_name})) {{
-        fprintf(stderr, "Failed to deallocate TD\\n");
-        return -1;
-    }}
+    IF_OK_PTR({td_name}, {{
+        if (ibv_dealloc_td({td_name})) {{
+            fprintf(stderr, "Failed to deallocate TD {td_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2378,10 +2152,11 @@ class DeregMR(VerbCall):
         mr_name = self.mr
         return f"""
     /* ibv_dereg_mr */
-    if (ibv_dereg_mr({mr_name})) {{
-        fprintf(stderr, "Failed to deregister MR\\n");
-        return -1;
-    }}
+    IF_OK_PTR({mr_name}, {{
+        if (ibv_dereg_mr({mr_name})) {{
+            fprintf(stderr, "Failed to deregister MR {mr_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2423,10 +2198,11 @@ class DestroyAH(VerbCall):
         ah_name = self.ah
         return f"""
     /* ibv_destroy_ah */
-    if (ibv_destroy_ah({ah_name})) {{
-        fprintf(stderr, "Failed to destroy AH\\n");
-        return -1;
-    }}
+    IF_OK_PTR({ah_name}, {{
+        if (ibv_destroy_ah({ah_name})) {{
+            fprintf(stderr, "Failed to destroy AH {ah_name}\\n");
+        }}
+    }})
 """
 
 
@@ -2476,10 +2252,11 @@ class DestroyCompChannel(VerbCall):
         channel_name = self.channel
         return f"""
     /* ibv_destroy_channel */
-    if (ibv_destroy_channel({channel_name})) {{
-        fprintf(stderr, "Failed to destroy completion channel\\n");
-        return -1;
-    }}
+    IF_OK_PTR({channel_name}, {{
+        if (ibv_destroy_channel({channel_name})) {{
+            fprintf(stderr, "Failed to destroy completion channel {channel_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2521,10 +2298,11 @@ class DestroyCQ(VerbCall):
         cq_name = self.cq
         return f"""
     /* ibv_destroy_cq */
-    if (ibv_destroy_cq({cq_name})) {{
-        fprintf(stderr, "Failed to destroy CQ\\n");
-        return -1;
-    }}
+    IF_OK_PTR({cq_name}, {{
+        if (ibv_destroy_cq({cq_name})) {{
+            fprintf(stderr, "Failed to destroy CQ {cq_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2570,10 +2348,11 @@ class DestroyFlow(VerbCall):
         flow_name = self.flow
         return f"""
     /* ibv_destroy_flow */
-    if (ibv_destroy_flow({flow_name})) {{
-        fprintf(stderr, "Failed to destroy flow\\n");
-        return -1;
-    }}
+    IF_OK_PTR({flow_name}, {{
+        if (ibv_destroy_flow({flow_name})) {{
+            fprintf(stderr, "Failed to destroy flow {flow_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2615,10 +2394,11 @@ class DestroyQP(VerbCall):
         qp_name = str(self.qp)
         return f"""
     /* ibv_destroy_qp */
-    if (ibv_destroy_qp({qp_name})) {{
-        fprintf(stderr, "Failed to destroy QP\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_name}, {{
+        if (ibv_destroy_qp({qp_name})) {{
+            fprintf(stderr, "Failed to destroy QP {qp_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2685,10 +2465,11 @@ class DestroySRQ(VerbCall):
         srq_name = self.srq
         return f"""
     /* ibv_destroy_srq */
-    if (ibv_destroy_srq({srq_name}) != 0) {{
-        fprintf(stderr, "Failed to destroy SRQ\\n");
-        return -1;
-    }}
+    IF_OK_PTR({srq_name}, {{
+        if (ibv_destroy_srq({srq_name}) != 0) {{
+            fprintf(stderr, "Failed to destroy SRQ {srq_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2730,10 +2511,11 @@ class DestroyWQ(VerbCall):
         wq_name = self.wq
         return f"""
     /* ibv_destroy_wq */
-    if (ibv_destroy_wq({wq_name})) {{
-        fprintf(stderr, "Failed to destroy WQ\\n");
-        return -1;
-    }}
+    IF_OK_PTR({wq_name}, {{
+        if (ibv_destroy_wq({wq_name})) {{
+            fprintf(stderr, "Failed to destroy WQ {wq_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2781,10 +2563,11 @@ class DetachMcast(VerbCall):  # TODO: gid 需要是变量名
         qp_name = str(self.qp)
         return f"""
     /* ibv_detach_mcast */
-    if (ibv_detach_mcast({qp_name}, &{self.gid}, {self.lid})) {{
-        fprintf(stderr, "Failed to detach multicast group\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_name}, {{
+        if (ibv_detach_mcast({qp_name}, &{self.gid}, {self.lid})) {{
+            fprintf(stderr, "Failed to detach multicast group {qp_name}\\n");
+        }}
+    }});
 """
 
 
@@ -2933,10 +2716,11 @@ class FreeDM(VerbCall):
         dm_name = self.dm
         return f"""
     /* ibv_free_dm */
-    if (ibv_free_dm({dm_name})) {{
-        fprintf(stderr, "Failed to free device memory (DM)\\n");
-        return -1;
-    }}
+    IF_OK_PTR({dm_name}, {{
+        if (ibv_free_dm({dm_name})) {{
+            fprintf(stderr, "Failed to free device memory (DM) {dm_name}\\n");
+        }}
+    }});
 """
 
 
@@ -3281,10 +3065,11 @@ class GetSRQNum(VerbCall):
         # ctx.alloc_variable(self.srq_num_var, "uint32_t")
         return f"""
     /* ibv_get_srq_num */
-    if (ibv_get_srq_num({srq_name}, &{self.srq_num_var})) {{
-        fprintf(stderr, "Failed to get SRQ number\\n");
-        return -1;
-    }}
+    IF_OK_PTR({srq_name}, {{
+        if (ibv_get_srq_num({srq_name}, &{self.srq_num_var})) {{
+            fprintf(stderr, "Failed to get SRQ number {srq_name}\\n");
+        }}
+    }});
 """
 
 
@@ -3357,8 +3142,7 @@ class ImportDM(VerbCall):
     /* ibv_import_dm */
     {self.dm_var} = ibv_import_dm({ib_ctx}, {self.dm_handle});
     if (!{self.dm_var}) {{
-        fprintf(stderr, "Failed to import device memory\\n");
-        return -1;
+        fprintf(stderr, "Failed to import device memory {self.dm_var}\\n");
     }}
 """
 
@@ -3413,8 +3197,7 @@ class ImportMR(VerbCall):
     /* ibv_import_mr */
     {mr_name} = ibv_import_mr({pd_name}, {self.mr_handle});
     if (!{mr_name}) {{
-        fprintf(stderr, "Failed to import MR\\n");
-        return -1;
+        fprintf(stderr, "Failed to import MR {mr_name}\\n");
     }}
 """
 
@@ -3462,8 +3245,7 @@ class ImportPD(VerbCall):
     /* ibv_import_pd */
     {pd_name} = ibv_import_pd({ctx.ib_ctx}, {self.pd_handle});
     if (!{pd_name}) {{
-        fprintf(stderr, "Failed to import PD\\n");
-        return -1;
+        fprintf(stderr, "Failed to import PD {pd_name}\\n");
     }}
 """
 
@@ -3607,10 +3389,11 @@ class MemcpyFromDM(VerbCall):
         dm_name = self.dm
         return f"""
     /* ibv_memcpy_from_dm */
-    if (ibv_memcpy_from_dm({self.host}, {dm_name}, {self.dm_offset}, {self.length}) != 0) {{
-        fprintf(stderr, "Failed to copy from device memory\\n");
-        return -1;
-    }}
+    IF_OK_PTR({dm_name}, {{
+        if (ibv_memcpy_from_dm({self.host}, {dm_name}, {self.dm_offset}, {self.length}) != 0) {{
+            fprintf(stderr, "Failed to copy from device memory {dm_name}\\n");
+        }}
+    }});
 """
 
 
@@ -3665,10 +3448,11 @@ class MemcpyToDM(VerbCall):
         dm_name = self.dm
         return f"""
     /* ibv_memcpy_to_dm */
-    if (ibv_memcpy_to_dm({dm_name}, {self.dm_offset}, {self.host}, {self.length}) != 0) {{
-        fprintf(stderr, "Failed to copy to device memory\\n");
-        return -1;
-    }}
+    IF_OK_PTR({dm_name}, {{
+        if (ibv_memcpy_to_dm({dm_name}, {self.dm_offset}, {self.host}, {self.length}) != 0) {{
+            fprintf(stderr, "Failed to copy to device memory {dm_name}\\n");
+        }}
+    }});
 """
 
 
@@ -3718,17 +3502,18 @@ class ModifyCQ(VerbCall):
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         # Get the CQ variable name from context
-        self.cq_var = self.cq
+        cq_name = self.cq
         code = ""
         if self.attr_obj is not None:
             code += self.attr_obj.to_cxx(self.attr_var, ctx)
         else:
             code += f"\n    struct ibv_modify_cq_attr {self.attr_var} = {{0}};\n"
         code += f"""
-    if (ibv_modify_cq({self.cq_var}, &{self.attr_var}) != 0) {{
-        fprintf(stderr, "ibv_modify_cq failed\\n");
-        return -1;
-    }}
+    IF_OK_PTR({cq_name}, {{
+        if (ibv_modify_cq({cq_name}, &{self.attr_var}) != 0) {{
+            fprintf(stderr, "ibv_modify_cq failed {cq_name}\\n");
+        }}
+    }});
 """
         return code
 
@@ -3871,10 +3656,14 @@ class ModifyQP(VerbCall):
         if target == State.RTR:
             wait_code = f'pr_wait_pair_state(BUNDLE_ENV, "pair-{self.qp}-{self.context.get_peer_qp_num(qp_name)}", "BOTH_RTS", /*timeout_ms=*/15000);'
         return f"""
-    {wait_code}
-    memset(&{attr_name}, 0, sizeof({attr_name}));
-    {attr_lines}
-    ibv_modify_qp({qp_name}, &{attr_name}, {mask_code});
+    IF_OK_PTR({qp_name}, {{
+        {wait_code}
+        memset(&{attr_name}, 0, sizeof({attr_name}));
+        {attr_lines}
+        if (ibv_modify_qp({qp_name}, &{attr_name}, {mask_code})) {{
+            fprintf(stderr, "Failed to modify QP {qp_name}\\n");
+        }}
+    }});
         """
 
 
@@ -3929,17 +3718,18 @@ class ModifyQPRateLimit(VerbCall):
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         # Get the QP variable name from context
-        self.qp_var = self.qp
+        qp_name = self.qp
         code = ""
         if self.attr_obj is not None:
             code += self.attr_obj.to_cxx(self.attr_var, ctx)
         else:
             code += f"\n    struct ibv_qp_rate_limit_attr {self.attr_var} = {{0}};\n"
         code += f"""
-    if (ibv_modify_qp_rate_limit({self.qp_var}, &{self.attr_var}) != 0) {{
-        fprintf(stderr, "ibv_modify_qp_rate_limit failed\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_name}, {{
+        if (ibv_modify_qp_rate_limit({qp_name}, &{self.attr_var}) != 0) {{
+            fprintf(stderr, "ibv_modify_qp_rate_limit failed {qp_name}\\n");
+        }}
+    }});
 """
         return code
 
@@ -3998,17 +3788,18 @@ class ModifySRQ(VerbCall):
         return cls(srq_var, attr_var, attr_obj, attr_mask)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        self.srq_var = self.srq
+        srq_name = self.srq
         code = ""
         if self.attr_obj is not None:
             code += self.attr_obj.to_cxx(self.attr_var, ctx)
         else:
             code += f"\n    struct ibv_srq_attr {self.attr_var} = {{0}};\n"
         code += f"""
-    if (ibv_modify_srq({self.srq_var}, &{self.attr_var}, {self.attr_mask}) != 0) {{
-        fprintf(stderr, "ibv_modify_srq failed\\n");
-        return -1;
-    }}
+    IF_OK_PTR({srq_name}, {{
+        if (ibv_modify_srq({srq_name}, &{self.attr_var}, {self.attr_mask}) != 0) {{
+            fprintf(stderr, "ibv_modify_srq failed {srq_name}\\n");
+        }}
+    }});
 """
         return code
 
@@ -4062,17 +3853,18 @@ class ModifyWQ(VerbCall):
 
     def generate_c(self, ctx: CodeGenContext) -> str:
         # Get the WQ variable name from context
-        self.wq_var = self.wq
+        wq_name = self.wq
         code = ""
         if self.attr_obj is not None:
             code += self.attr_obj.to_cxx(self.attr_var, ctx)
         else:
             code += f"\n    struct ibv_wq_attr {self.attr_var} = {{0}};\n"
         code += f"""
-    if (ibv_modify_wq({self.wq_var}, &{self.attr_var}) != 0) {{
-        fprintf(stderr, "ibv_modify_wq failed\\n");
-        return -1;
-    }}
+    IF_OK_PTR({wq_name}, {{
+        if (ibv_modify_wq({wq_name}, &{self.attr_var}) != 0) {{
+            fprintf(stderr, "ibv_modify_wq failed {wq_name}\\n");
+        }}
+    }});
 """
         return code
 
@@ -4105,8 +3897,7 @@ class OpenDevice(VerbCall):
     /* ibv_open_device */
     {ib_ctx} = ibv_open_device({dev_list}[0]);
     if (!{ib_ctx}) {{
-        fprintf(stderr, "Failed to open device\\n");
-        return -1;
+        fprintf(stderr, "Failed to open device {dev_list}\\n");
     }}
 """
 
@@ -4186,7 +3977,6 @@ class OpenQP(VerbCall):
     {self.qp_var} = ibv_open_qp({self.ctx_var}, &{self.attr_var});
     if (!{self.qp_var}) {{
         fprintf(stderr, "ibv_open_qp failed\\n");
-        return -1;
     }}
 """
         return code
@@ -4262,7 +4052,6 @@ class OpenXRCD(VerbCall):
     {self.xrcd_var} = ibv_open_xrcd({self.ctx_var}, &{self.attr_var});
     if (!{self.xrcd_var}) {{
         fprintf(stderr, "ibv_open_xrcd failed\\n");
-        return -1;
     }}
 """
         return code
@@ -4301,33 +4090,33 @@ class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数
         cq_name = str(self.cq)
         return f"""
         /* ibv_poll_cq — self-contained minimal polling */
-        {{
-            struct ibv_wc wc;
-            int n = 0;
-            int attempts = 100;   /* ~100 * 100us ≈ 10ms */
-            while (attempts-- > 0) {{
-                n = ibv_poll_cq({cq_name}, 1, &wc);
-                if (n < 0) {{
-                    fprintf(stderr, "ibv_poll_cq failed\\n");
-                    return -1;
-                }}
-                if (n == 1) {{
-                    if (wc.status != IBV_WC_SUCCESS) {{
-                        fprintf(stderr, "bad completion: status=0x%x vendor=0x%x\\n",
-                                wc.status, wc.vendor_err);
-                        return -1;
+        IF_OK_PTR({cq_name}, {{
+            {{
+                struct ibv_wc wc;
+                int n = 0;
+                int attempts = 100;   /* ~100 * 100us ≈ 10ms */
+                while (attempts-- > 0) {{
+                    n = ibv_poll_cq({cq_name}, 1, &wc);
+                    if (n < 0) {{
+                        fprintf(stderr, "ibv_poll_cq failed\\n");
                     }}
-                    /* success – got one completion */
-                    break;
+                    if (n == 1) {{
+                        if (wc.status != IBV_WC_SUCCESS) {{
+                            fprintf(stderr, "bad completion: status=0x%x vendor=0x%x\\n",
+                                    wc.status, wc.vendor_err);
+                        }}
+                        /* success – got one completion */
+                        break;
+                    }}
+                    /* n == 0: no CQE yet, back off briefly */
+                    usleep(100); /* 100us */
                 }}
-                /* n == 0: no CQE yet, back off briefly */
-                usleep(100); /* 100us */
+                if (n == 0) {{
+                    fprintf(stderr, "no completion within budget\\n");
+                }}
             }}
-            if (n == 0) {{
-                fprintf(stderr, "no completion within budget\\n");
-                return -1;
-            }}
-        }}
+        }});
+
     """
 
 
@@ -4397,36 +4186,94 @@ class PostRecv(VerbCall):
         bad_wr_var = kv.get("bad_wr_var", "bad_recv_wr")
         return cls(qp, wr_obj, wr_var, bad_wr_var)
 
+    # ---------- 辅助：递归收集 WR 链里所有 SGE 的 MR 名 ----------
+    @staticmethod
+    def _collect_mr_names_from_wr_head(wr_head) -> list[str]:
+        """
+        遍历 wr_head 整条链（通过 .next），把每个 WR 的 sg_list[*].mr 的 ResourceValue.name 收集（去重，保序）。
+        """
+        seen = set()
+        order = []
+
+        def add(name: str):
+            if name not in seen:
+                seen.add(name)
+                order.append(name)
+
+        cur = wr_head
+        while cur is not None:
+            # sg_list
+            try:
+                sg_lv = getattr(cur, "sg_list", None)
+                if isinstance(sg_lv, OptionalValue):
+                    sg_list = sg_lv.value
+                else:
+                    sg_list = sg_lv
+                if isinstance(sg_list, list) or isinstance(sg_list, ListValue):
+                    for sge in sg_list:
+                        mr_val = getattr(sge, "mr", None)
+                        if isinstance(mr_val, ResourceValue) and mr_val.resource_type == "mr":
+                            if isinstance(mr_val.value, str) and mr_val.value:
+                                add(mr_val.value)
+            except Exception:
+                pass
+
+            # next
+            nxt = None
+            try:
+                nxt_ov = getattr(cur, "next", None)
+                if isinstance(nxt_ov, OptionalValue):
+                    nxt = nxt_ov.value
+                else:
+                    nxt = nxt_ov
+            except Exception:
+                nxt = None
+            cur = nxt
+
+        return order
+
     def generate_c(self, ctx: CodeGenContext) -> str:
-        s = ""
+        qp_name = coerce_str(self.qp)
+        wr = unwrap(self.wr_obj)
         wr_var = str(self.wr_var)  # e.g., "recv_wr_qp1"
         bad_wr_var = str(self.bad_wr_var)  # e.g., "bad_recv
+        wr_name = str(self.wr_var)  # e.g., "recv_wr_qp1"
+        bad_wr_name = str(self.bad_wr_var)  # e.g., "bad_recv
         # 构造 WR 结构体（链表/单个）
+        code_wr = ""
         if self.wr_obj is not None:
-            s += self.wr_obj.to_cxx(wr_var, ctx)
-        else:
-            s += f"\n    struct ibv_recv_wr {self.wr_var} = {{0}};\n"
+            code_wr += self.wr_obj.to_cxx(wr_var, ctx)
         # bad_wr 定义
-        if ctx:
-            # Register the bad work request pointer in the context
-            ctx.alloc_variable(bad_wr_var, "struct ibv_recv_wr *", "NULL")
-        else:
-            s += f"\n    struct ibv_recv_wr *{self.bad_wr_var} = NULL;\n"
-        # 调用
-        qp_name = str(self.qp)
-        s += f"""
-    if (ibv_post_recv({qp_name}, &{self.wr_var}, &{self.bad_wr_var}) != 0) {{
-        fprintf(stderr, "ibv_post_recv failed\\n");
-        return -1;
-    }}
+
+        ctx.alloc_variable(bad_wr_var, "struct ibv_recv_wr *", "NULL")
+
+        mr_names = self._collect_mr_names_from_wr_head(wr)
+        ptrs = [qp_name] + mr_names
+
+        guard_open = []
+        guard_close = []
+        for i, p in enumerate(ptrs):
+            guard_open.append(f"    IF_OK_PTR({p}, {{\n")
+            guard_close.append("    });\n")
+
+        guard_prefix = "".join(guard_open)
+        guard_suffix = "".join(reversed(guard_close))
+
+        body = f"""\
+    if (ibv_post_recv({qp_name}, &{wr_name}, &{bad_wr_name}) != 0) {{
+        fprintf(stderr, "[warn] ibv_post_recv failed {qp_name}\\n");
+    }}"""
+        return f"""
+    /* ibv_post_recv (fuzz-friendly guarded) */
+{guard_prefix}{code_wr}{body}
+{guard_suffix}
 """
-        return s
 
 
 class PostSend(VerbCall):
     MUTABLE_FIELDS = ["qp", "wr_obj"]
 
-    # 关键：把整条 WR 链（wr_obj**）的所有 SGE（sg_list[*]）里的 MR 都声明为 requires
+    # 要求 RTS 的 QP + 全链路 SGE 所用的 MR 已分配
     CONTRACT = Contract(
         requires=[
             RequireSpec("qp", State.RTS, "qp", exclude_states=[State.DESTROYED]),
@@ -4440,7 +4287,7 @@ class PostSend(VerbCall):
         if not qp:
             raise ValueError("QP name must be provided")
         self.qp = ResourceValue(resource_type="qp", value=qp)
-        self.wr_obj = wr_obj  # IbvSendWR实例（可为链头）
+        self.wr_obj = wr_obj  # IbvSendWR（可为链表头）
         self.tracker = None
         self.required_resources = []
 
@@ -4453,24 +4300,93 @@ class PostSend(VerbCall):
         if hasattr(ctx, "contracts"):
             ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
+    # ---------- 辅助：递归收集 WR 链里所有 SGE 的 MR 名 ----------
+    @staticmethod
+    def _collect_mr_names_from_wr_head(wr_head) -> list[str]:
+        """
+        遍历 wr_head 整条链（通过 .next），把每个 WR 的 sg_list[*].mr 的 ResourceValue.name 收集（去重，保序）。
+        """
+        seen = set()
+        order = []
+
+        def add(name: str):
+            if name not in seen:
+                seen.add(name)
+                order.append(name)
+
+        cur = wr_head
+        while cur is not None:
+            # sg_list
+            try:
+                sg_lv = getattr(cur, "sg_list", None)
+                if isinstance(sg_lv, OptionalValue):
+                    sg_list = sg_lv.value
+                else:
+                    sg_list = sg_lv
+                if isinstance(sg_list, list) or isinstance(sg_list, ListValue):
+                    for sge in sg_list:
+                        mr_val = getattr(sge, "mr", None)
+                        if isinstance(mr_val, ResourceValue) and mr_val.resource_type == "mr":
+                            if isinstance(mr_val.value, str) and mr_val.value:
+                                add(mr_val.value)
+            except Exception:
+                pass
+
+            # next
+            nxt = None
+            try:
+                nxt_ov = getattr(cur, "next", None)
+                if isinstance(nxt_ov, OptionalValue):
+                    nxt = nxt_ov.value
+                else:
+                    nxt = nxt_ov
+            except Exception:
+                nxt = None
+            cur = nxt
+
+        return order
+
     def generate_c(self, ctx: CodeGenContext) -> str:
         qp_name = coerce_str(self.qp)
-        attr_suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
-        wr_name = f"wr{attr_suffix}"
-        bad_wr_name = f"bad_wr{attr_suffix}"
-        code = ""
+        wr = unwrap(self.wr_obj)
+        suffix = "_" + qp_name.replace("qp[", "").replace("]", "")
+        wr_name = f"wr{suffix}"
+        bad_wr_name = f"bad_wr{suffix}"
+
+        # 1) 铺 WR 结构体
+        code_wr = ""
         if self.wr_obj is not None:
-            code += self.wr_obj.to_cxx(wr_name, ctx)
-        if bad_wr_name:
-            ctx.alloc_variable(bad_wr_name, "struct ibv_send_wr *", "NULL")
+            code_wr += self.wr_obj.to_cxx(wr_name, ctx)
+
+        # 2) 声明 bad_wr 指针
+        ctx.alloc_variable(bad_wr_name, "struct ibv_send_wr *", "NULL")
+
+        # 3) 找出这次调用所依赖的指针：QP + WR 链里的所有 MR 指针名
+        mr_names = self._collect_mr_names_from_wr_head(wr)
+        ptrs = [qp_name] + mr_names  # 守卫顺序：先 QP，再 MRs
+
+        # 4) 生成嵌套 IF_OK_PTR 守卫
+        guard_open = []
+        guard_close = []
+        for i, p in enumerate(ptrs):
+            guard_open.append(f"    IF_OK_PTR({p}, {{\n")
+            guard_close.append("    });\n")
+
+        guard_prefix = "".join(guard_open)
+        guard_suffix = "".join(reversed(guard_close))
+
+        # 5) 生成最终调用
+        bad_wr_arg = f"&{bad_wr_name}"
+        body = f"""\
+    if (ibv_post_send({qp_name}, &{wr_name}, {bad_wr_arg}) != 0) {{
+        fprintf(stderr, "[warn] ibv_post_send failed {qp_name}\\n");
+    }}"""
+
         return f"""
-    /* ibv_post_send */
-    {code}
-    if (ibv_post_send({qp_name}, &{wr_name}, &{bad_wr_name}) != 0) {{
-        fprintf(stderr, "Failed to post send work request\\n");
-        return -1;
-    }}
-    """
+    /* ibv_post_send (fuzz-friendly guarded) */
+{guard_prefix}{code_wr}{body}
+{guard_suffix}
+"""
 
 
 class PostSRQRecv(VerbCall):
@@ -4526,28 +4442,88 @@ class PostSRQRecv(VerbCall):
         bad_wr_var = kv.get("bad_wr_var", "bad_recv_wr")
         return cls(srq, wr_obj, wr_var, bad_wr_var)
 
+    # ---------- 辅助：递归收集 WR 链里所有 SGE 的 MR 名 ----------
+    @staticmethod
+    def _collect_mr_names_from_wr_head(wr_head) -> list[str]:
+        """
+        遍历 wr_head 整条链（通过 .next），把每个 WR 的 sg_list[*].mr 的 ResourceValue.name 收集（去重，保序）。
+        """
+        seen = set()
+        order = []
+
+        def add(name: str):
+            if name not in seen:
+                seen.add(name)
+                order.append(name)
+
+        cur = wr_head
+        while cur is not None:
+            # sg_list
+            try:
+                sg_lv = getattr(cur, "sg_list", None)
+                if isinstance(sg_lv, OptionalValue):
+                    sg_list = sg_lv.value
+                else:
+                    sg_list = sg_lv
+                if isinstance(sg_list, list) or isinstance(sg_list, ListValue):
+                    for sge in sg_list:
+                        mr_val = getattr(sge, "mr", None)
+                        if isinstance(mr_val, ResourceValue) and mr_val.resource_type == "mr":
+                            if isinstance(mr_val.value, str) and mr_val.value:
+                                add(mr_val.value)
+            except Exception:
+                pass
+
+            # next
+            nxt = None
+            try:
+                nxt_ov = getattr(cur, "next", None)
+                if isinstance(nxt_ov, OptionalValue):
+                    nxt = nxt_ov.value
+                else:
+                    nxt = nxt_ov
+            except Exception:
+                nxt = None
+            cur = nxt
+
+        return order
+
     def generate_c(self, ctx: CodeGenContext) -> str:
-        s = ""
-        # WR结构体生成
+        srq_name = coerce_str(self.srq)
+        wr = unwrap(self.wr_obj)
+        wr_var = str(self.wr_var)  # e.g., "recv_wr_qp1"
+        bad_wr_var = str(self.bad_wr_var)  # e.g., "bad_recv
+        wr_name = str(self.wr_var)  # e.g., "recv_wr_qp1"
+        bad_wr_name = str(self.bad_wr_var)  # e.g., "bad_recv
+        # 构造 WR 结构体（链表/单个）
+        code_wr = ""
         if self.wr_obj is not None:
-            s += self.wr_obj.to_cxx(self.wr_var, ctx)
-        else:
-            s += f"\n    struct ibv_recv_wr {self.wr_var} = {{0}};\n"
+            code_wr += self.wr_obj.to_cxx(wr_var, ctx)
         # bad_wr 定义
-        if ctx:
-            # Register the bad work request pointer in the context
-            ctx.alloc_variable(self.bad_wr_var, "struct ibv_recv_wr *", "NULL")
-        else:
-            s += f"\n    struct ibv_recv_wr *{self.bad_wr_var} = NULL;\n"
-        # 调用
-        srq_name = self.srq
-        s += f"""
-    if (ibv_post_srq_recv({srq_name}, &{self.wr_var}, &{self.bad_wr_var}) != 0) {{
-        fprintf(stderr, "ibv_post_srq_recv failed\\n");
-        return -1;
-    }}
+
+        ctx.alloc_variable(bad_wr_var, "struct ibv_recv_wr *", "NULL")
+
+        mr_names = self._collect_mr_names_from_wr_head(wr)
+        ptrs = [srq_name] + mr_names
+
+        guard_open = []
+        guard_close = []
+        for i, p in enumerate(ptrs):
+            guard_open.append(f"    IF_OK_PTR({p}, {{\n")
+            guard_close.append("    });\n")
+
+        guard_prefix = "".join(guard_open)
+        guard_suffix = "".join(reversed(guard_close))
+
+        body = f"""\
+    if (ibv_post_srq_recv({srq_name}, &{wr_name}, &{bad_wr_name}) != 0) {{
+        fprintf(stderr, "[warn] ibv_post_srq_recv failed {srq_name}\\n");
+    }}"""
+        return f"""
+    /* ibv_post_srq_recv (fuzz-friendly guarded) */
+{guard_prefix}{code_wr}{body}
+{guard_suffix}
 """
-        return s
 
 
 class QueryDeviceAttr(VerbCall):
@@ -4688,12 +4664,14 @@ class QueryECE(VerbCall):
         ctx.alloc_variable(self.output, "struct ibv_ece")
         return f"""
     /* ibv_query_ece */
-    if (ibv_query_ece({qp_name}, &{self.output})) {{
-        fprintf(stderr, "Failed to query ECE options, error code: %d\\n", query_result);
-        return -1;
-    }}
-    fprintf(stdout, "ECE options for QP: vendor_id=0x%x, options=0x%x, comp_mask=0x%x\\n",
-            {self.output}.vendor_id, {self.output}.options, {self.output}.comp_mask);
+    IF_OK_PTR({qp_name}, {{
+        if (ibv_query_ece({qp_name}, &{self.output})) {{
+            fprintf(stderr, "Failed to query ECE options, error code: %d\\n", query_result);
+        }}
+        fprintf(stdout, "ECE options for QP: vendor_id=0x%x, options=0x%x, comp_mask=0x%x\\n",
+                {self.output}.vendor_id, {self.output}.options, {self.output}.comp_mask);
+    }});
+
 """
 
 
@@ -4902,10 +4880,11 @@ class QueryQP(VerbCall):
         ctx.alloc_variable(init_attr_name, "struct ibv_qp_init_attr")  #
         return f"""
     /* ibv_query_qp */
-    if (ibv_query_qp({qp_name}, &{attr_name}, {self.attr_mask}, &{init_attr_name})) {{
-        fprintf(stderr, "Failed to query QP\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_name}, {{
+        if (ibv_query_qp({qp_name}, &{attr_name}, {self.attr_mask}, &{init_attr_name})) {{
+            fprintf(stderr, "Failed to query QP {qp_name}\\n");
+        }}
+    }});
 """
 
 
@@ -5000,12 +4979,14 @@ class QuerySRQ(VerbCall):
         ctx.alloc_variable(attr_name, "struct ibv_srq_attr")
         return f"""
     /* ibv_query_srq */
-    if (ibv_query_srq({srq_name}, &{attr_name})) {{
-        fprintf(stderr, "Failed to query SRQ\\n");
-        return -1;
-    }}
-    fprintf(stdout, "SRQ max_wr: %u, max_sge: %u, srq_limit: %u\\n", 
-            {attr_name}.max_wr, {attr_name}.max_sge, {attr_name}.srq_limit);
+    IF_OK_PTR({srq_name}, {{
+        if (ibv_query_srq({srq_name}, &{attr_name})) {{
+            fprintf(stderr, "Failed to query SRQ {srq_name}\\n");
+        }}
+        fprintf(stdout, "SRQ max_wr: %u, max_sge: %u, srq_limit: %u\\n", 
+                {attr_name}.max_wr, {attr_name}.max_sge, {attr_name}.srq_limit);
+    }});
+
 """
 
 
@@ -5133,9 +5114,18 @@ class RegDmaBufMR(VerbCall):
     /* ibv_reg_dmabuf_mr */
     {mr_name} = ibv_reg_dmabuf_mr({pd_name}, {self.offset}, {self.length}, {self.iova}, {self.fd}, {self.access});
     if (!{mr_name}) {{
-        fprintf(stderr, "Failed to register dmabuf MR\\n");
-        return -1;
+        fprintf(stderr, "Failed to register dmabuf MR {mr_name}\\n");
     }}
+
+    IF_OK_PTR({mr_name}, {{
+        mrs[mrs_size++] = (PR_MR){{
+            .id = "{mr_name}",
+            .addr = (uint64_t)({mr_name}->addr),
+            .length = {self.length},
+            .lkey = {mr_name}->lkey
+        }};
+        pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    }});
 """
 
 
@@ -5210,17 +5200,18 @@ class RegMR(VerbCall):
     /* ibv_reg_mr */
     {mr_name} = ibv_reg_mr({pd_name}, {addr}, {length}, {access});
     if (!{mr_name}) {{
-        fprintf(stderr, "Failed to register memory region\\n");
-        return -1;
+        fprintf(stderr, "Failed to register memory region {mr_name}\\n");
     }}
     
-    mrs[mrs_size++] = (PR_MR){{
-        .id = "{mr_name}",
-        .addr = (uint64_t)({mr_name}->addr),
-        .length = 1024,
-        .lkey = {mr_name}->lkey}};
-        
-    pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    IF_OK_PTR({mr_name}, {{
+        mrs[mrs_size++] = (PR_MR){{
+            .id = "{mr_name}",
+            .addr = (uint64_t)({mr_name}->addr),
+            .length = {length},
+            .lkey = {mr_name}->lkey
+        }};
+        pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    }});
     
 """
 
@@ -5289,9 +5280,18 @@ class RegMRIova(VerbCall):
     /* ibv_reg_mr_iova */
     {mr_name} = ibv_reg_mr_iova({pd_name}, {self.buf}, {self.length}, {self.iova}, {self.access});
     if (!{mr_name}) {{
-        fprintf(stderr, "Failed to register MR with IOVA\\n");
-        return -1;
+        fprintf(stderr, "Failed to register memory region with IOVA {mr_name}\\n");
     }}
+    
+    IF_OK_PTR({mr_name}, {{
+        mrs[mrs_size++] = (PR_MR){{
+            .id = "{mr_name}",
+            .addr = (uint64_t)({mr_name}->addr),
+            .length = {self.length},
+            .lkey = {mr_name}->lkey
+        }};
+        pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
+    }});
 """
 
 
@@ -5331,10 +5331,12 @@ class ReqNotifyCQ(VerbCall):
         cq_name = self.cq
         return f"""
     /* ibv_req_notify_cq */
-    if (ibv_req_notify_cq({cq_name}, {self.solicited_only})) {{
-        fprintf(stderr, "Failed to request CQ notification\\n");
-        return -1;
-    }}
+    IF_OK_PTR({cq_name}, {{
+        if (ibv_req_notify_cq({cq_name}, {self.solicited_only})) {{
+        fprintf(stderr, "Failed to request CQ notification {cq_name}\\n");
+        }}
+    }});
+
 """
 
 
@@ -5407,10 +5409,13 @@ class ReRegMR(VerbCall):
         addr = self.addr if self.addr else "NULL"
         return f"""
     /* ibv_rereg_mr */
-    if (ibv_rereg_mr({mr_name}, {self.flags}, {pd_name}, {addr}, {self.length}, {self.access}) != 0) {{
-        fprintf(stderr, "Failed to re-register MR\\n");
-        return -1;
-    }}
+    IF_OK_PTR({mr_name}, {{
+        IF_OK_PTR({pd_name}, {{
+                if (ibv_rereg_mr({mr_name}, {self.flags}, {pd_name}, {addr}, {self.length}, {self.access}) != 0) {{
+                fprintf(stderr, "Failed to re-register MR {mr_name}\\n");
+            }}
+        }}
+    }});
 """
 
 
@@ -5454,10 +5459,12 @@ class ResizeCQ(VerbCall):
         cq_name = self.cq
         return f"""
     /* ibv_resize_cq */
-    if (ibv_resize_cq({cq_name}, {self.cqe})) {{
-        fprintf(stderr, "Failed to resize CQ\\n");
-        return -1;
-    }}
+    IF_OK_PTR({cq_name}, {{
+        if (ibv_resize_cq({cq_name}, {self.cqe})) {{
+        fprintf(stderr, "Failed to resize CQ {cq_name}\\n");
+        }}
+    }});
+
 """
 
 
@@ -5517,10 +5524,11 @@ class SetECE(VerbCall):
             s += f"\n    struct ibv_ece {self.ece_var} = {{0}};\n"
         qp_name = str(self.qp)
         s += f"""
-    if (ibv_set_ece({qp_name}, &{self.ece_var}) != 0) {{
-        fprintf(stderr, "ibv_set_ece failed\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_name}, {{
+        if (ibv_set_ece({qp_name}, &{self.ece_var}) != 0) {{
+        fprintf(stderr, "ibv_set_ece failed {qp_name}\\n");
+        }}
+    }});
 """
         return s
 
@@ -5614,10 +5622,12 @@ class WRComplete(VerbCall):
         qp_ex_name = self.qp_ex
         return f"""
     /* ibv_wr_complete */
-    if (ibv_wr_complete({qp_ex_name}) != 0) {{
-        fprintf(stderr, "Failed to complete work request\\n");
-        return -1;
-    }}
+    IF_OK_PTR({qp_ex_name}, {{
+        if (ibv_wr_complete({qp_ex_name}) != 0) {{
+        fprintf(stderr, "Failed to complete work request {qp_ex_name}\\n");
+        }}
+    }});
+
 """
 
 
