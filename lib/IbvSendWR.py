@@ -147,7 +147,7 @@ class IbvUdInfo(Attr):
 
     def __init__(self, ah=None, remote_qpn=None, remote_qkey=None):
         # self.ah = ResourceValue(ah, "ah") if ah is not None else None  # 可适配为现有ah变量
-        self.ah = ResourceValue(ah, "ah")
+        self.ah = ResourceValue(ah, "ah") if ah is not None else None
         self.remote_qpn = IntValue(remote_qpn, 2**24 - 1) if remote_qpn is not None else None
         self.remote_qkey = IntValue(remote_qkey, 2**32 - 1) if remote_qkey is not None else None
 
@@ -176,7 +176,7 @@ class IbvBindMwInfo(Attr):
 
     def __init__(self, mw=None, rkey=None, bind_info=None):
         # self.mw = ResourceValue(mw, "struct ibv_mw") if mw is not None else None  # 可适配为现有mw变量
-        self.mw = ResourceValue(mw, "struct ibv_mw")
+        self.mw = ResourceValue(mw, "mw") if mw is not None else None
         self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
         self.bind_info = bind_info  # 可进一步建模成IbvMwBindInfo
 

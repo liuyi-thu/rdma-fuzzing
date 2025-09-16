@@ -262,8 +262,8 @@ def run(args):
 
             # try to compile
             import subprocess
-
-            compile_cmd = f"g++ -g -O0 -std=c++11 -o /tmp/{seed}_{_round} /tmp/{seed}_{_round}.cpp /home/liuyi/fuzzing-rdma/pair_runtime.cpp /home/liuyi/fuzzing-rdma/runtime_resolver.c -I /home/liuyi/fuzzing-rdma -lcjson -libverbs -lpthread"
+            cwd = os.getcwd()
+            compile_cmd = f"g++ -g -O0 -std=c++11 -o /tmp/{seed}_{_round} /tmp/{seed}_{_round}.cpp {cwd}/pair_runtime.cpp {cwd}/runtime_resolver.c -I {cwd} -lcjson -libverbs -lpthread"
             logging.info("Compiling with command: %s", compile_cmd)
             result = subprocess.run(compile_cmd, shell=True, capture_output=True, text=True)
             if result.returncode != 0:
