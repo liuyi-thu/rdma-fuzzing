@@ -170,7 +170,7 @@ INITIAL_VERBS = [
         wr_obj=IbvRecvWR(
             wr_id=1,
             num_sge=1,
-            sg_list=[IbvSge(addr="mr0", length=1024, lkey="mr0")],
+            sg_list=[IbvSge(mr="mr0")],
         ),
     ),
     PollCQ(cq="cq0"),
@@ -243,82 +243,22 @@ if __name__ == "__main__":
     for h in list(logger.handlers):
         logger.removeHandler(h)
 
-    # 文件轮转（50MB * 3份备份）
-    # fh = RotatingFileHandler(log_file, mode="w", maxBytes=50 * 1024 * 1024, backupCount=3, encoding="utf-8") # 暂时不需要这个功能
-    fh = logging.FileHandler("out.txt", mode="w", encoding="utf-8")
-    # fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(process)d %(name)s: %(message)s")
+    fh = logging.FileHandler("out.log", mode="w", encoding="utf-8")
     fmt = logging.Formatter("%(message)s")
     fh.setFormatter(fmt)
     logger.addHandler(fh)
 
     verbs = copy.deepcopy(INITIAL_VERBS)
-    # rng = random.Random(100)
-    # random.seed(100)
+    ctx = CodeGenContext()
+    for v in verbs:  # initial check
+        v.apply(ctx)
+
     rng = None
     mutator = fuzz_mutate.ContractAwareMutator(rng)
-    # mutator.mutate_insert(verbs, idx=11, choice="create_qp")
-    # mutator.mutate_delete(verbs, 10)
     for _ in range(10):
-        mutator.mutate(verbs)
-        # if random.random() < 0.5:
-        #     mutator.mutate_insert(verbs, idx=None, choice="modify_qp")
-        # mutator.mutate_param(verbs, idx=8)
+        mutator.mutate_param(verbs, idx=17)
     print(summarize_verb_list(verbs, deep=True))
     # print("\n\nGenerated C++ Code:\n")
     rendered = render(verbs)
     with open("client.cpp", "w") as f:
         f.write(rendered)
-    # for v in verbs:
-    #     print(summarize_verb(v))
-    # ctx = CodeGenContext()
-    # for i in range(len(verbs)):
-    #     print(i, summarize_verb(verbs[i], deep=True, max_items=100))
-    #     verbs[i].apply(ctx)
-    #     print()
-    # mutator = fuzz_mutate.ContractAwareMutator()
-    # print(mutator.find_dependent_verbs_stateful(verbs, ("mr", "mr0", State.ALLOCATED)))
-
-    # for k in range(len(verbs)):
-    #     verbs = copy.deepcopy(INITIAL_VERBS)
-    #     print(f"=== Deleting verb {k} ===")
-    #     # for i in range(len(verbs)):
-    #     #     print(i, summarize_verb(verbs[i], deep=True, max_items=100))
-    #     #     verbs[i].apply(ctx)
-    #     print(summarize_verb_list(verbs, highlight=k, deep=True))
-    #     print("----- After Deletion -----")
-    #     mutator.mutate_param(verbs, idx=k)
-    #     print(summarize_verb_list(verbs, deep=True))
-    #     ctx = CodeGenContext()
-    #     for i in range(len(verbs)):
-    #         # print(i, summarize_verb(verbs[i], deep=True, max_items=100))
-    #         verbs[i].apply(ctx)
-
-    #     # print()
-    #     print()
-
-    # mutator.mutate_param(verbs, 21)
-    # # verbs[21].wr_obj.sg_list.mutate()
-    # print(i, summarize_verb(verbs[21], deep=True, max_items=100))
-    # print(ctx.contracts)
-    # mutator = fuzz_mutate.ContractAwareMutator()
-    # # target = ("qp", "qp0")
-    # # dependent_verbs = mutator.find_dependent_verbs(verbs, target)
-    # # print(f"Dependent verbs for {target}:")
-    # # for i in dependent_verbs:
-    # #     print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
-
-    # target_stateful = ("qp", "qp0", State.ALLOCATED)
-    # dependent_verbs = fuzz_mutate.find_dependent_verbs_stateful(verbs, target_stateful)
-    # print(dependent_verbs)
-    # print(dependent_verbs[:-1])
-    # print(f"Dependent verbs for {target_stateful}:")
-    # for i in dependent_verbs:
-    #     print("  ", summarize_verb(verbs[i], deep=True, max_items=100))
-
-    # # for i in range(len(verbs)):
-    # #     print(f"[{i}]", summarize_verb(verbs[i], deep=True, max_items=100))
-    # #     # print()
-    # # for i in range(len(verbs)):
-    # #     mutator.mutate_move(verbs, i, None)
-
-    # # print(mutator.enumerate_mutable_paths(verbs[16]))
