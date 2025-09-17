@@ -247,7 +247,6 @@ class UtilityCall:  # 生成verbs之外的函数
         return resources
 
 
-
 # ---------- Specific verb implementations ------------------------------------
 
 
@@ -314,7 +313,7 @@ class AckCQEvents(VerbCall):
 """
 
 
-class AdviseMR(VerbCall): # TODO: 暂时用不上，没改return -1
+class AdviseMR(VerbCall):  # TODO: 暂时用不上，没改return -1
     """
     表示 ibv_advise_mr() 调用。支持多SGE/flags/advice参数自动生成。
     参数：
@@ -1793,7 +1792,7 @@ class CreateSRQ(VerbCall):
 """
 
 
-class CreateSRQEx(VerbCall): # TODO: 暂时不用，没改return -1
+class CreateSRQEx(VerbCall):  # TODO: 暂时不用，没改return -1
     """
     表示 ibv_create_srq_ex() 调用，自动生成/重放 srq_init_attr_ex 的初始化与调用。
     参数：
@@ -1883,7 +1882,7 @@ class CreateSRQEx(VerbCall): # TODO: 暂时不用，没改return -1
         return code
 
 
-class CreateWQ(VerbCall): # TODO: 暂时不用，没改return -1
+class CreateWQ(VerbCall):  # TODO: 暂时不用，没改return -1
     """
     表示 ibv_create_wq() 调用，自动生成/重放 wq_init_attr 的初始化与调用。
     参数：
@@ -4400,7 +4399,14 @@ class PostSRQRecv(VerbCall):
     """
 
     MUTABLE_FIELDS = ["srq", "wr_obj", "wr_var", "bad_wr_var"]
-    CONTRACT = Contract(requires=[RequireSpec("srq", State.ALLOCATED, "srq")], produces=[], transitions=[])
+    CONTRACT = Contract(
+        requires=[
+            RequireSpec("srq", State.ALLOCATED, "srq"),
+            RequireSpec("mr", State.ALLOCATED, "wr_obj.**.sg_list[*].mr"),
+        ],
+        produces=[],
+        transitions=[],
+    )
 
     def __init__(
         self,

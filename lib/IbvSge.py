@@ -46,8 +46,8 @@ class IbvSge(Attr):
         )
 
     def to_cxx(self, varname, ctx=None):
-        if ctx:
-            ctx.alloc_variable(varname, "struct ibv_sge")
+        # if ctx:
+        #     ctx.alloc_variable(varname, "struct ibv_sge")
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
         for field in self.FIELD_LIST:
             val = getattr(self, field)

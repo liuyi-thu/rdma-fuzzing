@@ -404,7 +404,7 @@ class IbvSendWR(Attr):
         def _sg_after(kind, lv, idx, item, snap, contract, rng, path):
             # 维护 num_sge 不变式
             try:
-                self.num_sge = OptionalValue(IntValue(len(lv.value)))
+                self.num_sge = OptionalValue(IntValue(len(lv.value), mutable=False))
             except Exception:
                 pass
 
@@ -417,7 +417,9 @@ class IbvSendWR(Attr):
         )
         # 初值：如果传了 sg_list，就按长度赋；否则 0
         init_num = len(self.sg_list.value) if (self.sg_list and hasattr(self.sg_list, "value")) else 0
-        self.num_sge = OptionalValue(IntValue(num_sge, 0) if num_sge is not None else IntValue(init_num))
+        self.num_sge = OptionalValue(
+            IntValue(max(init_num, num_sge), 0) if num_sge is not None else IntValue(init_num, mutable=False)
+        )
 
         self.opcode = OptionalValue(EnumValue(opcode, "IBV_WR_OPCODE_ENUM") if opcode is not None else None)
         self.send_flags = OptionalValue(
@@ -512,27 +514,15 @@ class IbvSendWR(Attr):
             # ---- sg_list：先解包成 python list 再生成 ----
             if field == "sg_list":
                 if len(val) > 0:
+                    num_sge = len(val)
                     # 生成sge数组
+                    if ctx:
+                        ctx.alloc_variable(f"{varname}_sg_list[{num_sge}]", "struct ibv_sge")
                     for idx, sge in enumerate(val):
-                        sge_var = f"{varname}_sge_{idx}"
+                        sge_var = f"{varname}_sg_list[{idx}]"
                         s += sge.to_cxx(sge_var, ctx)
-                    s += f"    {varname}.sg_list = &{varname}_sge_0;\n"
+                    s += f"    {varname}.sg_list = {varname}_sg_list;\n"
                 continue
-                # from lib.value import ListValue, OptionalValue
-
-                # vv = val.value if isinstance(val, OptionalValue) else val
-                # if isinstance(vv, ListValue):
-                #     items = vv.value
-                # elif isinstance(vv, list):
-                #     items = vv
-                # else:
-                #     items = []
-                # if len(items) > 0:
-                #     for idx, sge in enumerate(items):
-                #         sge_var = f"{varname}_sge_{idx}"
-                #         s += sge.to_cxx(sge_var, ctx)
-                #     s += f"    {varname}.sg_list = &{varname}_sge_0;\n"
-                # continue
 
             # ---- union/struct 分支 ----
             if field == "rdma":

@@ -69,7 +69,8 @@ class IbvRecvWR(Attr):
             # 1) 维护 num_sge 不变式
             try:
                 # 这里的 owner(=self) 可通过闭包拿到；直接写 self.num_sge 更简单：
-                self.num_sge = OptionalValue(IntValue(len(lv.value)))  # lv: ListValue
+                self.num_sge = OptionalValue(IntValue(len(lv.value), mutable=False))  # lv: ListValue
+                print(f"  [*] IbvRecvWR.sg_list after_mutate: set num_sge={len(lv.value)}")
             except Exception:
                 pass
 
@@ -94,7 +95,9 @@ class IbvRecvWR(Attr):
         #     factory=lambda: ListValue([], factory=lambda: IbvSge.random_mutation()),
         # )  # list[IbvSge]
         self.num_sge = OptionalValue(
-            IntValue(num_sge, 0) if num_sge is not None else IntValue(len(self.sg_list.value) if self.sg_list else 0)
+            IntValue(max(num_sge, len(self.sg_list.value)), 0)
+            if num_sge is not None
+            else IntValue(len(self.sg_list.value) if self.sg_list else 0)
         )
 
     @classmethod
@@ -138,17 +141,16 @@ class IbvRecvWR(Attr):
             s += emit_assign(varname, "wr_id", self.wr_id)
         # sg_list
         if self.sg_list:
-            # sge_array_var = str(varname) + "_sges"
-            # if ctx:
-            #     ctx.alloc_variable(sge_array_var + f"[{len(self.sg_list)}]", "struct ibv_sge")
-            # for idx, sge in enumerate(self.sg_list):
-            #     s += sge.to_cxx(f"{sge_array_var}[{idx}]", ctx)
-            # s += f"    {varname}.sg_list = {sge_array_var};\n"
-            # # s += f"    {varname}.num_sge = {len(self.sg_list)};\n"
-            for idx, sge in enumerate(self.sg_list):
-                sge_var = f"{varname}_sge_{idx}"
-                s += sge.to_cxx(sge_var, ctx)
-            s += f"    {varname}.sg_list = &{varname}_sge_0;\n"
+            val = self.sg_list.value  # ListValue
+            if len(val) > 0:
+                num_sge = len(val)
+                # 生成sge数组
+                if ctx:
+                    ctx.alloc_variable(f"{varname}_sg_list[{num_sge}]", "struct ibv_sge")
+                for idx, sge in enumerate(val):
+                    sge_var = f"{varname}_sg_list[{idx}]"
+                    s += sge.to_cxx(sge_var, ctx)
+                s += f"    {varname}.sg_list = {varname}_sg_list;\n"
         if self.num_sge:
             s += emit_assign(varname, "num_sge", self.num_sge)
         # next

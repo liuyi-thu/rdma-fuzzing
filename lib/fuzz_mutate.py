@@ -327,21 +327,6 @@ def mk_min_ah_attr(*, use_grh=False):
         )
 
 
-# ==== 新增：最小 WR/SGE 构造 ====
-def _mk_min_recv_wr():
-    from lib.ibv_all import IbvRecvWR, IbvSge
-
-    sge = IbvSge(addr=0x2000, length=32, lkey=0x5678)
-    return IbvRecvWR(num_sge=1, sg_list=[sge])
-
-
-def _mk_min_send_wr():
-    from lib.ibv_all import IbvSendWR, IbvSge
-
-    sge = IbvSge(addr=0x1000, length=16, lkey=0x1234)
-    return IbvSendWR(opcode="IBV_WR_SEND", num_sge=1, sg_list=[sge])
-
-
 # ==== 新版：最小 WR/SGE 构造（传入 mr 名称） ====
 def _mk_min_recv_wr_with_mr(mr_name: str):
     from lib.ibv_all import IbvRecvWR, IbvSge
@@ -942,11 +927,12 @@ def _pick_insertion_template(
 
     def build_post_srq_recv(ctx, rng, snap):
         srq = _pick_live_from_snap(snap, "srq", rng)
-        if not srq:
+        mr = _pick_live_from_snap(snap, "mr", rng)
+        if not srq or not mr:
             return None
         from lib.ibv_all import IbvRecvWR
 
-        return PostSRQRecv(srq=srq, wr_obj=_mk_min_recv_wr())
+        return PostSRQRecv(srq=srq, wr_obj=_mk_min_recv_wr_with_mr(mr_name=mr))
 
     def build_modify_srq(ctx, rng, snap):
         srq = _pick_live_from_snap(snap, "srq", rng)
