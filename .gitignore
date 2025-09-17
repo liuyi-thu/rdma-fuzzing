@@ -10,3 +10,4 @@ debug/
 .vscode/*
 .stfolder/*
 *.log
+seeds/

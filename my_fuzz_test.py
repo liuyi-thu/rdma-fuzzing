@@ -18,6 +18,10 @@ from lib import fuzz_mutate
 from lib.codegen_context import CodeGenContext
 from lib.contracts import ContractError, ContractTable, State
 from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
+
+from lib.corpus import Corpus
+from lib.runexec import execute_and_collect
+
 from lib.ibv_all import (
     IbvAHAttr,
     IbvAllocDmAttr,
@@ -237,7 +241,6 @@ def render(verbs: List[VerbCall]) -> str:
 
 if __name__ == "__main__":
     print("This is my_fuzz_test.py")
-
     logger = logging.getLogger()
     logging.basicConfig(level=logging.DEBUG)
     for h in list(logger.handlers):
@@ -248,7 +251,9 @@ if __name__ == "__main__":
     fh.setFormatter(fmt)
     logger.addHandler(fh)
 
+    corpus = Corpus("seeds")
     verbs = copy.deepcopy(INITIAL_VERBS)
+    sid0 = corpus.add(verbs, meta={"cov_bits_new": 0, "sem_novelty": 0.0})
     ctx = CodeGenContext()
     for v in verbs:  # initial check
         v.apply(ctx)
@@ -256,7 +261,36 @@ if __name__ == "__main__":
     rng = None
     mutator = fuzz_mutate.ContractAwareMutator(rng)
     for _ in range(10):
-        mutator.mutate_param(verbs, idx=17)
+        base_sid = corpus.pick_for_fuzz()
+        print("Picked seed:", base_sid)
+        if not base_sid:
+            base_sid = sid0
+        base_verbs = corpus.load_verbs(base_sid)
+        if not base_verbs:
+            base_verbs = copy.deepcopy(verbs)
+        print("Base verbs:", summarize_verb_list(base_verbs, deep=True))
+        # cur_verbs = mutator.mutate(base_verbs)
+        mutator.mutate(base_verbs)
+        cur_verbs = base_verbs
+        metrics = execute_and_collect(cur_verbs)
+        logging.info("metrics: %s", metrics)
+        new_sid = corpus.add(
+            cur_verbs,
+            meta={
+                "cov_bits_new": int(metrics.get("cov_new", 0)),
+                "sem_novelty": float(metrics.get("sem_novelty", 0.0)),
+            },
+        )
+        corpus.record_run(
+            new_sid,
+            {
+                "outcome": metrics.get("outcome"),
+                "cov_delta": int(metrics.get("cov_new", 0)),
+                "runtime_ms": int(metrics.get("runtime_ms", 0)),
+                "score": float(metrics.get("score", 0.0)),
+                "detail": metrics.get("detail"),
+            },
+        )
     print(summarize_verb_list(verbs, deep=True))
     # print("\n\nGenerated C++ Code:\n")
     rendered = render(verbs)
