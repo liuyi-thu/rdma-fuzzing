@@ -767,7 +767,7 @@ class AllocTD(VerbCall):
         code += f"""
     {td_name} = ibv_alloc_td({ctx.ib_ctx}, &{self.attr_var});
     if (!{td_name}) {{
-        fprintf(stderr, "Failed to allocate thread domain\\n");
+        fprintf(stderr, "Failed to allocate thread domain {td_name}\\n");
         return -1;
     }}
 """
@@ -817,7 +817,7 @@ class AttachMcast(VerbCall):
     /* ibv_attach_mcast */
     IF_OK_PTR({qp_name}, {{
         if (ibv_attach_mcast({qp_name}, &{gid_value}, {self.lid})) {{
-            fprintf(stderr, "Failed to attach multicast group\\n");
+            fprintf(stderr, "Failed to attach multicast group {qp_name}\\n");
         }}
     }});
 """
@@ -938,7 +938,7 @@ class CloseDevice(VerbCall):
     /* ibv_close_device */
     IF_OK_PTR({context_name}, {{
         if (ibv_close_device({context_name})) {{
-            fprintf(stderr, "Failed to close device\\n");
+            fprintf(stderr, "Failed to close device {context_name}\\n");
             }}
         }}
     );
@@ -1364,7 +1364,7 @@ class CreateCQEx(VerbCall):
         code += f"""
     {self.cq_ex} = ibv_create_cq_ex({self.ctx_name}, &{self.cq_attr_var});
     if (!{self.cq_ex}) {{
-        fprintf(stderr, "ibv_create_cq_ex failed\\n");
+        fprintf(stderr, "ibv_create_cq_ex failed {self.cq_ex}\\n");
     }}
 """
         return code
@@ -1876,7 +1876,7 @@ class CreateSRQEx(VerbCall):  # TODO: 暂时不用，没改return -1
         code += f"""
     {self.srq_var} = ibv_create_srq_ex({self.ctx_name}, &{self.srq_attr_var});
     if (!{self.srq_var}) {{
-        fprintf(stderr, "ibv_create_srq_ex failed\\n");
+        fprintf(stderr, "ibv_create_srq_ex failed {self.srq_var}\\n");
     }}
 """
         return code
@@ -1972,7 +1972,7 @@ class CreateWQ(VerbCall):  # TODO: 暂时不用，没改return -1
         code += f"""
     {self.wq_var} = ibv_create_wq({self.ctx_name}, &{self.wq_attr_var});
     if (!{self.wq_var}) {{
-        fprintf(stderr, "ibv_create_wq failed\\n");
+        fprintf(stderr, "ibv_create_wq failed {self.wq_var}\\n");
     }}
 """
         return code
@@ -3975,7 +3975,7 @@ class OpenQP(VerbCall):
         code += f"""
     {self.qp_var} = ibv_open_qp({self.ctx_var}, &{self.attr_var});
     if (!{self.qp_var}) {{
-        fprintf(stderr, "ibv_open_qp failed\\n");
+        fprintf(stderr, "ibv_open_qp failed {self.qp_var}\\n");
     }}
 """
         return code
@@ -4050,7 +4050,7 @@ class OpenXRCD(VerbCall):
         code += f"""
     {self.xrcd_var} = ibv_open_xrcd({self.ctx_var}, &{self.attr_var});
     if (!{self.xrcd_var}) {{
-        fprintf(stderr, "ibv_open_xrcd failed\\n");
+        fprintf(stderr, "ibv_open_xrcd failed {self.xrcd_var}\\n");
     }}
 """
         return code
@@ -4097,11 +4097,11 @@ class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数
                 while (attempts-- > 0) {{
                     n = ibv_poll_cq({cq_name}, 1, &wc);
                     if (n < 0) {{
-                        fprintf(stderr, "ibv_poll_cq failed\\n");
+                        fprintf(stderr, "ibv_poll_cq failed {cq_name}\\n");
                     }}
                     if (n == 1) {{
                         if (wc.status != IBV_WC_SUCCESS) {{
-                            fprintf(stderr, "bad completion: status=0x%x vendor=0x%x\\n",
+                            fprintf(stderr, "bad completion: status=0x%x vendor=0x%x cq={cq_name}\\n",
                                     wc.status, wc.vendor_err);
                         }}
                         /* success – got one completion */
@@ -4622,7 +4622,7 @@ class QueryDeviceEx(VerbCall):
     memset(&{self.input_var}, 0, sizeof({self.input_var}));
     {self.input_var}.comp_mask = {self.comp_mask};
     if (ibv_query_device_ex({self.ctx_var}, &{self.input_var}, &{self.attr_var}) != 0) {{
-        fprintf(stderr, "ibv_query_device_ex failed\\n");
+        fprintf(stderr, "ibv_query_device_ex failed {self.ctx_var}\\n");
         return -1;
     }}
 """
@@ -4706,7 +4706,7 @@ class QueryGID(VerbCall):
         return f"""
     /* ibv_query_gid */
     if (ibv_query_gid({self.context.ib_ctx}, {self.port_num}, {self.index}, &{self.gid_var})) {{
-        fprintf(stderr, "Failed to query GID\\n");
+        fprintf(stderr, "Failed to query GID {self.context.ib_ctx}, {self.port_num}, {self.index}\\n");
         return -1;
     }}
 """
@@ -4743,7 +4743,7 @@ class QueryGIDEx(VerbCall):
         return f"""
     /* ibv_query_gid_ex */
     if (ibv_query_gid_ex({ib_ctx}, {self.port_num}, {self.gid_index}, &{self.output}, {self.flags})) {{
-        fprintf(stderr, "Failed to query GID\\n");
+        fprintf(stderr, "Failed to query GID {ib_ctx}, {self.port_num}, {self.gid_index}\\n");
         return -1;
     }}
 """
@@ -4770,7 +4770,7 @@ class QueryGIDTable(VerbCall):
         return f"""
     /* ibv_query_gid_table */
     if (ibv_query_gid_table({ctx.ib_ctx}, {self.output}, {self.max_entries}, 0) < 0) {{
-        fprintf(stderr, "Failed to query GID table\\n");
+        fprintf(stderr, "Failed to query GID table {ctx.ib_ctx}, {self.output}, {self.max_entries}\\n");
         return -1;
     }}
 """
@@ -4800,7 +4800,7 @@ class QueryPKey(VerbCall):
         return f"""
     /* ibv_query_pkey */
     if (ibv_query_pkey({ctx.ib_ctx}, {self.port_num}, {self.index}, &{pkey_name})) {{
-        fprintf(stderr, "Failed to query P_Key\\n");
+        fprintf(stderr, "Failed to query P_Key {ctx.ib_ctx}, {self.port_num}, {self.index}\\n");
         return -1;
     }}
 """
@@ -4831,7 +4831,7 @@ class QueryPortAttr(VerbCall):
         return f"""
     /* ibv_query_port */
     if (ibv_query_port({ib_ctx}, {self.port_num}, &{self.port_attr})) {{
-        fprintf(stderr, "Failed to query port attributes\\n");
+        fprintf(stderr, "Failed to query port attributes {ib_ctx}, {self.port_num}\\n");
         return -1;
     }}
 """

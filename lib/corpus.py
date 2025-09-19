@@ -149,7 +149,7 @@ class Corpus:
         paths = self._seed_paths(sid)
 
         # 写 IR / meta / 对象
-        if not os.path.exists(paths["ir"]):
+        if not os.path.exists(paths["ir"]): # Remark: ir弄好看其实意义不大，我们可以通过dill来复现verbs
             with open(paths["ir"], "w", encoding="utf-8") as f:
                 json.dump(ir, f, ensure_ascii=False, indent=2)
         if meta is None:
