@@ -56,3 +56,10 @@ make SAN=asan run
 ```bash
 make tmux-kill
 ```
+
+## TODO
+
+- 目前 log 中的 stdout 和 stderr 行似乎不是严格按照时间顺序排列的，最好能够解决一下。比如，asan 的 stderr 理论上应该出现在 log 的末尾，因为 asan 触发之后，程序就应该无法运行了
+- 增加对 verbs 运行失败（failure）频率的统计
+- 将完整的一些流程（单个或者多个 verb，含有参数）打包为 scaffold or template，避免流程总是失败（可复用已有的 contract 系统）
+  - 如何获得 scaffold？自己写？或者从已有的程序中提取？manual efforts are needed
