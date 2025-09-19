@@ -4105,6 +4105,8 @@ class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数
                                     wc.status, wc.vendor_err);
                         }}
                         /* success – got one completion */
+                        printf("got one completion: wr_id=%lu opcode=%u byte_len=%u\\n",
+                               wc.wr_id, wc.opcode, wc.byte_len);
                         break;
                     }}
                     /* n == 0: no CQE yet, back off briefly */
