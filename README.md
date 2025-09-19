@@ -61,5 +61,8 @@ make tmux-kill
 
 - 目前 log 中的 stdout 和 stderr 行似乎不是严格按照时间顺序排列的，最好能够解决一下。比如，asan 的 stderr 理论上应该出现在 log 的末尾，因为 asan 触发之后，程序就应该无法运行了
 - 增加对 verbs 运行失败（failure）频率的统计
+  - 目前大致看了一下，failure 不少，关键是没有起到预期的作用，比如完成一次通信，如 send/recv
 - 将完整的一些流程（单个或者多个 verb，含有参数）打包为 scaffold or template，避免流程总是失败（可复用已有的 contract 系统）
   - 如何获得 scaffold？自己写？或者从已有的程序中提取？manual efforts are needed
+  - 一种可能的方式是插桩，利用已有的程序，自动记录每次对 verb 的调用。但是对于复合型参数，处理起来会很麻烦，如结构体如何解决 nested parameter 的问题？除非自动提取结构体定义（有工具，需要进一步判别哪些是输入 or 输出，哪些需要展开还是不需要展开，may filter by keyword），然后生成插桩的代码。倒也不是不行
+  - 是一个比较大的工程，如果条件允许的话不如直接手写 scaffold
