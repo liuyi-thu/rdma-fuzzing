@@ -1505,6 +1505,8 @@ class CreateQP(VerbCall):
             # qp_name = str(self.qp)
             # self.context.make_qp_binding(qp_name, self.srv_name)
             self.context.make_qp_binding(str(self.qp), self.remote_qp.value)
+            self.context.make_qp_recv_cq_binding(str(self.qp), self.init_attr_obj.recv_cq if self.init_attr_obj else "NULL")
+            self.context.make_qp_send_cq_binding(str(self.qp), self.init_attr_obj.send_cq if self.init_attr_obj else "NULL")
 
         if self.tracker:
             # Register the PD and QP addresses in the tracker

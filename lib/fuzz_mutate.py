@@ -14,6 +14,8 @@ from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summ
 
 from .value import Value
 from .verbs import ModifyQP, VerbCall
+from .scaffolds import ScaffoldBuilder
+from .codegen_context import CodeGenContext
 
 try:
     from .contracts import ContractError, ContractTable, State
@@ -62,6 +64,10 @@ class FakeCtx:
         self.ib_ctx = ib_ctx
         self.variables = {}
         self.bindings = {}
+
+        self.qp_recv_cq_binding = {}  # local qp -> cq
+        self.qp_send_cq_binding = {}  # local qp -> cq
+
         # 统一的 contracts：如果 ContractTable 不可用，则注入一个 dummy
         if ContractTable is not None:
             self.contracts = ContractTable()
@@ -99,6 +105,12 @@ class FakeCtx:
 
     def make_qp_binding(self, local_qp: str, remote_qp: str):
         self.bindings[local_qp] = remote_qp
+
+    def make_qp_recv_cq_binding(self, local_qp: str, cq: str):
+        self.qp_recv_cq_binding[local_qp] = cq
+
+    def make_qp_send_cq_binding(self, local_qp: str, cq: str):
+        self.qp_send_cq_binding[local_qp] = cq
 
     def get_peer_qp_num(self, local_qp: str) -> str:
         if local_qp not in self.bindings:
@@ -263,7 +275,7 @@ def _make_snapshot(verbs, i: int):
     for j in range(0, i):
         verbs[j].apply(ctx)
     snap = ctx.contracts.snapshot() if hasattr(ctx, "contracts") else {}
-    return snap
+    return snap, ctx
 
 
 def _first_successor_target_after(verbs, i: int, qp_name: str):
@@ -1764,6 +1776,59 @@ class ContractAwareMutator:
 
         return True
 
+    def insert_scaffold(
+        self,
+        # verbs: List[VerbCall],
+        # idx: Optional[int] = None,
+        choice: str = None,
+        snap=None,
+        gloabal_snapshot=None,
+        ctx: CodeGenContext = None,
+        rng=None,
+    ) -> bool:
+        if not rng:
+            rng = self.rng
+
+        def gen_name(kind, snap, rng):
+            if snap is None:
+                return f"{kind}_{rng.randrange(1 << 16)}"
+            existing = {n for (t, n) in snap.keys() if t == kind}
+            for _ in range(1000):
+                name = f"{kind}_{rng.randrange(1 << 16)}"
+                if name not in existing:
+                    return name
+            return None
+
+        match choice:
+            case "base_connect":
+                # have no dependencies, can be inserted anywhere
+                pd = gen_name("pd", gloabal_snapshot, rng)
+                cq = gen_name("cq", gloabal_snapshot, rng)
+                qp = gen_name("qp", gloabal_snapshot, rng)
+                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
+                remote_qp = "srv0"
+                if pd and cq and qp and remote_qp:
+                    return ScaffoldBuilder.base_connect(pd, cq, qp, port=1, remote_qp=remote_qp)  # remote_qpn TBD
+                return None
+
+            case "send_recv":
+                pd = _pick_live_from_snap(snap, "pd", rng)
+                mr = gen_name("mr", gloabal_snapshot, rng)
+                # cq = _pick_live_from_snap(snap, "cq", rng)
+                cq = ctx.qp_send_cq_binding[qp] if ctx and qp in ctx.qp_send_cq_binding else None
+                qp = _pick_live_from_snap(snap, "qp", rng, state=State.RTS)
+                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
+                if pd and mr and cq and qp and buf:
+                    return ScaffoldBuilder.send_recv(pd, mr, cq, qp)  # 为了保证成功，其实qp和cq需要绑定
+                else:
+                    return None
+
+            case "rdma_write":
+                return None
+
+            case _:
+                return None
+
     def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
         """
         先生成候选 ins_list，再在候选位置中寻找可行点插入：
@@ -1786,19 +1851,28 @@ class ContractAwareMutator:
         # verbose = True
 
         # 1) 收集可行位置
-        global_snapshot = _make_snapshot(verbs, len(verbs))
+        global_snapshot, _global_ctx = _make_snapshot(verbs, len(verbs))
         for i in candidate_indices:  # 这个居然有随机性？
             # logging.debug(f"Trying to insert at index {i}")
 
-            # 1.1 选模板
-            builder = _pick_insertion_template(
-                rng, verbs, i, choice, global_snapshot
-            )  # 传入verbs的原因是，有些builder需要根据后面的verbs才能确定（对，我说的就是ModifyQP）
-            build_fn = builder
-
-            # 1.2 先用“全局 live”生成；失败再用“当前位置 live”补试一次
             ins_list: Optional[List[VerbCall]] = None
-            cand = build_fn(None, rng, _make_snapshot(verbs, i))
+            local_snapshot, local_ctx = _make_snapshot(verbs, i)
+
+            if rng.random() < 0.7:
+                # 1.1 选模板
+                builder = _pick_insertion_template(
+                    rng, verbs, i, choice, global_snapshot
+                )  # 传入verbs的原因是，有些builder需要根据后面的verbs才能确定（对，我说的就是ModifyQP）
+                build_fn = builder
+
+                # 1.2 先用“全局 live”生成；失败再用“当前位置 live”补试一次
+
+                cand = build_fn(None, rng, local_snapshot)
+
+            else:
+                cand = self.insert_scaffold(
+                    choice=choice, snap=local_snapshot, gloabal_snapshot=global_snapshot, ctx=local_ctx, rng=rng
+                )
 
             if cand is None:
                 # logging.debug("  -> no candidate generated at this position")
@@ -1874,8 +1948,8 @@ class ContractAwareMutator:
             v = verbs[idx]
 
         # 2) 枚举可变路径
-        snap = _make_snapshot(verbs, idx)
-        global_snap = _make_snapshot(verbs, len(verbs))
+        snap, _local_ctx = _make_snapshot(verbs, idx)
+        global_snap, _global_ctx = _make_snapshot(verbs, len(verbs))
         contract = v.get_contract()
         paths = _enumerate_mutable_paths(v)
         if not paths:

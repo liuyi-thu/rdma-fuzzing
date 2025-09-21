@@ -70,6 +70,9 @@ class CodeGenContext:
         self.alloc_variable(self.msg_buf_name, "char", None, "[1024][1024]")
         self.bindings = {}  # local qp -> remote qp
 
+        self.qp_recv_cq_binding = {}    # local qp -> cq
+        self.qp_send_cq_binding = {}    # local qp -> cq
+
         self.contracts = ContractTable()
 
     # ---- alloc helpers ----
@@ -136,6 +139,12 @@ class CodeGenContext:
 
     def make_qp_binding(self, local_qp: str, remote_qp: str):
         self.bindings[local_qp] = remote_qp
+
+    def make_qp_recv_cq_binding(self, local_qp: str, cq: str):
+        self.qp_recv_cq_binding[local_qp] = cq
+
+    def make_qp_send_cq_binding(self, local_qp: str, cq: str):
+        self.qp_send_cq_binding[local_qp] = cq
 
     def get_peer_qp_num(self, local_qp: str) -> str:
         if local_qp not in self.bindings:
