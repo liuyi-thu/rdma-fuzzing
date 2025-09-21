@@ -1,3 +1,7 @@
+import subprocess
+import os
+import time
+
 def emit_assign(varname, field, value, enums=None):
     # enums: dict(field->enum_map)
     if enums and field in enums:
@@ -5,6 +9,28 @@ def emit_assign(varname, field, value, enums=None):
         if value in enum_map:
             value = enum_map[value]
     return f"    {varname}.{field} = {value};\n"
+
+def run_cmd(cmd):
+    try:
+        result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+        if result.stdout:
+            print(f"[STDOUT] {result.stdout.strip()}")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Command failed: {cmd}")
+        if e.stderr:
+            print(f"[STDERR] {e.stderr.strip()}")
+        return False
+
+def retry_until_file_exist(filename):
+    for i in range(3):
+        if (os.path.exists(filename)):
+            print(f"[+] {filename} exists !!!")
+            return True
+        else:
+            print("[!] try" + str(i) + "failed !!!")
+            time.sleep(0.3)
+    return False
 
 
 # TODO: 以下代码备用

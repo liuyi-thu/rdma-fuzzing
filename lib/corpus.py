@@ -187,24 +187,34 @@ class Corpus:
             return None
 
     def record_run(self, sid: str, run: Dict[str, Any]):
+        def make_json_safe(obj):
+            if isinstance(obj, set):
+                return list(obj)
+            elif isinstance(obj, dict):
+                return {k: make_json_safe(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [make_json_safe(item) for item in obj]
+            return obj
+
+        safe_run = make_json_safe(run)
+
         cur = self.db.cursor()
-        print(run)
         cur.execute(
             "INSERT INTO runs(seed_id, time, outcome, cov_delta, runtime_ms, detail_json) VALUES (?,?,?,?,?,?)",
             (
                 sid,
                 int(time.time()),
-                str(run.get("outcome")),
-                int(run.get("cov_delta", 0)),
-                int(run.get("runtime_ms", 0)),
-                json.dumps(run, ensure_ascii=False),
+                str(safe_run.get("outcome")),
+                int(safe_run.get("cov_delta", 0)),
+                int(safe_run.get("runtime_ms", 0)),
+                json.dumps(safe_run, ensure_ascii=False),
             ),
         )
         # 更新 seeds 表：
-        score = float(run.get("score", 0.0))
+        score = float(safe_run.get("score", 0.0))
         cur.execute(
             "UPDATE seeds SET last_used_at=?, cov_bits_new=MAX(cov_bits_new, ?), score=? WHERE id=?",
-            (int(time.time()), int(run.get("cov_delta", 0)), score, sid),
+            (int(time.time()), int(safe_run.get("cov_delta", 0)), score, sid),
         )
         self.db.commit()
 

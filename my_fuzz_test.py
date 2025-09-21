@@ -260,7 +260,8 @@ if __name__ == "__main__":
 
     rng = None
     mutator = fuzz_mutate.ContractAwareMutator(rng)
-    for _ in range(10):
+    # for _ in range(10):
+    while True:
         base_sid = corpus.pick_for_fuzz()
         print("Picked seed:", base_sid)
         if not base_sid:
@@ -272,7 +273,12 @@ if __name__ == "__main__":
         # cur_verbs = mutator.mutate(base_verbs)
         mutator.mutate(base_verbs)
         cur_verbs = base_verbs
-        metrics = execute_and_collect(cur_verbs)
+
+        rendered = render(cur_verbs)
+        with open("client.cpp", "w") as f:
+            f.write(rendered)
+
+        metrics = execute_and_collect()
         logging.info("metrics: %s", metrics)
         new_sid = corpus.add(
             cur_verbs,
@@ -291,8 +297,8 @@ if __name__ == "__main__":
                 "detail": metrics.get("detail"),
             },
         )
-    print(summarize_verb_list(verbs, deep=True))
-    # print("\n\nGenerated C++ Code:\n")
-    rendered = render(verbs)
-    with open("client.cpp", "w") as f:
-        f.write(rendered)
+    # print(summarize_verb_list(verbs, deep=True))
+    # # print("\n\nGenerated C++ Code:\n")
+    # rendered = render(verbs)
+    # with open("client.cpp", "w") as f:
+    #     f.write(rendered)

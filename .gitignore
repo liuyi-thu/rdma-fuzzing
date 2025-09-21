@@ -8,6 +8,8 @@ responses_*/
 debug/
 .pytest_cache/
 .vscode/*
+.idea/*
+.claude/*
 .stfolder/*
 *.log
 seeds/
