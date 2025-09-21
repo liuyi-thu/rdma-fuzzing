@@ -10,9 +10,10 @@ import random
 
 from lib import utils
 from lib.auto_run import run_once
-from lib.finder_print import FingerprintManager
+from lib.fingerprint import FingerprintManager
 
 FP_MANAGER = FingerprintManager()
+
 
 def feed_back():
     utils.run_cmd("rm -f /home/user_coverage.json")
@@ -21,7 +22,7 @@ def feed_back():
     user_cmd = "python3 /home/fastcov/fastcov.py -f /home/rdma-core-master/build/librdmacm/CMakeFiles/rspreload.dir/*.gcda /home/rdma-core-master/build/libibverbs/CMakeFiles/ibverbs.dir/*.gcda /home/rdma-core-master/build/librdmacm/CMakeFiles/rdmacm.dir/*.gcda -e /home/rdma-core-master/build/include -o /home/user_coverage.json -X"
     for i in range(5):
         utils.run_cmd(user_cmd)
-        if (utils.retry_until_file_exist("/home/user_coverage.json")):
+        if utils.retry_until_file_exist("/home/user_coverage.json"):
             print("[+] User coverage generated successfully")
             break
         else:
@@ -30,7 +31,7 @@ def feed_back():
     kernel_cmd = "python3 /home/fastcov/fastcov.py -f /sys/kernel/debug/gcov/home/lbz/qemu/noble/drivers/infiniband/core/*.gcda /sys/kernel/debug/gcov/home/lbz/qemu/noble/drivers/infiniband/sw/rxe/*.gcda -i /home/lbz/qemu/noble/drivers/infiniband/ -o /home/kernel_coverage.json -X"
     for i in range(5):
         utils.run_cmd(kernel_cmd)
-        if (utils.retry_until_file_exist("/home/kernel_coverage.json")):
+        if utils.retry_until_file_exist("/home/kernel_coverage.json"):
             print("[+] Kernel coverage generated successfully")
             break
         else:
@@ -44,13 +45,15 @@ def feed_back():
         print("[-] Error")
         return set()
 
+
 def collect_all_edges(user_json: str, kernel_json: str) -> set[str]:
     edges = set()
     if os.path.exists(user_json):
-        edges |= parse_fastgcov_edges(user_json)   # 并集
+        edges |= parse_fastgcov_edges(user_json)  # 并集
     if os.path.exists(kernel_json):
         edges |= parse_fastgcov_edges(kernel_json)
     return edges
+
 
 def parse_fastgcov_edges(json_path: str) -> set[str]:
     with open(json_path) as f:
@@ -70,7 +73,7 @@ def extract_sem_signature(log_path: str) -> set[str]:
     sem_signature = set()
     seen_indices = set()
 
-    pattern = re.compile(r'^\[(\d+)\]\s*(.+?)\s+start\.$')
+    pattern = re.compile(r"^\[(\d+)\]\s*(.+?)\s+start\.$")
 
     with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -88,10 +91,11 @@ def extract_sem_signature(log_path: str) -> set[str]:
 
     return sem_signature
 
+
 def parse_crash_site(log_path: str) -> Optional[str]:
-    SUMMARY_RE = re.compile(r'^SUMMARY: AddressSanitizer: \S+ (\S+):(\d+) in')
-    FRAME_SRC_RE = re.compile(r'^\s*#\d+\s+\S+\s+in\s+\S+\s+(/[^:]+):(\d+)')
-    FRAME_MODULE_RE = re.compile(r'\(([^)]+)\+0x([0-9a-fA-F]+)\)')
+    SUMMARY_RE = re.compile(r"^SUMMARY: AddressSanitizer: \S+ (\S+):(\d+) in")
+    FRAME_SRC_RE = re.compile(r"^\s*#\d+\s+\S+\s+in\s+\S+\s+(/[^:]+):(\d+)")
+    FRAME_MODULE_RE = re.compile(r"\(([^)]+)\+0x([0-9a-fA-F]+)\)")
     log_text = ""
     with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         log_text = f.read()
@@ -117,6 +121,7 @@ def parse_crash_site(log_path: str) -> Optional[str]:
             return f"bt#{module_name}+0x{offset}"
 
     return None
+
 
 # ========== 需要你接到现有实现的钩子 ==========
 
@@ -156,9 +161,11 @@ def build_and_run() -> Dict[str, Any]:
         "crash_site": crash_site,
     }
 
+
 def diff_coverage_and_semantics(new_cov, new_sem) -> Dict[str, int]:
     cov_new, sem_new = FP_MANAGER.diff(new_cov, new_sem)
     return {"cov_new": cov_new, "sem_new": sem_new}
+
 
 # ============================================
 
@@ -175,8 +182,7 @@ def compute_score(cov_new: int, sem_new: int, outcome: str, runtime_ms: int, fla
 def execute_and_collect() -> Dict[str, Any]:
     print("[+] Collecting fuzz execution metrics")
     raw = build_and_run()
-    diff = diff_coverage_and_semantics(raw.get("coverage_edges", set()),
-                                       raw.get("sem_signature", set()))
+    diff = diff_coverage_and_semantics(raw.get("coverage_edges", set()), raw.get("sem_signature", set()))
     cov_new = diff["cov_new"]
     sem_new = diff["sem_new"]
     print(f"[+] Coverage delta: {cov_new}, Semantic delta: {sem_new}")
@@ -189,8 +195,7 @@ def execute_and_collect() -> Dict[str, Any]:
 
     # keep = (cov_new > 0) or (sem_new > 0) or (raw.get("outcome") in ("asan", "crash"))
     # keep = True  # 暂时全部保留，方便调试
-    score = compute_score(cov_new, sem_new, raw.get("outcome", "ok"),
-                          int(raw.get("runtime_ms", 0)))
+    score = compute_score(cov_new, sem_new, raw.get("outcome", "ok"), int(raw.get("runtime_ms", 0)))
     print(f"[+] Computed score: {score:.3f}")
 
     keep = (cov_new > 0) or (sem_new > 0) or (raw.get("outcome") in ("asan", "crash"))
