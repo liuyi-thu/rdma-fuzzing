@@ -70,7 +70,7 @@ class IbvRecvWR(Attr):
             try:
                 # 这里的 owner(=self) 可通过闭包拿到；直接写 self.num_sge 更简单：
                 self.num_sge = OptionalValue(IntValue(len(lv.value), mutable=False))  # lv: ListValue
-                print(f"  [*] IbvRecvWR.sg_list after_mutate: set num_sge={len(lv.value)}")
+                # print(f"  [*] IbvRecvWR.sg_list after_mutate: set num_sge={len(lv.value)}")
             except Exception:
                 pass
 
