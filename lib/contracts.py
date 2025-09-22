@@ -184,6 +184,7 @@ class ResourceKey:
 class ResourceRec:
     key: ResourceKey
     state: State
+    metadata: Dict[str, Any]  # 可选的元数据
 
 
 class ContractError(RuntimeError):
@@ -203,6 +204,7 @@ class ProduceSpec:
     rtype: str  # 资源类型
     state: State  # 生产后的状态
     name_attr: str  # 从 verb 上读取新资源名的属性名（如 'qp' / 'mw'）
+    metadata_fields: Optional[List[str]] = None  # 可选的元数据字段列表（从 verb 上读取）
 
 
 @dataclass
@@ -332,13 +334,13 @@ class ContractTable:
             self.put("remote_qp", f"srv{i}", State.ALLOCATED)
 
     # ===== 基本操作 =====
-    def put(self, rtype: str, name: str, state: State):
+    def put(self, rtype: str, name: str, state: State, metadata: Optional[Dict[str, Any]] = None):
         key = ResourceKey(rtype, str(name))
         rec = self._store.get(key)
         if rec and rec.state is not State.DESTROYED:
             # 同名未销毁就重复创建 -> 抛错
             raise ContractError(f"resource already exists: {rtype} {name} in state {rec.state.name}")
-        self._store[key] = ResourceRec(key, state)
+        self._store[key] = ResourceRec(key, state, metadata or {})
 
     def require(
         self, rtype: str, name: str, state: Optional[State] = None, exclude_states: Optional[List[State]] = None
@@ -423,12 +425,24 @@ class ContractTable:
                 val = _get_by_path(verb, spec.name_attr, missing_ok=True)
             except Exception as e:
                 raise ContractError(f"produce: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
+            # TODO: metadata 暂时不考虑 nested 的情况
+            metadata = {}
+            for field in spec.metadata_fields or []:
+                try:
+                    fval = _get_by_path(verb, field, missing_ok=True)
+                    metadata[field] = _unwrap(fval)
+                except Exception as e:
+                    raise ContractError(
+                        f"produce: cannot resolve metadata field '{field}' on {type(verb).__name__}: {e}"
+                    )
             for name in _as_iter(val):
-                self.put(spec.rtype, str(name), spec.state)
+                self.put(spec.rtype, str(name), spec.state, metadata=metadata)
+                # if metadata:
+                #     print(f"  [contract] produced {spec.rtype} {name} with metadata {metadata}")
 
     # ===== 查询 / 调试 =====
     def snapshot(self) -> Dict[Tuple[str, str], str]:
-        return {(k.rtype, k.name): v.state for k, v in self._store.items()}
+        return {(k.rtype, k.name): (v.state, v.metadata) for k, v in self._store.items()}
 
     # @staticmethod
     # def instantiate_contract(verb: Any, contract: Contract):

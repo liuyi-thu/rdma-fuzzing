@@ -267,7 +267,7 @@ def _state_leq(a: str, b: str) -> bool:
 
 
 def _qp_state_before(snap, qp_name: str) -> str:
-    return snap.get(("qp", qp_name)) or "RESET"
+    return snap.get(("qp", qp_name))[0] or "RESET"
 
 
 def _make_snapshot(verbs, i: int):
@@ -721,21 +721,40 @@ def build_destroy_generic(snap, rng):
     return None
 
 
-def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random, state: State = None) -> str | None:
+def _pick_from_snap(
+    snap: dict,
+    rtype: str,
+    rng: random.Random,
+    state: State = None,
+    exclude_states: List[State] = [],
+    metadata: Dict[str, Any] = None,
+) -> str | None:
     cands = []
-    for (rt, nm), st in (snap or {}).items():
-        if rt == rtype and st not in (State.DESTROYED,):
+    for (rt, nm), (st, metadata) in (snap or {}).items():
+        if rt == rtype and st not in exclude_states:
             if state is None or st == state:
-                cands.append(nm)
+                if metadata is None or all(metadata.get(k) == v for k, v in (metadata or {}).items()):
+                    cands.append(nm)
     return rng.choice(cands) if cands else None
+
+
+def _pick_live_from_snap(snap: dict, rtype: str, rng: random.Random, state: State = None) -> str | None:
+    return _pick_from_snap(snap, rtype, rng, state=state, exclude_states=[State.DESTROYED])
+    # cands = []
+    # for (rt, nm), (st, _) in (snap or {}).items():
+    #     if rt == rtype and st not in (State.DESTROYED,):
+    #         if state is None or st == state:
+    #             cands.append(nm)
+    # return rng.choice(cands) if cands else None
 
 
 def _pick_unused_from_snap(snap: dict, rtype: str, rng: random.Random) -> str | None:
-    cands = []
-    for (rt, nm), st in (snap or {}).items():
-        if rt == rtype and st not in (State.USED,):
-            cands.append(nm)
-    return rng.choice(cands) if cands else None
+    return _pick_from_snap(snap, rtype, rng, exclude_states=[State.DESTROYED, State.USED])
+    # cands = []
+    # for (rt, nm), (st, _) in (snap or {}).items():
+    #     if rt == rtype and st not in (State.USED,):
+    #         cands.append(nm)
+    # return rng.choice(cands) if cands else None
 
 
 # ========================= Insertion templates =========================
@@ -806,23 +825,27 @@ def _pick_insertion_template(
             #     ins_list = build_modify_qp_safe_chain(verbs, i, snap, qp, rng)
 
         # 先找活着的 MR；没有就插入 RegMR（要有 PD）
-        mr_name = _pick_live_from_snap(snap, "mr", rng)
-        if mr_name is None:
-            pd = _pick_live_from_snap(snap, "pd", rng)
-            if pd is None:
-                return None  # 现场既没 MR 也没 PD，无法自举
-            mr_name = gen_new_name("mr", snap, rng)
+        pd = snap.get(("qp", qp), (None, {}))[1].get("pd", None)
+        if not pd:
+            return None  # 应该不会出现
+
+        mr = _pick_from_snap(snap, "mr", rng, state=State.ALLOCATED, metadata={"pd": pd})
+        if mr is None:
+            # pd = _pick_live_from_snap(snap, "pd", rng)
+            # if pd is None:
+            #     return None  # 现场既没 MR 也没 PD，无法自举
+            mr = gen_new_name("mr", snap, rng)
             ins_list.append(
                 RegMR(
                     pd=pd,
-                    mr=mr_name,
+                    mr=mr,
                     addr=_pick_unused_from_snap(global_snapshot, "buf", rng),
                     length=4096,
                     access="IBV_ACCESS_LOCAL_WRITE",
                 )
             )
 
-        wr = _mk_min_send_wr_with_mr(mr_name)
+        wr = _mk_min_send_wr_with_mr(mr)
         ins_list.append(PostSend(qp=qp, wr_obj=wr))
         return ins_list
 
@@ -855,24 +878,28 @@ def _pick_insertion_template(
         qp = _pick_live_from_snap(snap, "qp", rng, State.RTS)
         if not qp:
             return None
-        mr_name = _pick_live_from_snap(snap, "mr", rng)
+        pd = snap.get(("qp", qp), (None, {}))[1].get("pd", None)
+        if not pd:
+            return None  # 应该不会出现
+
+        mr = _pick_from_snap(snap, "mr", rng, state=State.ALLOCATED, metadata={"pd": pd})
         ins_list = []
-        if mr_name is None:
-            pd = _pick_live_from_snap(snap, "pd", rng)
-            if pd is None:
-                return None
-            mr_name = gen_new_name("mr", snap, rng)
+        if mr is None:
+            # pd = _pick_live_from_snap(snap, "pd", rng)
+            # if pd is None:
+            #     return None
+            mr = gen_new_name("mr", snap, rng)
             ins_list.append(
                 RegMR(
                     pd=pd,
-                    mr=mr_name,
+                    mr=mr,
                     addr=_pick_unused_from_snap(global_snapshot, "buf", rng),
                     length=4096,
                     access="IBV_ACCESS_LOCAL_WRITE",
                 )
             )
 
-        wr = _mk_min_recv_wr_with_mr(mr_name)
+        wr = _mk_min_recv_wr_with_mr(mr)
         ins_list.append(PostRecv(qp=qp, wr_obj=wr))
         return ins_list
 
@@ -1799,6 +1826,11 @@ class ContractAwareMutator:
                     return name
             return None
 
+        if choice is None:
+            choice = random.choices(
+                ["base_connect", "base_connect_and_send_recv", "rdma_write"], weights=[0.3, 0.7, 0], k=1
+            )[0]
+
         match choice:
             case "base_connect":
                 # have no dependencies, can be inserted anywhere
@@ -1806,7 +1838,6 @@ class ContractAwareMutator:
                 cq = gen_name("cq", gloabal_snapshot, rng)
                 qp = gen_name("qp", gloabal_snapshot, rng)
                 remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                remote_qp = "srv0"
                 if pd and cq and qp and remote_qp:
                     return ScaffoldBuilder.base_connect(pd, cq, qp, port=1, remote_qp=remote_qp)  # remote_qpn TBD
                 return None
@@ -1815,12 +1846,42 @@ class ContractAwareMutator:
                 pd = _pick_live_from_snap(snap, "pd", rng)
                 mr = gen_name("mr", gloabal_snapshot, rng)
                 # cq = _pick_live_from_snap(snap, "cq", rng)
+                qp = _pick_from_snap(
+                    snap, "qp", rng, state=State.RTS, metadata={"pd": pd}
+                )  # 要求 qp 和 mr 在同一个 pd 下
+
                 cq = ctx.qp_send_cq_binding[qp] if ctx and qp in ctx.qp_send_cq_binding else None
-                qp = _pick_live_from_snap(snap, "qp", rng, state=State.RTS)
                 buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
                 if pd and mr and cq and qp and buf:
-                    return ScaffoldBuilder.send_recv(pd, mr, cq, qp)  # 为了保证成功，其实qp和cq需要绑定
+                    return ScaffoldBuilder.send_recv(pd, cq, qp, mr, buf)  # 为了保证成功，其实qp和cq需要绑定
                 else:
+                    # print("snap:", snap)
+                    # print("send_recv failed:", pd, mr, cq, qp, buf)
+                    return None
+
+            case "base_connect_and_send_recv":
+                pd = gen_name("pd", gloabal_snapshot, rng)
+                cq = gen_name("cq", gloabal_snapshot, rng)
+                qp = gen_name("qp", gloabal_snapshot, rng)
+                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
+                if pd and cq and qp and remote_qp:
+                    verbs, hotspots = ScaffoldBuilder.base_connect(
+                        pd, cq, qp, port=1, remote_qp=remote_qp
+                    )  # remote_qpn TBD
+                else:
+                    return None
+                mr = gen_name("mr", gloabal_snapshot, rng)
+                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
+                if pd and mr and cq and qp and buf:
+                    verbs2, hotspots2 = ScaffoldBuilder.send_recv(
+                        pd, cq, qp, mr, buf
+                    )  # 为了保证成功，其实qp和cq需要绑定
+                    verbs += verbs2
+                    hotspots += hotspots2
+                    # print(verbs)
+                    return verbs, hotspots
+                else:
+                    print("send_recv failed:", pd, mr, cq, qp, buf)
                     return None
 
             case "rdma_write":
@@ -1873,6 +1934,9 @@ class ContractAwareMutator:
                 cand = self.insert_scaffold(
                     choice=choice, snap=local_snapshot, gloabal_snapshot=global_snapshot, ctx=local_ctx, rng=rng
                 )
+                if cand:
+                    cand = cand[0]
+                # print("Scaffold generated:", cand)
 
             if cand is None:
                 # logging.debug("  -> no candidate generated at this position")
@@ -1890,7 +1954,7 @@ class ContractAwareMutator:
 
             feasible.append((i, ins_list))
         # logging.debug(f"Feasible insertion points: {feasible}")
-
+        # print(f"Feasible insertion points: {len(feasible)} found: {feasible}")
         # 2) 从可行集合中选一个位置（偏向靠后）
         choice_pair = _choose_insert_pos(feasible, rng, place="best")
         if not choice_pair:

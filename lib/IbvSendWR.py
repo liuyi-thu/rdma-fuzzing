@@ -388,7 +388,7 @@ class IbvSendWR(Attr):
         # ---- helpers: 选一个“活着”的本地 MR 名字 ----
         def pick_live_local_mr_name(snap, rng):
             cands = []
-            for (rt, nm), st in (snap or {}).items():
+            for (rt, nm), (st, _) in (snap or {}).items():
                 # 你的 contracts 中 MR “可用”如何定义由 require() 决定；这里简单用 ALLOCATED
                 if rt == "mr" and st in (State.ALLOCATED,):
                     cands.append(nm)

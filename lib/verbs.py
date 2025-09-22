@@ -1465,7 +1465,7 @@ class CreateQP(VerbCall):
         ],
         produces=[
             # ProduceSpec(rtype="qp", state=State.ALLOCATED, name_attr="qp"),
-            ProduceSpec(rtype="qp", state=State.RESET, name_attr="qp"),
+            ProduceSpec(rtype="qp", state=State.RESET, name_attr="qp", metadata_fields=["pd"]),
         ],
         transitions=[
             TransitionSpec(rtype="remote_qp", from_state=State.ALLOCATED, to_state=State.USED, name_attr="remote_qp"),
@@ -1505,8 +1505,12 @@ class CreateQP(VerbCall):
             # qp_name = str(self.qp)
             # self.context.make_qp_binding(qp_name, self.srv_name)
             self.context.make_qp_binding(str(self.qp), self.remote_qp.value)
-            self.context.make_qp_recv_cq_binding(str(self.qp), self.init_attr_obj.recv_cq if self.init_attr_obj else "NULL")
-            self.context.make_qp_send_cq_binding(str(self.qp), self.init_attr_obj.send_cq if self.init_attr_obj else "NULL")
+            self.context.make_qp_recv_cq_binding(
+                str(self.qp), self.init_attr_obj.recv_cq if self.init_attr_obj else "NULL"
+            )
+            self.context.make_qp_send_cq_binding(
+                str(self.qp), self.init_attr_obj.send_cq if self.init_attr_obj else "NULL"
+            )
 
         if self.tracker:
             # Register the PD and QP addresses in the tracker
@@ -5143,7 +5147,7 @@ class RegMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr", "addr", "length", "access"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd"), RequireSpec("buf", State.ALLOCATED, "addr")],
-        produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
+        produces=[ProduceSpec("mr", State.ALLOCATED, "mr", metadata_fields=["pd"])],
         transitions=[
             TransitionSpec("buf", from_state=State.ALLOCATED, to_state=State.USED, name_attr="addr")
         ],  # 简单设计，禁止在同一个verb序列里重复使用，所以dereg不需要改

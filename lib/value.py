@@ -480,7 +480,7 @@ class ResourceValue(Value):
                 break
         # print(required_state, required_type)
         cands = []
-        for (t, name), st in (snap or {}).items():
+        for (t, name), (st, _) in (snap or {}).items():
             if t == required_type and (required_state is None or st == required_state):
                 cands.append(name)
         if cands:
@@ -511,7 +511,7 @@ class ResourceValue(Value):
 
         rng = rng or random
         cands = []
-        for (t, name), st in (snap or {}).items():
+        for (t, name), (st, _) in (snap or {}).items():
             if t != req.rtype:
                 continue
             if (req.state is None or st == req.state) and (st not in (req.exclude_states or [])):

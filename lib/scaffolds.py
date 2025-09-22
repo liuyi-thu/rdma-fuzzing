@@ -24,7 +24,7 @@ def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0")
     - IbvQPInitAttr：显式把 srq 设为 None，避免 contract 误要求 SRQ 资源
     - 三个 ModifyQP：按 INIT → RTR → RTS 顺序设置必要字段
     """
-    init_attr = IbvQPInitAttr( # 最好能把 qp 和 cq 绑定上，implicit dependency
+    init_attr = IbvQPInitAttr(  # 最好能把 qp 和 cq 绑定上，implicit dependency
         send_cq=cq,
         recv_cq=cq,
         srq=None,  # 显式 None，避免 SRQ 依赖
@@ -83,7 +83,7 @@ def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0")
 
 
 def sc_send_recv(
-    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", recv_len=256, send_len=128, inline=True
+    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", recv_len=256, send_len=128, inline=True, build_mr=True
 ) -> Tuple[List[object], List[int]]:
     """
     目标：最短成功 SEND/RECV 路径（先 Recv 后 Send，再 PollCQ 成功）
@@ -107,19 +107,26 @@ def sc_send_recv(
         next_wr=None,
     )
 
-    verbs: List[object] = [
-        # 连接前缀建议用 sc_base_connect() 的前 3+3 步先到 RTS；此处只列数据面动作
-        RegMR(
-            pd=pd,
-            mr=mr,
-            addr=buf,
-            length=max(recv_len, send_len, 4096),
-            access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
-        ),
-        PostRecv(qp=qp, wr_obj=recv_wr),
-        PostSend(qp=qp, wr_obj=send_wr),
-        PollCQ(cq=cq),  # 你的 PollCQ 只要 CQ 存在即可轮询出 CQE  :contentReference[oaicite:16]{index=16}
-    ]
+    if build_mr:
+        verbs: List[object] = [
+            # 连接前缀建议用 sc_base_connect() 的前 3+3 步先到 RTS；此处只列数据面动作
+            RegMR(
+                pd=pd,
+                mr=mr,
+                addr=buf,
+                length=max(recv_len, send_len, 4096),
+                access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+            ),
+            PostRecv(qp=qp, wr_obj=recv_wr),
+            PostSend(qp=qp, wr_obj=send_wr),
+            PollCQ(cq=cq),  # 你的 PollCQ 只要 CQ 存在即可轮询出 CQE  :contentReference[oaicite:16]{index=16}
+        ]
+    else:
+        verbs: List[object] = [
+            PostRecv(qp=qp, wr_obj=recv_wr),
+            PostSend(qp=qp, wr_obj=send_wr),
+            PollCQ(cq=cq),  # 你的 PollCQ 只要 CQ 存在即可轮询出 CQE  :contentReference[oaicite:16]{index=16}
+        ]
     hotspots = [1, 2]  # 两个 WR 非常适合做 bandit（len、flags、num_sge）
     return verbs, hotspots
 
@@ -161,8 +168,10 @@ class ScaffoldBuilder:
         return sc_base_connect(pd=pd, cq=cq, qp=qp, port=port, remote_qp_sym=remote_qp)
 
     @staticmethod
-    def send_recv(pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0") -> Tuple[List[VerbCall], List[int]]:
-        return sc_send_recv(pd=pd, cq=cq, qp=qp, mr=mr, buf=buf)
+    def send_recv(
+        pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", build_mr=True
+    ) -> Tuple[List[VerbCall], List[int]]:
+        return sc_send_recv(pd=pd, cq=cq, qp=qp, mr=mr, buf=buf, build_mr=build_mr)
 
     @staticmethod
     def rdma_write(pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", raddr=0, rkey=0):

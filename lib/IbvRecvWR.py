@@ -50,7 +50,7 @@ class IbvRecvWR(Attr):
         def pick_live_local_mr_name(snap: dict, rng: random.Random) -> str | None:
             # snap: { (rtype,name): "STATE" }
             cands = []
-            for (rt, nm), st in (snap or {}).items():
+            for (rt, nm), (st, _) in (snap or {}).items():
                 if rt == "mr" and st == State.ALLOCATED:
                     cands.append(nm)
             if not cands:
