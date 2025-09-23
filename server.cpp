@@ -170,7 +170,7 @@ static ibv_qp *create_qp(ibv_pd *pd, ibv_cq *cq)
     attr.recv_cq = cq;
     attr.cap = {.max_send_wr = 256, .max_recv_wr = 256, .max_send_sge = 8, .max_recv_sge = 8, .max_inline_data = 0};
     attr.qp_type = IBV_QPT_RC;
-    attr.sq_sig_all = 0;
+    attr.sq_sig_all = 1;
     ibv_qp *qp = ibv_create_qp(pd, &attr);
     if (!qp)
         die("ibv_create_qp");
@@ -244,8 +244,9 @@ static int setup_recv_pool(RecvBufferPool *pool, ibv_pd *pd)
     return 0;
 }
 
-static int post_all_recvs(RecvBufferPool *pool, ibv_qp *qp)
+static int post_all_recvs(RecvBufferPool *pool, ibv_qp *qp, int slot_id)
 {
+    printf("[srv] post_all_recvs slot_id=%d\n", slot_id);
     for (int i = 0; i < RECV_POOL_SIZE; ++i)
     {
         ibv_sge sge;
@@ -255,7 +256,7 @@ static int post_all_recvs(RecvBufferPool *pool, ibv_qp *qp)
         sge.lkey = pool->slots[i].mr->lkey;
         ibv_recv_wr wr;
         memset(&wr, 0, sizeof(wr));
-        wr.wr_id = (uintptr_t)&pool->slots[i];
+        wr.wr_id = slot_id * 100 + i;
         wr.sg_list = &sge;
         wr.num_sge = 1;
         ibv_recv_wr *bad = nullptr;
@@ -299,6 +300,15 @@ struct RemoteQP
     uint8_t dgid[16]{0};
     uint64_t ts = 0;
     string lease;
+};
+
+struct RemotePair
+{
+    string id;
+    string cli_id;
+    string srv_id;
+    string state;
+    int ts;
 };
 
 static vector<RemoteQP> snapshot_remote_qps()
@@ -354,6 +364,51 @@ static vector<RemoteQP> snapshot_remote_qps()
     return out;
 }
 
+static vector<RemotePair> snapshot_remote_pairs()
+{
+    vector<RemotePair> out;
+    if (rr_has("remote.ids.pairs[0]"))
+    {
+        for (int i = 0;; ++i)
+        {
+            char key[64];
+            snprintf(key, sizeof(key), "remote.ids.pairs[%d]", i);
+            if (!rr_has(key))
+                break;
+            const char *id = rr_str(key);
+            RemotePair p;
+            p.id = id;
+            p.cli_id = rr_str_by_id("remote.pairs", id, "cli_id");
+            p.srv_id = rr_str_by_id("remote.pairs", id, "srv_id");
+            p.state = rr_str_by_id("remote.pairs", id, "state");
+            p.ts = (int)rr_try_u64_by_id("remote.pairs", id, "ts", 0);
+            out.push_back(std::move(p));
+        }
+        return out;
+    }
+    for (int i = 0;; ++i)
+    {
+        char k[64];
+        snprintf(k, sizeof(k), "remote.pairs[%d].id", i);
+        if (!rr_has(k))
+            break;
+        RemotePair p;
+        snprintf(k, sizeof(k), "remote.pairs[%d].id", i);
+        p.id = rr_str(k);
+        snprintf(k, sizeof(k), "remote.pairs[%d].cli_id", i);
+        p.cli_id = rr_str(k);
+        snprintf(k, sizeof(k), "remote.pairs[%d].srv_id", i);
+        p.srv_id = rr_str(k);
+        snprintf(k, sizeof(k), "remote.pairs[%d].state", i);
+        p.state = rr_str(k);
+        // snprintf(k, sizeof(k), "remote.pairs[%d].ts", i);
+        // p.ts = (int)rr_try_u64(k, 0);
+        p.ts = 0;
+        out.push_back(std::move(p));
+    }
+    return out;
+}
+
 static int find_free_slot(const ServerState &S)
 {
     for (int i = 0; i < (int)S.pairs.size(); ++i)
@@ -384,7 +439,7 @@ static bool claim_and_pair(ServerState &S, int slot, const RemoteQP &R, uint8_t 
         perror("RTS");
         return false;
     }
-    if (post_all_recvs(&S.pool[slot].recv_pool, qp))
+    if (post_all_recvs(&S.pool[slot].recv_pool, qp, slot))
     {
         perror("post_recv");
         return false;
@@ -530,55 +585,76 @@ int main(int argc, char **argv)
 
     uint64_t last_dump = 0;
     fprintf(stdout, "[srv] pairing loop...\n");
+    std::unordered_set<string> paired;
     for (;;)
     {
         // reload on FS event
         reloader.pump_and_reload(BUNDLE_ENV);
 
-        // pairing tick
-        auto remotes = snapshot_remote_qps(); // 远程(client)qp列表快照
-        std::unordered_set<string> alive;
-        for (auto &r : remotes)
-            alive.insert(r.id);
-        for (auto &r : remotes)
+        auto remote_pairs = snapshot_remote_pairs();
+        auto remote_qps = snapshot_remote_qps();
+        for (auto &r : remote_pairs)
         {
-            bool already = false;
-            for (auto &pr : S.pairs)
+            if (paired.count(r.cli_id) > 0)
+                continue;
+            if (r.state == "BOTH_RTS")
+                paired.insert(r.cli_id);
+            if (r.state == "CLAIMED")
             {
-                if (pr.in_use && pr.peer_id == r.id)
+                for (auto qp = remote_qps.begin(); qp != remote_qps.end(); ++qp)
                 {
-                    pr.last_seen_ts = r.ts ? r.ts : now_ms();
-                    already = true;
-                    break;
+                    if (qp->id == r.cli_id) // r.srv_id == "srv*"
+                    {
+                        (void)claim_and_pair(S, std::stoi(r.srv_id.substr(3)), *qp, IB_PORT);
+                        paired.insert(r.cli_id);
+                    }
                 }
             }
-            if (already)
-                continue;
-            int slot = find_free_slot(S); // 找一个本地QP和client的QP做配对
-            if (slot >= 0)
-                (void)claim_and_pair(S, slot, r, IB_PORT);
         }
-        for (int i = 0; i < (int)S.pairs.size(); ++i) // 无所谓吧，应该不会出现unclaim的情况
-        {
-            auto &pr = S.pairs[i];
-            if (!pr.in_use)
-                continue;
-            bool still = alive.count(pr.peer_id) > 0;
-            bool idle = (pr.last_seen_ts && (now_ms() > pr.last_seen_ts + IDLE_TIMEOUT_MS));
-            if (!still || idle)
-                unclaim_slot(S, i);
-        }
+        // pairing tick
+        // auto remotes = snapshot_remote_qps(); // 远程(client)qp列表快照
+        // std::unordered_set<string> alive;
+        // for (auto &r : remotes)
+        //     alive.insert(r.id);
+        // for (auto &r : remotes)
+        // {
+        //     bool already = false;
+        //     for (auto &pr : S.pairs)
+        //     {
+        //         if (pr.in_use && pr.peer_id == r.id)
+        //         {
+        //             pr.last_seen_ts = r.ts ? r.ts : now_ms();
+        //             already = true;
+        //             break;
+        //         }
+        //     }
+        //     if (already)
+        //         continue;
+        //     int slot = find_free_slot(S); // 找一个本地QP和client的QP做配对
+        //     if (slot >= 0)
+        //         (void)claim_and_pair(S, slot, r, IB_PORT);
+        // }
+        // for (int i = 0; i < (int)S.pairs.size(); ++i) // 无所谓吧，应该不会出现unclaim的情况
+        // {
+        //     auto &pr = S.pairs[i];
+        //     if (!pr.in_use)
+        //         continue;
+        //     bool still = alive.count(pr.peer_id) > 0;
+        //     bool idle = (pr.last_seen_ts && (now_ms() > pr.last_seen_ts + IDLE_TIMEOUT_MS));
+        //     if (!still || idle)
+        //         unclaim_slot(S, i);
+        // }
 
         // poll CQ (optional)
-        ibv_wc wc[32];
-        int n = ibv_poll_cq(cq, 32, wc);
+        ibv_wc wc[100];
+        int n = ibv_poll_cq(cq, 100, wc);
         if (n > 0)
         {
             for (int i = 0; i < n; ++i)
             {
                 if (wc[i].status != IBV_WC_SUCCESS)
                 {
-                    fprintf(stderr, "[srv] WC err: status=%d opcode=%d\n", wc[i].status, wc[i].opcode);
+                    fprintf(stderr, "[srv] WC err: status=%d opcode=%d wr_id=%d\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
                 }
             }
         }

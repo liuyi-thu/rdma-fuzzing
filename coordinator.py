@@ -28,11 +28,10 @@ import argparse, json, os, time, sys
 from typing import Dict, Any, Tuple
 
 POLL_INTERVAL = 0.1  # seconds
-CACHED_FILES = ["server_update.json", "client_update.json", "server_view.json", "client_view.json"]
 
 
-def clean_cached_files():
-    for f in CACHED_FILES:
+def clean_cached_files(cached_files: list):
+    for f in cached_files:
         try:
             os.remove(f)
         except Exception:
@@ -109,6 +108,8 @@ def build_view(
     remote_update: Dict[str, Any],
     merged_pairs: Dict[str, Dict[str, Any]],
     prev_view: Dict[str, Any],
+    # server_pairs: Dict[str, Dict[str, Any]] = None,
+    client_pairs: Dict[str, Dict[str, Any]] = {},
 ) -> Dict[str, Any]:
     view = {}
     # local
@@ -119,7 +120,8 @@ def build_view(
         view["remote"]["QP"] = []
     # derive remote.ids.QP[]
     rid_list = [q.get("id", "") for q in (view["remote"].get("QP") or []) if q.get("id")]
-    view["remote"]["ids"] = {"QP": rid_list}
+    pairid_list = list(client_pairs.keys())
+    view["remote"]["ids"] = {"QP": rid_list, "pairs": pairid_list}
     # pairs (list)
     view["pairs"] = list(merged_pairs.values())
     # carry build info
@@ -143,7 +145,7 @@ def main():
     args = ap.parse_args()
     # if args.clean:
 
-    clean_cached_files()
+    clean_cached_files([args.server_update, args.client_update, args.server_view, args.client_view])
 
     prev_server_view = load_json(args.server_view)
     prev_client_view = load_json(args.client_view)
@@ -162,7 +164,7 @@ def main():
         merged_for_client = merge_states(cli_pairs, srv_pairs, prev_cv or {})
 
         # server view: local=srv_u.local, remote=cli_u.local
-        server_view = build_view(srv_u, cli_u, merged_for_server, prev_sv or {})
+        server_view = build_view(srv_u, cli_u, merged_for_server, prev_sv or {}, client_pairs=cli_pairs)
         # client view: local=cli_u.local, remote=srv_u.local
         client_view = build_view(cli_u, srv_u, merged_for_client, prev_cv or {})
 

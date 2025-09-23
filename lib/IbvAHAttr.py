@@ -248,21 +248,21 @@ class IbvAHAttr(Attr):
         self.is_global = OptionalValue(
             BoolValue(is_global) if is_global is not None else None, factory=lambda: BoolValue(False)
         )  # Is Global, default is False
-        # self.port_num = OptionalValue(
-        #     IntValue(port_num) if port_num is not None else None, factory=lambda: IntValue(1)
-        # )  # Port Number, default is 1
         self.port_num = OptionalValue(
-            DeferredValue.from_id("remote.QP", dlid, "port_num", "uint32_t"),
-            factory=lambda: DeferredValue.from_id("remote.QP", None, "port_num", "uint32_t"),
-        )
+            IntValue(port_num) if port_num is not None else None, factory=lambda: IntValue(1)
+        )  # Port Number, default is 1
+        # self.port_num = OptionalValue(
+        #     DeferredValue.from_id("remote.QP", dlid, "port_num", "uint32_t"),
+        #     factory=lambda: DeferredValue.from_id("remote.QP", None, "port_num", "uint32_t"),
+        # )
         self.remote_qp = None
 
     def bind_remote_qp(self, remote_qp):
         self.remote_qp = remote_qp
-        self.port_num = OptionalValue(
-            DeferredValue.from_id("remote.QP", remote_qp, "port", "uint32_t"),
-            factory=lambda: DeferredValue.from_id("remote.QP", remote_qp, "port", "uint32_t"),
-        )
+        # self.port_num = OptionalValue(
+        #     DeferredValue.from_id("remote.QP", remote_qp, "port", "uint32_t"),
+        #     factory=lambda: DeferredValue.from_id("remote.QP", remote_qp, "port", "uint32_t"),
+        # )
         self.dlid = OptionalValue(
             DeferredValue.from_id("remote.QP", remote_qp, "lid", "uint32_t"),
             factory=lambda: DeferredValue.from_id("remote.QP", remote_qp, "lid", "uint32_t"),

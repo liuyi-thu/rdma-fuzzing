@@ -38,7 +38,7 @@ g++ -O2 -std=c++17 client.cpp pair_runtime.cpp runtime_resolver.c -lcjson -libve
 用以下命令运行：
 
 ```bash
-python3 coordinator.py --server-update server_update.json --client-update client_update.json --server-viewserver_view.json --client-view client_view.json
+python3 coordinator.py --server-update server_update.json --client-update client_update.json --server-view server_view.json --client-view client_view.json
 
 RDMA_FUZZ_RUNTIME=<PATH_TO_THE_PROJECT>/server_view.json ./server
 RDMA_FUZZ_RUNTIME=<PATH_TO_THE_PROJECT>/client_view.json ./client

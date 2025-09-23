@@ -16,6 +16,8 @@ from .IbvQPAttr import IbvQPAttr
 from .IbvSendWR import IbvSendWR, IBV_WR_OPCODE_ENUM
 from .IbvRecvWR import IbvRecvWR
 from .IbvSge import IbvSge
+from .IbvQPCap import IbvQPCap
+from .IbvAHAttr import IbvAHAttr, IbvGlobalRoute
 
 
 def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0") -> Tuple[List[object], List[int]]:
@@ -29,7 +31,7 @@ def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0")
         recv_cq=cq,
         srq=None,  # 显式 None，避免 SRQ 依赖
         qp_type="IBV_QPT_RC",  # RC
-        cap=None,  # 用默认 IbvQPCap 即可
+        cap=IbvQPCap(max_send_wr=10, max_recv_wr=10, max_send_sge=10, max_recv_sge=10),
         sq_sig_all=0,
     )
 
@@ -60,8 +62,22 @@ def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0")
                 max_dest_rd_atomic=1,
                 min_rnr_timer=12,
                 # ah_attr 可用默认工厂生成，也可以在外部按你的拓扑准备
+                ah_attr=IbvAHAttr(
+                    is_global=1,
+                    dlid="",  # DeferredValue
+                    sl=0,
+                    src_path_bits=0,
+                    port_num=1,
+                    grh=IbvGlobalRoute(
+                        sgid_index=1,
+                        hop_limit=1,
+                        traffic_class=0,
+                        flow_label=0,
+                        dgid="",  # DeferredValue
+                    ),
+                ),
             ),
-            attr_mask="IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER",
+            attr_mask="IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER | IBV_QP_MAX_DEST_RD_ATOMIC",
         ),
         # → RTS
         ModifyQP(
@@ -83,7 +99,7 @@ def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0")
 
 
 def sc_send_recv(
-    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", recv_len=256, send_len=128, inline=True, build_mr=True
+    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", recv_len=256, send_len=128, inline=False, build_mr=True
 ) -> Tuple[List[object], List[int]]:
     """
     目标：最短成功 SEND/RECV 路径（先 Recv 后 Send，再 PollCQ 成功）
