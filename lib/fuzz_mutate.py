@@ -2164,7 +2164,7 @@ class ContractAwareMutator:
             ins_list: Optional[List[VerbCall]] = None
             local_snapshot, local_ctx = _make_snapshot(verbs, i)
 
-            if rng.random() < 0.1:
+            if rng.random() < 0.7:
                 # 1.1 选模板
                 builder = _pick_insertion_template(
                     rng, verbs, i, choice, global_snapshot
