@@ -9,6 +9,7 @@ import sys
 import traceback
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List
+from pathlib import Path
 
 import dill
 from jinja2 import Environment, FileSystemLoader
@@ -239,17 +240,53 @@ def render(verbs: List[VerbCall]) -> str:
     return rendered
 
 
-if __name__ == "__main__":
-    print("This is my_fuzz_test.py")
-    logger = logging.getLogger()
-    logging.basicConfig(level=logging.DEBUG)
+def next_seed_index() -> str:
+    """Generate next seed index based on existing files in repo directory"""
+    repo_dir = Path("./repo")
+    repo_dir.mkdir(parents=True, exist_ok=True)
+
+    existing = []
+    for p in repo_dir.iterdir():
+        if p.is_file() and p.name.endswith("_seed.log"):
+            digits = ""
+            for c in p.name:
+                if c.isdigit():
+                    digits += c
+                else:
+                    break
+            if digits:
+                existing.append(int(digits))
+    n = max(existing) + 1 if existing else 1
+    return f"{n:06d}"
+
+def setup_seed_logging(seed_index: str) -> logging.Logger:
+    """Setup logging for a specific seed with dedicated log file"""
+    repo_dir = Path("./repo")
+    log_file = repo_dir / f"{seed_index}_seed.log"
+
+    logger = logging.getLogger(f"seed_{seed_index}")
+    logger.setLevel(logging.DEBUG)
+
+    # Clear existing handlers
     for h in list(logger.handlers):
         logger.removeHandler(h)
 
-    fh = logging.FileHandler("out.log", mode="w", encoding="utf-8")
-    fmt = logging.Formatter("%(message)s")
+    # File handler for seed-specific log
+    fh = logging.FileHandler(str(log_file), mode="w", encoding="utf-8")
+    fmt = logging.Formatter("[%(asctime)s] %(message)s")
     fh.setFormatter(fmt)
     logger.addHandler(fh)
+
+    # Console handler for immediate feedback
+    ch = logging.StreamHandler(sys.stdout)
+    ch_fmt = logging.Formatter(f"[SEED_{seed_index}] %(message)s")
+    ch.setFormatter(ch_fmt)
+    logger.addHandler(ch)
+
+    return logger
+
+if __name__ == "__main__":
+    print("This is my_fuzz_test.py")
 
     corpus = Corpus("seeds")
     verbs = copy.deepcopy(INITIAL_VERBS)
@@ -262,24 +299,34 @@ if __name__ == "__main__":
     mutator = fuzz_mutate.ContractAwareMutator(rng)
     # for _ in range(10):
     while True:
+        # Generate seed index and setup logging
+        seed_index = next_seed_index()
+        logger = setup_seed_logging(seed_index)
+
         base_sid = corpus.pick_for_fuzz()
-        print("Picked seed:", base_sid)
+        logger.info("Picked seed: %s", base_sid)
         if not base_sid:
             base_sid = sid0
         base_verbs = corpus.load_verbs(base_sid)
         if not base_verbs:
             base_verbs = copy.deepcopy(verbs)
-        print("Base verbs:", summarize_verb_list(base_verbs, deep=True))
-        # cur_verbs = mutator.mutate(base_verbs)
+        logger.info("Base verbs: %s", summarize_verb_list(base_verbs, deep=True))
+
+        # Log mutation process
+        logger.info("Starting mutation on seed %s", seed_index)
         mutator.mutate(base_verbs)
         cur_verbs = base_verbs
+        logger.info("Mutation completed for seed %s", seed_index)
 
         rendered = render(cur_verbs)
         with open("client.cpp", "w") as f:
             f.write(rendered)
+        logger.info("Generated client.cpp for seed %s", seed_index)
 
+        logger.info("Executing and collecting metrics for seed %s", seed_index)
         metrics = execute_and_collect()
-        logging.info("metrics: %s", metrics)
+        logger.info("Metrics for seed %s: %s", seed_index, metrics)
+
         new_sid = corpus.add(
             cur_verbs,
             meta={
@@ -287,6 +334,8 @@ if __name__ == "__main__":
                 "sem_novelty": float(metrics.get("sem_novelty", 0.0)),
             },
         )
+        logger.info("Added to corpus as new_sid: %s", new_sid)
+
         corpus.record_run(
             new_sid,
             {
@@ -297,8 +346,10 @@ if __name__ == "__main__":
                 "detail": metrics.get("detail"),
             },
         )
-    # print(summarize_verb_list(verbs, deep=True))
-    # # print("\n\nGenerated C++ Code:\n")
-    # rendered = render(verbs)
-    # with open("client.cpp", "w") as f:
-    #     f.write(rendered)
+        logger.info("Recorded run for seed %s with outcome: %s, score: %.3f",
+                   seed_index, metrics.get("outcome"), float(metrics.get("score", 0.0)))
+
+        # Close logger handlers to free resources
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            handler.close()
