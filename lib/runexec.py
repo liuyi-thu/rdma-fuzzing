@@ -171,7 +171,7 @@ def diff_coverage_and_semantics(new_cov, new_sem) -> Dict[str, int]:
 
 
 def compute_score(cov_new: int, sem_new: int, outcome: str, runtime_ms: int, flaky_rate: float = 0.0) -> float:
-    w_cov, w_sem, w_crash, w_flaky, w_slow = 1.0, 0.2, 3.0, 2.0, 0.0005
+    w_cov, w_sem, w_crash, w_flaky, w_slow = 4.0, 1.0, 10.0, 1.0, 0.1
     crash_bonus = {"asan": 1.0, "crash": 0.6, "error": 0.2}.get(outcome, 0.0)
     score = w_cov * cov_new + w_sem * sem_new + w_crash * crash_bonus
     score -= w_flaky * flaky_rate
