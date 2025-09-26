@@ -251,49 +251,68 @@ if __name__ == "__main__":
     fh.setFormatter(fmt)
     logger.addHandler(fh)
 
-    corpus = Corpus("seeds")
-    verbs = copy.deepcopy(INITIAL_VERBS)
-    sid0 = corpus.add(verbs, meta={"cov_bits_new": 0, "sem_novelty": 0.0})
-    ctx = CodeGenContext()
-    for v in verbs:  # initial check
-        v.apply(ctx)
-
     rng = None
     mutator = fuzz_mutate.ContractAwareMutator(rng)
-    # for _ in range(10):
-    while True:
-        base_sid = corpus.pick_for_fuzz()
-        print("Picked seed:", base_sid)
-        if not base_sid:
-            base_sid = sid0
-        base_verbs = corpus.load_verbs(base_sid)
-        if not base_verbs:
-            base_verbs = copy.deepcopy(verbs)
-        print("Base verbs:", summarize_verb_list(base_verbs, deep=True))
-        # cur_verbs = mutator.mutate(base_verbs)
-        mutator.mutate(base_verbs)
-        cur_verbs = base_verbs
+    verbs = copy.deepcopy(INITIAL_VERBS)
+    for _ in range(20):
+        flag = mutator.mutate(verbs, choice="insert")
+        if not flag:
+            print("mutate failed")
+            exit(0)
 
-        rendered = render(cur_verbs)
-        with open("client.cpp", "w") as f:
-            f.write(rendered)
+    print(summarize_verb_list(verbs, deep=True))
+    rendered = render(verbs)
+    with open("client.cpp", "w") as f:
+        f.write(rendered)
 
-        metrics = execute_and_collect()
-        logging.info("metrics: %s", metrics)
-        new_sid = corpus.add(
-            cur_verbs,
-            meta={
-                "cov_bits_new": int(metrics.get("cov_new", 0)),
-                "sem_novelty": float(metrics.get("sem_novelty", 0.0)),
-            },
-        )
-        corpus.record_run(
-            new_sid,
-            {
-                "outcome": metrics.get("outcome"),
-                "cov_delta": int(metrics.get("cov_new", 0)),
-                "runtime_ms": int(metrics.get("runtime_ms", 0)),
-                "score": float(metrics.get("score", 0.0)),
-                "detail": metrics.get("detail"),
-            },
-        )
+    # corpus = Corpus("seeds")
+    # verbs = copy.deepcopy(INITIAL_VERBS)
+    # sid0 = corpus.add(verbs, meta={"cov_bits_new": 0, "sem_novelty": 0.0})
+    # ctx = CodeGenContext()
+    # for v in verbs:  # initial check
+    #     v.apply(ctx)
+
+    # rng = None
+    # mutator = fuzz_mutate.ContractAwareMutator(rng)
+    # # for _ in range(10):
+    # while True:
+    #     base_sid = corpus.pick_for_fuzz()
+    #     print("Picked seed:", base_sid)
+    #     if not base_sid:
+    #         base_sid = sid0
+    #     base_verbs = corpus.load_verbs(base_sid)
+    #     if not base_verbs:
+    #         base_verbs = copy.deepcopy(verbs)
+    #     print("Base verbs:", summarize_verb_list(base_verbs, deep=True))
+    #     # cur_verbs = mutator.mutate(base_verbs)
+    #     mutator.mutate(base_verbs)
+    #     cur_verbs = base_verbs
+
+    #     rendered = render(cur_verbs)
+    #     with open("client.cpp", "w") as f:
+    #         f.write(rendered)
+
+    #     metrics = execute_and_collect()
+    #     logging.info("metrics: %s", metrics)
+    #     new_sid = corpus.add(
+    #         cur_verbs,
+    #         meta={
+    #             "cov_bits_new": int(metrics.get("cov_new", 0)),
+    #             "sem_novelty": float(metrics.get("sem_novelty", 0.0)),
+    #         },
+    #     )
+    #     corpus.record_run(
+    #         new_sid,
+    #         {
+    #             "outcome": metrics.get("outcome"),
+    #             "cov_delta": int(metrics.get("cov_new", 0)),
+    #             "runtime_ms": int(metrics.get("runtime_ms", 0)),
+    #             "score": float(metrics.get("score", 0.0)),
+    #             "detail": metrics.get("detail"),
+    #         },
+    #     )
+    # print(summarize_verb_list(verbs, deep=True))
+    # # print("\n\nGenerated C++ Code:\n")
+    # rendered = render(verbs)
+    # with open("client.cpp", "w") as f:
+    #     f.write(rendered)

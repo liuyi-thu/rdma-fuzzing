@@ -662,7 +662,7 @@ int main(int argc, char **argv)
         if (now_ms() - last_dump >= DUMP_INTERVAL_MS)
         {
             dump_server_update("server_update.json", S, port_attr.lid, my_gid.raw, IB_PORT);
-            printf("[srv] dump server_update.json\n");
+            // printf("[srv] dump server_update.json\n");
             last_dump = now_ms();
         }
         usleep(TICK_INTERVAL_MS * 1000);

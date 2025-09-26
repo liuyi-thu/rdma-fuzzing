@@ -1,45 +1,93 @@
-# scaffolds.py
+# -*- coding: utf-8 -*-
 """
-最小可行序列（scaffold）集合：返回 List[VerbCall] + hotspots（允许变异/插入的位置索引）
-注意：
-- 这里引用的 VerbCall（AllocPD/CreateCQ/CreateQP/ModifyQP/PostRecv/PostSend/PollCQ/RegMR）
-  请按你现有实现导入；下面仅示意 import。
-- Ibv* 结构体完全使用你当前定义（IbvQPInitAttr/IbvQPAttr/IbvSendWR/IbvRecvWR/IbvSge）。
+Augmented scaffold set: translate high-value seed ideas into concrete, runnable
+lists of VerbCall objects (plus hotspots).
+
+All classes referenced below exist in your lib (see CLASSES_IN_LIB.md) and were
+chosen to match their __init__ signatures. This file keeps the same import style
+and public API as your original scaffolds.py, but adds many more scaffolds and a
+registry for easy discovery.
+
+Usage (example):
+    from .scaffolds import ScaffoldBuilder, SCAFFOLD_REGISTRY
+    verbs, hotspots = ScaffoldBuilder.send_recv_basic(pd="pd0", cq="cq0", qp="qp0")
+    # or
+    verbs, hotspots = SCAFFOLD_REGISTRY["inline_boundary_pair"]()
+
+Notes:
+- Data-plane scaffolds expect the QP to be in RTS; prepend base_connect() (or run
+  it once) before these if needed.
+- For RDMA/atomic scaffolds, replace remote placeholders (REMOTE_ADDR/RKEY) via
+  your DeferredValue flow, or use the import tool's --replace.
 """
 
-from typing import List, Tuple
+from __future__ import annotations
+from typing import List, Tuple, Dict, Callable
 
-from .verbs import AllocPD, CreateCQ, CreateQP, ModifyQP, RegMR, PostRecv, PostSend, PollCQ, VerbCall
-
+# ---- Imports aligned with your package layout ----
+from .verbs import (
+    AllocPD,
+    CreateCQ,
+    CreateQP,
+    DestroyCQ,
+    DestroyQP,
+    ModifyQP,
+    RegMR,
+    DeregMR,
+    PostRecv,
+    PostSend,
+    PostSRQRecv,
+    PollCQ,
+    CreateSRQ,
+    DestroySRQ,
+    VerbCall,
+)
 from .IbvQPInitAttr import IbvQPInitAttr
-from .IbvQPAttr import IbvQPAttr
-from .IbvSendWR import IbvSendWR, IBV_WR_OPCODE_ENUM
-from .IbvRecvWR import IbvRecvWR
-from .IbvSge import IbvSge
 from .IbvQPCap import IbvQPCap
+from .IbvQPAttr import IbvQPAttr
+from .IbvRecvWR import IbvRecvWR
+from .IbvSendWR import IbvSendWR, IbvRdmaInfo, IbvAtomicInfo
+from .IbvSge import IbvSge
+from .IbvSrqInitAttr import IbvSrqInitAttr
+from .IbvSrqAttr import IbvSrqAttr
 from .IbvAHAttr import IbvAHAttr, IbvGlobalRoute
 
 
-def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0") -> Tuple[List[object], List[int]]:
-    """
-    目标：RESET→INIT→RTR→RTS，打通控制面（不触发数据面 WR）
-    - IbvQPInitAttr：显式把 srq 设为 None，避免 contract 误要求 SRQ 资源
-    - 三个 ModifyQP：按 INIT → RTR → RTS 顺序设置必要字段
-    """
-    init_attr = IbvQPInitAttr(  # 最好能把 qp 和 cq 绑定上，implicit dependency
-        send_cq=cq,
-        recv_cq=cq,
-        srq=None,  # 显式 None，避免 SRQ 依赖
-        qp_type="IBV_QPT_RC",  # RC
-        cap=IbvQPCap(max_send_wr=10, max_recv_wr=10, max_send_sge=10, max_recv_sge=10),
-        sq_sig_all=0,
+# ---------------------------------------------------------------------------
+# Core building blocks
+# ---------------------------------------------------------------------------
+
+
+def _init_attr(
+    send_cq: str,
+    recv_cq: str,
+    *,
+    srq: str | None = None,
+    qp_type: str = "IBV_QPT_RC",
+    cap: IbvQPCap | None = None,
+    sq_sig_all: int = 1,
+) -> IbvQPInitAttr:
+    return IbvQPInitAttr(
+        send_cq=send_cq,
+        recv_cq=recv_cq,
+        srq=srq,
+        cap=cap or IbvQPCap(max_send_wr=64, max_recv_wr=64, max_send_sge=4, max_recv_sge=4, max_inline_data=256),
+        qp_type=qp_type,
+        sq_sig_all=sq_sig_all,
     )
 
-    verbs: List[object] = [
+
+def base_connect(
+    pd: str = "pd0", cq: str = "cq0", qp: str = "qp0", *, port: int = 1, remote_qp: str = "peer0"
+) -> Tuple[List[VerbCall], List[int]]:
+    """RESET→INIT→RTR→RTS, control-plane only."""
+    init_attr = _init_attr(cq, cq, srq=None)
+
+    verbs: List[VerbCall] = [
         AllocPD(pd),
         CreateCQ(cq=cq, cqe=256),
-        CreateQP(pd=pd, qp=qp, init_attr_obj=init_attr, remote_qp=remote_qp_sym),
-        # → INIT
+        CreateQP(pd=pd, qp=qp, init_attr_obj=init_attr, remote_qp=remote_qp),
+        # INIT
         ModifyQP(
             qp=qp,
             attr_obj=IbvQPAttr(
@@ -48,38 +96,30 @@ def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0")
                 port_num=port,
                 qp_access_flags="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
             ),
-            # 你的 ModifyQP 支持 attr_mask 字符串/bitmask；按你现有风格传关键位
             attr_mask="IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
         ),
-        # → RTR
+        # RTR
         ModifyQP(
             qp=qp,
             attr_obj=IbvQPAttr(
                 qp_state="IBV_QPS_RTR",
-                path_mtu="IBV_MTU_1024",  # 先取一个稳妥的 MTU 档
-                dest_qp_num=0,  # 由 DeferredValue 绑定到 remote.QP（见 IbvQPAttr.dest_qp_num）  :contentReference[oaicite:11]{index=11}
+                path_mtu="IBV_MTU_1024",
+                dest_qp_num=0,  # Deferred/filled by your runtime
                 rq_psn=0,
                 max_dest_rd_atomic=1,
                 min_rnr_timer=12,
-                # ah_attr 可用默认工厂生成，也可以在外部按你的拓扑准备
                 ah_attr=IbvAHAttr(
                     is_global=1,
-                    dlid="",  # DeferredValue
-                    sl=0,
-                    src_path_bits=0,
-                    port_num=1,
-                    grh=IbvGlobalRoute(
-                        sgid_index=1,
-                        hop_limit=1,
-                        traffic_class=0,
-                        flow_label=0,
-                        dgid="",  # DeferredValue
-                    ),
+                    port_num=port,
+                    grh=IbvGlobalRoute(sgid_index=0, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
                 ),
             ),
-            attr_mask="IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER | IBV_QP_MAX_DEST_RD_ATOMIC",
+            attr_mask=(
+                "IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | "
+                "IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER | IBV_QP_MAX_DEST_RD_ATOMIC"
+            ),
         ),
-        # → RTS
+        # RTS
         ModifyQP(
             qp=qp,
             attr_obj=IbvQPAttr(
@@ -93,110 +133,545 @@ def sc_base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp_sym="peer0")
             attr_mask="IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC",
         ),
     ]
-
-    hotspots = [3, 4, 5]  # 三个 ModifyQP
+    hotspots = [3, 4, 5]
     return verbs, hotspots
 
 
-def sc_send_recv(
-    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", recv_len=256, send_len=128, inline=False, build_mr=True
-) -> Tuple[List[object], List[int]]:
-    """
-    目标：最短成功 SEND/RECV 路径（先 Recv 后 Send，再 PollCQ 成功）
-    - IbvRecvWR/IbvSendWR: sg_list 用 IbvSge(mr=...)，你这边会自动把 addr/length/lkey 绑定到 MR  :contentReference[oaicite:12]{index=12}
-    - IbvRecvWR: on_after_mutate 会把 num_sge 维护为 len(sg_list)  :contentReference[oaicite:13]{index=13}
-    - IbvSendWR: opcode 用 "IBV_WR_SEND"，send_flags 可含 SIGNALED/INLINE  :contentReference[oaicite:14]{index=14}
-    """
-    recv_wr = IbvRecvWR(
-        wr_id=0x1001,
-        sg_list=[IbvSge(mr=mr, length=recv_len)],
-        num_sge=1,
-        next_wr=None,
-    )
+# ---------------------------------------------------------------------------
+# Data-path scaffolds
+# ---------------------------------------------------------------------------
 
+
+def send_recv_basic(
+    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", recv_len=256, send_len=128, inline=False, build_mr=True
+) -> Tuple[List[VerbCall], List[int]]:
+    recv_wr = IbvRecvWR(wr_id=0x1001, sg_list=[IbvSge(mr=mr, length=recv_len)], num_sge=1, next_wr=None)
     send_wr = IbvSendWR(
         wr_id=0x2001,
-        opcode="IBV_WR_SEND",  # 见 IBV_WR_OPCODE_ENUM  :contentReference[oaicite:15]{index=15}
+        opcode="IBV_WR_SEND",
         sg_list=[IbvSge(mr=mr, length=send_len)],
         num_sge=1,
         send_flags=("IBV_SEND_SIGNALED | IBV_SEND_INLINE" if inline else "IBV_SEND_SIGNALED"),
-        next_wr=None,
     )
-
+    seq: List[VerbCall] = []
     if build_mr:
-        verbs: List[object] = [
-            # 连接前缀建议用 sc_base_connect() 的前 3+3 步先到 RTS；此处只列数据面动作
+        seq.append(
             RegMR(
                 pd=pd,
                 mr=mr,
                 addr=buf,
                 length=max(recv_len, send_len, 4096),
                 access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
-            ),
-            PostRecv(qp=qp, wr_obj=recv_wr),
-            PostSend(qp=qp, wr_obj=send_wr),
-            PollCQ(cq=cq),  # 你的 PollCQ 只要 CQ 存在即可轮询出 CQE  :contentReference[oaicite:16]{index=16}
-        ]
-    else:
-        verbs: List[object] = [
-            PostRecv(qp=qp, wr_obj=recv_wr),
-            PostSend(qp=qp, wr_obj=send_wr),
-            PollCQ(cq=cq),  # 你的 PollCQ 只要 CQ 存在即可轮询出 CQE  :contentReference[oaicite:16]{index=16}
-        ]
-    hotspots = [1, 2]  # 两个 WR 非常适合做 bandit（len、flags、num_sge）
-    return verbs, hotspots
+            )
+        )
+    seq += [PostRecv(qp=qp, wr_obj=recv_wr), PostSend(qp=qp, wr_obj=send_wr), PollCQ(cq=cq)]
+    return seq, [len(seq) - 3, len(seq) - 2]
 
 
-def sc_rdma_write(
-    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", rkey_sym="remote_mr0", length=128, inline=True
-) -> Tuple[List[object], List[int]]:
-    """
-    目标：最短 RDMA WRITE → Poll 成功
-    - IbvSendWR.rdma 使用 IbvRdmaInfo（内部从 remote.MR 取 remote_addr/rkey 的 DeferredValue）  :contentReference[oaicite:17]{index=17}
-    """
+def rdma_write_basic(
+    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", remote_mr="mr1", length=128, inline=True
+) -> Tuple[List[VerbCall], List[int]]:
     wr = IbvSendWR(
         wr_id=0x3001,
         opcode="IBV_WR_RDMA_WRITE",
         sg_list=[IbvSge(mr=mr, length=length)],
         num_sge=1,
         send_flags=("IBV_SEND_SIGNALED | IBV_SEND_INLINE" if inline else "IBV_SEND_SIGNALED"),
-        rdma=None,  # 让 IbvSendWR 的 OptionalValue factory 生成 IbvRdmaInfo（绑定 remote.MR）  :contentReference[oaicite:18]{index=18}
-        next_wr=None,
+        rdma=IbvRdmaInfo(
+            remote_mr=remote_mr,
+            # remote_addr="REMOTE_ADDR", rkey="REMOTE_RKEY" --- IGNORE ---
+        ),
     )
-
-    verbs: List[object] = [
+    seq = [
         RegMR(pd=pd, mr=mr, addr=buf, length=max(length, 4096), access="IBV_ACCESS_LOCAL_WRITE"),
         PostSend(qp=qp, wr_obj=wr),
         PollCQ(cq=cq),
     ]
-    hotspots = [1]  # 这条 RDMA_WRITE（len/inline 等字段）
-    return verbs, hotspots
+    return seq, [1]
 
 
+def rdma_read_basic(
+    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", remote_mr="mr1", length=128
+) -> Tuple[List[VerbCall], List[int]]:
+    wr = IbvSendWR(
+        wr_id=0x3002,
+        opcode="IBV_WR_RDMA_READ",
+        sg_list=[IbvSge(mr=mr, length=length)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+        rdma=IbvRdmaInfo(remote_mr=remote_mr),
+    )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=max(length, 4096), access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=wr),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1]
+
+
+# ---------------------------------------------------------------------------
+# Coverage-oriented scaffolds (boundary & error/repair pairs)
+# ---------------------------------------------------------------------------
+
+
+def inline_boundary_pair(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrI", buf="bufI", inline_cap: int = 256
+) -> Tuple[List[VerbCall], List[int]]:
+    """Two sends around max_inline_data boundary: one INLINE at cap, one non-inline above cap."""
+    s1 = IbvSendWR(
+        wr_id=0x5001,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=inline_cap)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED | IBV_SEND_INLINE",
+    )
+    s2 = IbvSendWR(
+        wr_id=0x5002,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=inline_cap + 1)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=max(inline_cap + 1, 2048), access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=s1),
+        PollCQ(cq=cq),
+        PostSend(qp=qp, wr_obj=s2),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1, 3]
+
+
+def sge_boundary(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrS", buf="bufS", max_send_sge: int = 4
+) -> Tuple[List[VerbCall], List[int]]:
+    """One WR with num_sge=1, another with num_sge=max_send_sge (scatter/gather path)."""
+    sg_list_big = [IbvSge(mr=mr, length=64 * (i + 1)) for i in range(max(1, max_send_sge))]
+    w1 = IbvSendWR(
+        wr_id=0x4001,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=64)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    w2 = IbvSendWR(
+        wr_id=0x4002,
+        opcode="IBV_WR_SEND",
+        sg_list=sg_list_big,
+        num_sge=len(sg_list_big),
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=8192, access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=w1),
+        PollCQ(cq=cq),
+        PostSend(qp=qp, wr_obj=w2),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1, 3]
+
+
+def wr_chain_16(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrC", buf="bufC", chain_len: int = 16
+) -> Tuple[List[VerbCall], List[int]]:
+    """Post a linked list of Send WRs (next_wr) to exercise batched posting paths."""
+    head = None
+    for i in reversed(range(chain_len)):
+        head = IbvSendWR(
+            wr_id=0x6000 + i,
+            opcode="IBV_WR_SEND",
+            sg_list=[IbvSge(mr=mr, length=64)],
+            num_sge=1,
+            send_flags="IBV_SEND_SIGNALED",
+            next_wr=head,
+        )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=head),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1]
+
+
+def cq_pressure(
+    pd="pd0", cq="cqP", qp="qpP", mr="mrP", buf="bufP", burst: int = 64, reuse_cq: bool = False
+) -> Tuple[List[VerbCall], List[int]]:
+    """
+    Stress CQ with many completions.
+    If reuse_cq=True, will NOT create a new CQ and will reuse the provided `cq` name.
+    Otherwise, creates a fresh CQ sized for the burst.
+    """
+    seq: List[VerbCall] = []
+    if not reuse_cq:
+        seq.append(CreateCQ(cq=cq, cqe=max(256, burst * 2)))
+
+    # Ensure MR exists for WRs
+    seq.append(RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"))
+
+    # Post N sends (separate WRs, not linked), then poll multiple times
+    for i in range(burst):
+        wr = IbvSendWR(
+            wr_id=0x7000 + i,
+            opcode="IBV_WR_SEND",
+            sg_list=[IbvSge(mr=mr, length=64)],
+            num_sge=1,
+            send_flags="IBV_SEND_SIGNALED",
+        )
+        seq.append(PostSend(qp=qp, wr_obj=wr))
+
+    seq += [PollCQ(cq=cq) for _ in range(3)]
+
+    # Hotspots: the PostSend range we appended（根据是否创建CQ来对齐索引）
+    first_ps = 2 if not reuse_cq else 1
+    return seq, list(range(first_ps, first_ps + burst))
+
+
+def rnr_then_recover(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrR", buf="bufR", send_len=128
+) -> Tuple[List[VerbCall], List[int]]:
+    """Simulate RNR: send before recv, expect RNR/timeout path, then post recv and resend."""
+    s_bad = IbvSendWR(
+        wr_id=0x8001,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=send_len)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    s_ok = IbvSendWR(
+        wr_id=0x8002,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=send_len)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    r_ok = IbvRecvWR(wr_id=0x8101, sg_list=[IbvSge(mr=mr, length=send_len)], num_sge=1)
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=max(4096, send_len), access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=s_bad),  # likely RNR or retry path
+        PostRecv(qp=qp, wr_obj=r_ok),
+        PostSend(qp=qp, wr_obj=s_ok),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1, 3]
+
+
+def failure_then_fix(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrF", buf="bufF", bad_len=4096, good_len=64
+) -> Tuple[List[VerbCall], List[int]]:
+    """First a too-large inline send (likely fail), then a small valid send."""
+    bad = IbvSendWR(
+        wr_id=0x9001,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=bad_len)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED | IBV_SEND_INLINE",
+    )
+    good = IbvSendWR(
+        wr_id=0x9002,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=good_len)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=max(bad_len, 4096), access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=bad),
+        PollCQ(cq=cq),
+        PostSend(qp=qp, wr_obj=good),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1, 3]
+
+
+# ---------------------------------------------------------------------------
+# Multi-QP / Shared CQ / SRQ / Atomic
+# ---------------------------------------------------------------------------
+
+
+def multi_qp_shared_cq(
+    pd="pd0",
+    cq="cqS",
+    qp1="qp1",
+    qp2="qp2",
+    mr1="mr1",
+    mr2="mr2",
+    buf1="buf1",
+    buf2="buf2",
+    remote_qp1="peer1",
+    remote_qp2="peer2",
+) -> Tuple[List[VerbCall], List[int]]:
+    """
+    Two QPs share one CQ, each driven to RTS, then interleaved Recv/Send, finally poll.
+    This scaffold is self-sufficient (includes INIT→RTR→RTßS for both QPs).
+    """
+
+    cap = IbvQPCap(max_send_wr=64, max_recv_wr=64, max_send_sge=4, max_recv_sge=4, max_inline_data=256)
+    init1 = _init_attr(cq, cq, cap=cap)
+    init2 = _init_attr(cq, cq, cap=cap)
+
+    seq: List[VerbCall] = [
+        AllocPD(pd),
+        CreateCQ(cq=cq, cqe=256),
+        CreateQP(pd=pd, qp=qp1, init_attr_obj=init1, remote_qp=remote_qp1),
+        CreateQP(pd=pd, qp=qp2, init_attr_obj=init2, remote_qp=remote_qp2),
+        # qp1: INIT → RTR → RTS
+        ModifyQP(
+            qp=qp1,
+            attr_obj=IbvQPAttr(
+                qp_state="IBV_QPS_INIT",
+                pkey_index=0,
+                port_num=1,
+                qp_access_flags="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+            ),
+            attr_mask="IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
+        ),
+        ModifyQP(
+            qp=qp1,
+            attr_obj=IbvQPAttr(
+                qp_state="IBV_QPS_RTR",
+                path_mtu="IBV_MTU_1024",
+                dest_qp_num=0,
+                rq_psn=0,
+                max_dest_rd_atomic=1,
+                min_rnr_timer=12,
+                ah_attr=IbvAHAttr(
+                    is_global=1,
+                    port_num=1,
+                    grh=IbvGlobalRoute(sgid_index=0, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
+                ),
+            ),
+            attr_mask=(
+                "IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | "
+                "IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER | IBV_QP_MAX_DEST_RD_ATOMIC"
+            ),
+        ),
+        ModifyQP(
+            qp=qp1,
+            attr_obj=IbvQPAttr(qp_state="IBV_QPS_RTS", sq_psn=0, timeout=14, retry_cnt=7, rnr_retry=7, max_rd_atomic=1),
+            attr_mask="IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC",
+        ),
+        # qp2: INIT → RTR → RTS
+        ModifyQP(
+            qp=qp2,
+            attr_obj=IbvQPAttr(
+                qp_state="IBV_QPS_INIT",
+                pkey_index=0,
+                port_num=1,
+                qp_access_flags="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+            ),
+            attr_mask="IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
+        ),
+        ModifyQP(
+            qp=qp2,
+            attr_obj=IbvQPAttr(
+                qp_state="IBV_QPS_RTR",
+                path_mtu="IBV_MTU_1024",
+                dest_qp_num=0,
+                rq_psn=0,
+                max_dest_rd_atomic=1,
+                min_rnr_timer=12,
+                ah_attr=IbvAHAttr(
+                    is_global=1,
+                    port_num=1,
+                    grh=IbvGlobalRoute(sgid_index=0, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
+                ),
+            ),
+            attr_mask=(
+                "IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | "
+                "IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER | IBV_QP_MAX_DEST_RD_ATOMIC"
+            ),
+        ),
+        ModifyQP(
+            qp=qp2,
+            attr_obj=IbvQPAttr(qp_state="IBV_QPS_RTS", sq_psn=0, timeout=14, retry_cnt=7, rnr_retry=7, max_rd_atomic=1),
+            attr_mask="IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC",
+        ),
+        # MRs + data path
+        RegMR(pd=pd, mr=mr1, addr=buf1, length=2048, access="IBV_ACCESS_LOCAL_WRITE"),
+        RegMR(pd=pd, mr=mr2, addr=buf2, length=2048, access="IBV_ACCESS_LOCAL_WRITE"),
+    ]
+
+    s1 = IbvSendWR(
+        wr_id=0x2101,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr1, length=64)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    s2 = IbvSendWR(
+        wr_id=0x2201,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr2, length=64)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    r1 = IbvRecvWR(wr_id=0x1101, sg_list=[IbvSge(mr=mr1, length=128)], num_sge=1)
+    r2 = IbvRecvWR(wr_id=0x1201, sg_list=[IbvSge(mr=mr2, length=128)], num_sge=1)
+
+    seq += [
+        PostRecv(qp=qp1, wr_obj=r1),
+        PostRecv(qp=qp2, wr_obj=r2),
+        PostSend(qp=qp1, wr_obj=s1),
+        PostSend(qp=qp2, wr_obj=s2),
+        PollCQ(cq=cq),
+        PollCQ(cq=cq),
+    ]
+
+    # 热点：两次 PostSend + 也可把 Recv 当作热点
+    hotspots = [len(seq) - 6, len(seq) - 5, len(seq) - 4, len(seq) - 3]
+    return seq, hotspots
+
+
+def srq_path(
+    pd="pd0", cq="cqSRQ", srq="srq0", qp="qpSRQ", mr="mrSRQ", buf="bufSRQ", remote_qp="peer0"
+) -> Tuple[List[VerbCall], List[int]]:
+    """
+    Create SRQ, attach a QP to SRQ, drive QP to RTS, then exercise SRQ Recv + Send + Poll.
+    """
+
+    seq: List[VerbCall] = [
+        AllocPD(pd),
+        CreateSRQ(pd=pd, srq=srq, srq_init_obj=IbvSrqInitAttr(attr=IbvSrqAttr(max_wr=128, max_sge=1))),
+        CreateCQ(cq=cq, cqe=128),
+        CreateQP(pd=pd, qp=qp, init_attr_obj=_init_attr(cq, cq, srq=srq), remote_qp=remote_qp),
+        # QP to RTS
+        ModifyQP(
+            qp=qp,
+            attr_obj=IbvQPAttr(
+                qp_state="IBV_QPS_INIT",
+                pkey_index=0,
+                port_num=1,
+                qp_access_flags="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+            ),
+            attr_mask="IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
+        ),
+        ModifyQP(
+            qp=qp,
+            attr_obj=IbvQPAttr(
+                qp_state="IBV_QPS_RTR",
+                path_mtu="IBV_MTU_1024",
+                dest_qp_num=0,
+                rq_psn=0,
+                max_dest_rd_atomic=1,
+                min_rnr_timer=12,
+                ah_attr=IbvAHAttr(
+                    is_global=1,
+                    port_num=1,
+                    grh=IbvGlobalRoute(sgid_index=0, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
+                ),
+            ),
+            attr_mask=(
+                "IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | "
+                "IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER | IBV_QP_MAX_DEST_RD_ATOMIC"
+            ),
+        ),
+        ModifyQP(
+            qp=qp,
+            attr_obj=IbvQPAttr(qp_state="IBV_QPS_RTS", sq_psn=0, timeout=14, retry_cnt=7, rnr_retry=7, max_rd_atomic=1),
+            attr_mask="IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC",
+        ),
+        # Data-path via SRQ
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSRQRecv(srq=srq, wr_obj=IbvRecvWR(wr_id=0x7001, sg_list=[IbvSge(mr=mr, length=128)], num_sge=1)),
+        PostSend(
+            qp=qp,
+            wr_obj=IbvSendWR(
+                wr_id=0x7101,
+                opcode="IBV_WR_SEND",
+                sg_list=[IbvSge(mr=mr, length=64)],
+                num_sge=1,
+                send_flags="IBV_SEND_SIGNALED",
+            ),
+        ),
+        PollCQ(cq=cq),
+    ]
+    hotspots = [len(seq) - 3, len(seq) - 2]
+    return seq, hotspots
+
+
+def atomic_pair(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrA", buf="bufA", remote_mr="mrB"
+) -> Tuple[List[VerbCall], List[int]]:
+    """Try CAS then FetchAdd (8B). If caps unsupported, these should expose error paths."""
+    cas = IbvSendWR(
+        wr_id=0xA001,
+        opcode="IBV_WR_ATOMIC_CMP_AND_SWP",
+        sg_list=[IbvSge(mr=mr, length=8)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+        atomic=IbvAtomicInfo(
+            remote_mr=remote_mr,
+            compare_add=0,
+            swap=1,
+        ),
+    )
+    fad = IbvSendWR(
+        wr_id=0xA002,
+        opcode="IBV_WR_ATOMIC_FETCH_AND_ADD",
+        sg_list=[IbvSge(mr=mr, length=8)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+        atomic=IbvAtomicInfo(remote_mr=remote_mr, compare_add=1, swap=None),
+    )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=cas),
+        PollCQ(cq=cq),
+        PostSend(qp=qp, wr_obj=fad),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1, 3]
+
+
+# ---------------------------------------------------------------------------
+# Public builder API + registry
+# ---------------------------------------------------------------------------
 class ScaffoldBuilder:
-    def __init__(self):
-        pass
-        # self.port = port
-        # self.caps = caps or {}
+    """Back-compat callable methods + more variants."""
 
-    @staticmethod
-    def base_connect(pd="pd0", cq="cq0", qp="qp0", port=1, remote_qp=0) -> Tuple[List[VerbCall], List[int]]:
-        return sc_base_connect(pd=pd, cq=cq, qp=qp, port=port, remote_qp_sym=remote_qp)
+    # Original set
+    base_connect = staticmethod(base_connect)
+    send_recv_basic = staticmethod(send_recv_basic)
+    rdma_write_basic = staticmethod(rdma_write_basic)
+    rdma_read_basic = staticmethod(rdma_read_basic)
 
-    @staticmethod
-    def send_recv(
-        pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", build_mr=True
-    ) -> Tuple[List[VerbCall], List[int]]:
-        return sc_send_recv(pd=pd, cq=cq, qp=qp, mr=mr, buf=buf, build_mr=build_mr)
+    # New high-coverage variants
+    inline_boundary_pair = staticmethod(inline_boundary_pair)
+    sge_boundary = staticmethod(sge_boundary)
+    wr_chain_16 = staticmethod(wr_chain_16)
+    cq_pressure = staticmethod(cq_pressure)
+    rnr_then_recover = staticmethod(rnr_then_recover)
+    failure_then_fix = staticmethod(failure_then_fix)
+    multi_qp_shared_cq = staticmethod(multi_qp_shared_cq)
+    srq_path = staticmethod(srq_path)
+    atomic_pair = staticmethod(atomic_pair)
 
-    @staticmethod
-    def rdma_write(pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", raddr=0, rkey=0):
-        return sc_rdma_write(pd=pd, cq=cq, qp=qp, mr=mr, buf=buf, raddr=raddr, rkey=rkey)
+
+# A uniform registry for discovery/testing/CLI integration
+SCAFFOLD_REGISTRY: Dict[str, Callable[[], Tuple[List[VerbCall], List[int]]]] = {
+    # control-plane
+    "base_connect": base_connect,
+    # data-plane basics
+    "send_recv_basic": send_recv_basic,
+    "rdma_write_basic": rdma_write_basic,
+    "rdma_read_basic": rdma_read_basic,
+    # coverage-oriented
+    "inline_boundary_pair": inline_boundary_pair,
+    "sge_boundary": sge_boundary,
+    "wr_chain_16": wr_chain_16,
+    "cq_pressure": cq_pressure,
+    "rnr_then_recover": rnr_then_recover,
+    "failure_then_fix": failure_then_fix,
+    # multi-qp / srq / atomic
+    "multi_qp_shared_cq": multi_qp_shared_cq,
+    "srq_path": srq_path,
+    "atomic_pair": atomic_pair,
+}
 
 
 if __name__ == "__main__":
-    # 直接运行本脚本时，打印一个示例 Scaffold
-    verbs, hotspots = ScaffoldBuilder.send_recv()
+    # Demo: print one scaffold
+    verbs, hotspots = send_recv_basic()
     for i, v in enumerate(verbs):
         print(f"{i:02d}: {v}")
     print("Hotspots:", hotspots)
