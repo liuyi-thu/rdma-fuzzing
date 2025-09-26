@@ -841,7 +841,8 @@ class LocalResourceValue(Value):  # buf
             return
 
         cands = []
-        for (t, name), st in (global_snap or {}).items():  # should filter by resource_type
+
+        for (t, name), (st, metadata) in (global_snap or {}).items():  # should filter by resource_type
             if t == self.resource_type and name != self.value and st != State.USED:
                 cands.append(name)
 
