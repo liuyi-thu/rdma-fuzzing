@@ -175,7 +175,9 @@ def compute_score(cov_new: int, sem_new: int, outcome: str, runtime_ms: int, fla
     crash_bonus = {"asan": 1.0, "crash": 0.6, "error": 0.2}.get(outcome, 0.0)
     score = w_cov * cov_new + w_sem * sem_new + w_crash * crash_bonus
     score -= w_flaky * flaky_rate
-    score -= w_slow * max(runtime_ms - 200, 0) * w_slow  # 200ms 以上轻度降权
+    score -= w_slow * max(runtime_ms - 200, 0)  # 修复：去掉重复的w_slow
+    print(f"[DEBUG] Score calculation: cov_new={cov_new}, sem_new={sem_new}, outcome={outcome}, runtime_ms={runtime_ms}")
+    print(f"[DEBUG] crash_bonus={crash_bonus}, base_score={w_cov * cov_new + w_sem * sem_new + w_crash * crash_bonus:.3f}, penalty={w_slow * max(runtime_ms - 200, 0):.3f}")
     return max(score, 0.0)
 
 

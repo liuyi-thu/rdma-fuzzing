@@ -286,7 +286,7 @@ def setup_seed_logging(seed_index: str) -> logging.Logger:
     return logger
 
 if __name__ == "__main__":
-    print("This is my_fuzz_test.py")
+    print("This is my_fuzz_test.py - Multi-mutation batch mode")
 
     corpus = Corpus("seeds")
     verbs = copy.deepcopy(INITIAL_VERBS)
@@ -297,11 +297,15 @@ if __name__ == "__main__":
 
     rng = None
     mutator = fuzz_mutate.ContractAwareMutator(rng)
-    # for _ in range(10):
+
+    # 配置批量变异参数
+    BATCH_SIZE = 20  # 每批变异数量，可根据需要调整
+
     while True:
         # Generate seed index and setup logging
         seed_index = next_seed_index()
         logger = setup_seed_logging(seed_index)
+        logger.info("Starting batch of %d mutations for seed %s", BATCH_SIZE, seed_index)
 
         base_sid = corpus.pick_for_fuzz()
         logger.info("Picked seed: %s", base_sid)
@@ -312,16 +316,32 @@ if __name__ == "__main__":
             base_verbs = copy.deepcopy(verbs)
         logger.info("Base verbs: %s", summarize_verb_list(base_verbs, deep=True))
 
-        # Log mutation process
-        logger.info("Starting mutation on seed %s", seed_index)
-        mutator.mutate(base_verbs)
-        cur_verbs = base_verbs
-        logger.info("Mutation completed for seed %s", seed_index)
+        # 执行多次变异，只在verbs阶段，最后一次才生成cpp
+        cur_verbs = copy.deepcopy(base_verbs)
+
+        # 进行多次变异（除了最后一次，都只停留在verbs阶段）
+        for mutation_idx in range(BATCH_SIZE):
+            logger.info("Processing mutation %d/%d (verbs only)", mutation_idx + 1, BATCH_SIZE)
+
+            # 执行变异
+            logger.info("Starting mutation %d on seed %s", mutation_idx + 1, seed_index)
+            try:
+                mutator.mutate(cur_verbs)
+                logger.info("Mutation %d completed for seed %s (verbs: %s)",
+                           mutation_idx + 1, seed_index,
+                           summarize_verb_list(cur_verbs, deep=False, max_items=3))
+            except Exception as e:
+                logger.error("Mutation %d failed: %s", mutation_idx + 1, str(e))
+                # 如果变异失败，使用之前的状态继续
+                continue
+
+        # 现在只对最终的verbs生成cpp并执行（完全按照原有流程）
+        logger.info("Final verbs after %d mutations: %s", BATCH_SIZE, summarize_verb_list(cur_verbs, deep=True))
 
         rendered = render(cur_verbs)
         with open("client.cpp", "w") as f:
             f.write(rendered)
-        logger.info("Generated client.cpp for seed %s", seed_index)
+        logger.info("Generated client.cpp for seed %s (after %d mutations)", seed_index, BATCH_SIZE)
 
         logger.info("Executing and collecting metrics for seed %s", seed_index)
         metrics = execute_and_collect()
@@ -332,6 +352,7 @@ if __name__ == "__main__":
             meta={
                 "cov_bits_new": int(metrics.get("cov_new", 0)),
                 "sem_novelty": float(metrics.get("sem_novelty", 0.0)),
+                "mutation_count": BATCH_SIZE,  # 记录进行了多少次变异
             },
         )
         logger.info("Added to corpus as new_sid: %s", new_sid)
@@ -344,10 +365,11 @@ if __name__ == "__main__":
                 "runtime_ms": int(metrics.get("runtime_ms", 0)),
                 "score": float(metrics.get("score", 0.0)),
                 "detail": metrics.get("detail"),
+                "mutation_count": BATCH_SIZE,
             },
         )
-        logger.info("Recorded run for seed %s with outcome: %s, score: %.3f",
-                   seed_index, metrics.get("outcome"), float(metrics.get("score", 0.0)))
+        logger.info("Recorded run for seed %s with outcome: %s, score: %.3f (after %d mutations)",
+                   seed_index, metrics.get("outcome"), float(metrics.get("score", 0.0)), BATCH_SIZE)
 
         # Close logger handlers to free resources
         for handler in logger.handlers[:]:
