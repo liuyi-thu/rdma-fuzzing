@@ -1921,7 +1921,7 @@ class ContractAwareMutator:
                 buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
                 remote_mr = _pick_live_from_snap(snap, "remote_mr", rng)
                 if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.rdma_read_basic(pd, cq, qp, mr, buf)
+                    verbs2, hotspots2 = ScaffoldBuilder.rdma_read_basic(pd, cq, qp, mr, buf, remote_mr=remote_mr)
                     verbs += verbs2
                     hotspots += hotspots2
                     return verbs, hotspots
