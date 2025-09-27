@@ -1807,7 +1807,7 @@ class ContractAwareMutator:
 
         return True
 
-    def insert_scaffold(
+    def build_scaffold(
         self,
         # verbs: List[VerbCall],
         # idx: Optional[int] = None,
@@ -2164,7 +2164,10 @@ class ContractAwareMutator:
             ins_list: Optional[List[VerbCall]] = None
             local_snapshot, local_ctx = _make_snapshot(verbs, i)
 
-            if rng.random() < 0.7:
+            # 根据 choice 决定生成哪种 verb
+            cand: Optional[List[VerbCall] | VerbCall] = None
+
+            if rng.random() < 0.0:
                 # 1.1 选模板
                 builder = _pick_insertion_template(
                     rng, verbs, i, choice, global_snapshot
@@ -2176,7 +2179,7 @@ class ContractAwareMutator:
                 cand = build_fn(None, rng, local_snapshot)
 
             else:
-                cand = self.insert_scaffold(
+                cand = self.build_scaffold(
                     choice=choice, snap=local_snapshot, gloabal_snapshot=global_snapshot, ctx=local_ctx, rng=rng
                 )
                 if cand:

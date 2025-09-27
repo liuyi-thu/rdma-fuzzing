@@ -111,7 +111,7 @@ def base_connect(
                 ah_attr=IbvAHAttr(
                     is_global=1,
                     port_num=port,
-                    grh=IbvGlobalRoute(sgid_index=0, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
+                    grh=IbvGlobalRoute(sgid_index=1, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
                 ),
             ),
             attr_mask=(
@@ -169,7 +169,7 @@ def send_recv_basic(
 
 
 def rdma_write_basic(
-    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", remote_mr="mr1", length=128, inline=True
+    pd="pd0", cq="cq0", qp="qp0", mr="mr0", buf="buf0", remote_mr="mr1", length=128, inline=False
 ) -> Tuple[List[VerbCall], List[int]]:
     wr = IbvSendWR(
         wr_id=0x3001,
@@ -437,7 +437,7 @@ def multi_qp_shared_cq(
                 ah_attr=IbvAHAttr(
                     is_global=1,
                     port_num=1,
-                    grh=IbvGlobalRoute(sgid_index=0, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
+                    grh=IbvGlobalRoute(sgid_index=1, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
                 ),
             ),
             attr_mask=(
@@ -473,7 +473,7 @@ def multi_qp_shared_cq(
                 ah_attr=IbvAHAttr(
                     is_global=1,
                     port_num=1,
-                    grh=IbvGlobalRoute(sgid_index=0, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
+                    grh=IbvGlobalRoute(sgid_index=1, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
                 ),
             ),
             attr_mask=(
@@ -557,7 +557,7 @@ def srq_path(
                 ah_attr=IbvAHAttr(
                     is_global=1,
                     port_num=1,
-                    grh=IbvGlobalRoute(sgid_index=0, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
+                    grh=IbvGlobalRoute(sgid_index=1, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
                 ),
             ),
             attr_mask=(
@@ -621,6 +621,114 @@ def atomic_pair(
         PollCQ(cq=cq),
     ]
     return seq, [1, 3]
+
+
+def inline_zero_and_cap_pair(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrIZ", buf="bufIZ", inline_cap: int = 256
+) -> Tuple[List[VerbCall], List[int]]:
+    """
+    0 字节 INLINE 与 cap 字节 INLINE 成对，覆盖长度边界与 fast-path 分支。
+    假设 QP=RTS，仅 RegMR + PostSend* + PollCQ。
+    """
+    s0 = IbvSendWR(
+        wr_id=0xD101,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=0)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED | IBV_SEND_INLINE",
+    )
+    sc = IbvSendWR(
+        wr_id=0xD102,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=inline_cap)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED | IBV_SEND_INLINE",
+    )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=max(4096, inline_cap), access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=s0),
+        PollCQ(cq=cq),
+        PostSend(qp=qp, wr_obj=sc),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1, 3]
+
+
+def rdma_len_edge_pairs(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrLE", buf="bufLE", small: int = 0, large: int = 4096
+) -> Tuple[List[VerbCall], List[int]]:
+    """
+    RDMA WRITE 的长度边界：0 字节（合法的 no-op）与较大长度（跨页机会）成对。
+    远端占位 REMOTE_* 由协调器替换。
+    """
+    w0 = IbvSendWR(
+        wr_id=0xD201,
+        opcode="IBV_WR_RDMA_WRITE",
+        sg_list=[IbvSge(mr=mr, length=small)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+        rdma=IbvRdmaInfo(remote_addr="REMOTE_ADDR", rkey="REMOTE_RKEY"),
+    )
+    w1 = IbvSendWR(
+        wr_id=0xD202,
+        opcode="IBV_WR_RDMA_WRITE",
+        sg_list=[IbvSge(mr=mr, length=large)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+        rdma=IbvRdmaInfo(remote_addr="REMOTE_ADDR", rkey="REMOTE_RKEY"),
+    )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=max(large, 4096), access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=w0),
+        PollCQ(cq=cq),
+        PostSend(qp=qp, wr_obj=w1),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1, 3]
+
+
+def sge_max_vs_overflow(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrSG", buf="bufSG", max_send_sge: int = 4
+) -> Tuple[List[VerbCall], List[int]]:
+    """
+    SGE 边界与超界成对：一条合法（=max_send_sge），一条超界（=max_send_sge+1，期望 EINVAL）。
+    这能稳定打到 validate_send_wr 的失败分支，而不会把进程打崩。
+    """
+    # 合法：=max_send_sge
+    sg_ok = [IbvSge(mr=mr, length=32) for _ in range(max(1, max_send_sge))]
+    w_ok = IbvSendWR(
+        wr_id=0xD301, opcode="IBV_WR_SEND", sg_list=sg_ok, num_sge=len(sg_ok), send_flags="IBV_SEND_SIGNALED"
+    )
+    # 超界：=max_send_sge+1
+    sg_bad = [IbvSge(mr=mr, length=32) for _ in range(max_send_sge + 1)]
+    w_bad = IbvSendWR(
+        wr_id=0xD302, opcode="IBV_WR_SEND", sg_list=sg_bad, num_sge=len(sg_bad), send_flags="IBV_SEND_SIGNALED"
+    )
+    seq = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"),
+        PostSend(qp=qp, wr_obj=w_ok),
+        PollCQ(cq=cq),
+        PostSend(qp=qp, wr_obj=w_bad),
+        PollCQ(cq=cq),
+    ]
+    return seq, [1, 3]
+
+
+def srq_post_burst(pd="pd0", srq="srqB", mr="mrSB", buf="bufSB", burst: int = 64) -> Tuple[List[VerbCall], List[int]]:
+    """
+    纯 SRQ 管理面压力：批量 PostSRQRecv（不依赖对端发送也能覆盖 SRQ 队列处理路径）。
+    适合与你的 runner 中“对端主动发包”的 case 组合使用；单独运行也能覆盖创建与 post 路径。
+    """
+    seq: List[VerbCall] = [
+        CreateSRQ(pd=pd, srq=srq, srq_init_obj=IbvSrqInitAttr(attr=IbvSrqAttr(max_wr=max(128, burst), max_sge=1))),
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"),
+    ]
+    for i in range(burst):
+        wr = IbvRecvWR(wr_id=0xD400 + i, sg_list=[IbvSge(mr=mr, length=128)], num_sge=1)
+        seq.append(PostSRQRecv(srq=srq, wr_obj=wr))
+    # 不 poll，因为这是 Recv 队列；是否产生 CQE 取决于对端是否发送
+    hotspots = list(range(2, 2 + burst))  # 所有 PostSRQRecv
+    return seq, hotspots
 
 
 # ---------------------------------------------------------------------------
