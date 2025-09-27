@@ -433,7 +433,7 @@ class ContractTable:
             metadata = {}
             for field in spec.metadata_fields or []:
                 try:
-                    fval = _get_by_path(verb, field, missing_ok=True)
+                    fval = _get_by_path(verb, field, missing_ok=True)[0]  # hotfix: 取第一个
                     metadata[field] = _unwrap(fval)
                 except Exception as e:
                     raise ContractError(
