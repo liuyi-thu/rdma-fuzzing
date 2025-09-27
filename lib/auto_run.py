@@ -174,11 +174,15 @@ def run_once():
 
     logger.info("Starting make SAN=asan build")
     try:
-        r_make = subprocess.run(["make", "SAN=asan"])
+        r_make = subprocess.run(["make", "SAN=asan"], capture_output=True, text=True)
+        if r_make.stdout:
+            logger.info("Compile stdout: %s", r_make.stdout.strip())
+        if r_make.stderr:
+            logger.info("Compile stderr: %s", r_make.stderr.strip())
         if r_make.returncode != 0:
             logger.error("make SAN=asan build failed, returncode=%s", r_make.returncode)
             return
-        logger.info("make SAN=asan build finished")
+        logger.info("make SAN=asan build finished successfully")
     except Exception:
         logger.exception("Failed to execute make SAN=asan")
         return
