@@ -173,18 +173,42 @@ def run_once():
         logger.exception("Failed to save client.cpp")
 
     logger.info("Starting make SAN=asan build")
+    compile_log_path = REPO_DIR / f"{idx}_compile.log"
     try:
         r_make = subprocess.run(["make", "SAN=asan"], capture_output=True, text=True)
+
+        # 保存编译日志到文件
+        with open(compile_log_path, "w", encoding="utf-8") as f:
+            f.write("=== COMPILE COMMAND ===\n")
+            f.write("make SAN=asan\n\n")
+            f.write("=== RETURN CODE ===\n")
+            f.write(f"{r_make.returncode}\n\n")
+            f.write("=== STDOUT ===\n")
+            f.write(r_make.stdout or "(empty)")
+            f.write("\n\n=== STDERR ===\n")
+            f.write(r_make.stderr or "(empty)")
+
         if r_make.stdout:
             logger.info("Compile stdout: %s", r_make.stdout.strip())
         if r_make.stderr:
             logger.info("Compile stderr: %s", r_make.stderr.strip())
         if r_make.returncode != 0:
             logger.error("make SAN=asan build failed, returncode=%s", r_make.returncode)
+            logger.error("Full compile log saved to: %s", compile_log_path)
             return
         logger.info("make SAN=asan build finished successfully")
+        logger.info("Compile log saved to: %s", compile_log_path)
     except Exception:
         logger.exception("Failed to execute make SAN=asan")
+        # 保存异常信息
+        try:
+            with open(compile_log_path, "w", encoding="utf-8") as f:
+                f.write("=== COMPILE COMMAND ===\n")
+                f.write("make SAN=asan\n\n")
+                f.write("=== EXCEPTION ===\n")
+                f.write("Failed to execute make command - see main log for details\n")
+        except:
+            pass
         return
 
     coord_proc = None
