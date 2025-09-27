@@ -163,6 +163,15 @@ class ClientCapture:
 
 
 def run_once():
+    # 立即保存client.cpp到repo，无论编译是否成功
+    idx = next_index()
+    src_path = REPO_DIR / f"{idx}_client.cpp"
+    try:
+        shutil.copy2(CLIENT_SRC, src_path)
+        logger.info("Saved client.cpp to %s", src_path)
+    except Exception:
+        logger.exception("Failed to save client.cpp")
+
     logger.info("Starting make SAN=asan build")
     try:
         r_make = subprocess.run(["make", "SAN=asan"])
@@ -192,8 +201,7 @@ def run_once():
         logger.exception("Failed to start server")
         server_proc = None
 
-    idx = next_index()
-    cc = ClientCapture(idx)
+    cc = ClientCapture(idx)  # 使用已经生成的idx
     env_c = os.environ.copy()
     env_c["RDMA_FUZZ_RUNTIME"] = CLIENT_VIEW
     client_proc = cc.start(env=env_c)
