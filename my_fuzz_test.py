@@ -338,10 +338,16 @@ if __name__ == "__main__":
         # 现在只对最终的verbs生成cpp并执行（完全按照原有流程）
         logger.info("Final verbs after %d mutations: %s", BATCH_SIZE, summarize_verb_list(cur_verbs, deep=True))
 
-        rendered = render(cur_verbs)
-        with open("client.cpp", "w") as f:
-            f.write(rendered)
-        logger.info("Generated client.cpp for seed %s (after %d mutations)", seed_index, BATCH_SIZE)
+        try:
+            rendered = render(cur_verbs)
+            with open("client.cpp", "w") as f:
+                f.write(rendered)
+            logger.info("Generated client.cpp for seed %s (after %d mutations)", seed_index, BATCH_SIZE)
+        except Exception as e:
+            logger.error("Failed to render client.cpp for seed %s: %s", seed_index, str(e))
+            logger.error("Traceback: %s", traceback.format_exc())
+            # 跳过当前种子，继续下一个
+            continue
 
         logger.info("Executing and collecting metrics for seed %s", seed_index)
         metrics = execute_and_collect()
