@@ -502,6 +502,7 @@ static void dump_server_update(const char *path, const ServerState &S, uint16_t 
             cJSON_AddNumberToObject(m, "addr", (double)(uintptr_t)S.pool[i].recv_pool.slots[j].buf);
             cJSON_AddNumberToObject(m, "length", MSG_SIZE);
             cJSON_AddNumberToObject(m, "lkey", S.pool[i].recv_pool.slots[j].mr->lkey);
+            cJSON_AddNumberToObject(m, "rkey", S.pool[i].recv_pool.slots[j].mr->rkey);
             cJSON_AddItemToArray(arr_mr, m);
         }
         // pairs: server已到RTS视为 BOTH_RTS（等待客户端把 READY 提上来）
