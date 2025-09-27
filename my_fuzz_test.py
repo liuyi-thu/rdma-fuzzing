@@ -329,7 +329,7 @@ if __name__ == "__main__":
                 mutator.mutate(cur_verbs)
                 logger.info("Mutation %d completed for seed %s (verbs: %s)",
                            mutation_idx + 1, seed_index,
-                           summarize_verb_list(cur_verbs, deep=False, max_items=3))
+                           summarize_verb_list(cur_verbs, deep=False))
             except Exception as e:
                 logger.error("Mutation %d failed: %s", mutation_idx + 1, str(e))
                 # 如果变异失败，使用之前的状态继续
