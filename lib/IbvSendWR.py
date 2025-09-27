@@ -308,8 +308,7 @@ class IbvTsoInfo(Attr):
     MUTABLE_FIELDS = FIELD_LIST
 
     def __init__(self, hdr=None, hdr_sz=None, mss=None):
-        # self.hdr = ResourceValue(hdr, "void*") if hdr is not None else None  # 可适配为现有hdr变量
-        self.hdr = ResourceValue(hdr, "void*")
+        self.hdr = ResourceValue(hdr, "void*") if hdr is not None else None
         self.hdr_sz = IntValue(hdr_sz, 4096) if hdr_sz is not None else None
         self.mss = IntValue(mss, 0xFFFF) if mss is not None else None
 
@@ -509,7 +508,7 @@ class IbvSendWR(Attr):
                 )
             return head
 
-    def to_cxx(self, varname, ctx=None):
+    def to_cxx(self, varname, ctx: CodeGenContext = None):
         if ctx:
             ctx.alloc_variable(varname, "struct ibv_send_wr")
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
@@ -523,13 +522,15 @@ class IbvSendWR(Attr):
             if field == "sg_list":
                 if len(val) > 0:
                     num_sge = len(val)
+                    sg_list_name = f"{varname}_sg_list"
                     # 生成sge数组
                     if ctx:
-                        ctx.alloc_variable(f"{varname}_sg_list[{num_sge}]", "struct ibv_sge")
+                        sg_list_name = ctx.gen_var_name(prefix=f"{varname}_sg_list")
+                        ctx.alloc_variable(f"{sg_list_name}[{num_sge}]", "struct ibv_sge")
                     for idx, sge in enumerate(val):
-                        sge_var = f"{varname}_sg_list[{idx}]"
+                        sge_var = f"{sg_list_name}[{idx}]"
                         s += sge.to_cxx(sge_var, ctx)
-                    s += f"    {varname}.sg_list = {varname}_sg_list;\n"
+                    s += f"    {varname}.sg_list = {sg_list_name};\n"
                 continue
 
             # ---- union/struct 分支 ----
@@ -558,11 +559,11 @@ class IbvSendWR(Attr):
                 s += val.to_cxx(bind_mw_var, ctx)
                 for f in IbvBindMwInfo.FIELD_LIST:
                     s += f"    {varname}.bind_mw.{f} = {bind_mw_var}.{f};\n"
-            elif field == "tso":
-                tso_var = varname + "_tso"
-                s += val.to_cxx(tso_var, ctx)
-                for f in IbvTsoInfo.FIELD_LIST:
-                    s += f"    {varname}.tso.{f} = {tso_var}.{f};\n"
+            # elif field == "tso": # TODO: 暂时禁用 tso，因为 hdr 变量不好处理
+            #     tso_var = varname + "_tso"
+            #     s += val.to_cxx(tso_var, ctx)
+            #     for f in IbvTsoInfo.FIELD_LIST:
+            #         s += f"    {varname}.tso.{f} = {tso_var}.{f};\n"
             elif field in ["imm_data", "invalidate_rkey"]:
                 s += emit_assign(varname, field, val)
             elif field == "next":

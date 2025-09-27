@@ -144,13 +144,15 @@ class IbvRecvWR(Attr):
             val = self.sg_list.value  # ListValue
             if len(val) > 0:
                 num_sge = len(val)
+                sg_list_name = f"{varname}_sg_list"
                 # 生成sge数组
                 if ctx:
-                    ctx.alloc_variable(f"{varname}_sg_list[{num_sge}]", "struct ibv_sge")
+                    sg_list_name = ctx.gen_var_name(prefix=f"{varname}_sg_list")
+                    ctx.alloc_variable(f"{sg_list_name}[{num_sge}]", "struct ibv_sge")
                 for idx, sge in enumerate(val):
-                    sge_var = f"{varname}_sg_list[{idx}]"
+                    sge_var = f"{sg_list_name}[{idx}]"
                     s += sge.to_cxx(sge_var, ctx)
-                s += f"    {varname}.sg_list = {varname}_sg_list;\n"
+                s += f"    {varname}.sg_list = {sg_list_name};\n"
         if self.num_sge:
             s += emit_assign(varname, "num_sge", self.num_sge)
         # next
