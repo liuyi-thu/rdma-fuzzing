@@ -1830,9 +1830,12 @@ class ContractAwareMutator:
                     return name
             return None
 
-        CHOICES = list(SCAFFOLD_REGISTRY.keys())
+        # CHOICES = list(SCAFFOLD_REGISTRY.keys())
+        # if choice is None:
+        #     choice = random.choices(CHOICES, k=1)[0]
+
         if choice is None:
-            choice = random.choices(CHOICES, k=1)[0]
+            choice = random.choices(["base_connect", "send_recv_basic"], weights=[0.3, 0.7], k=1)[0]
 
         match choice:
             case "base_connect":
