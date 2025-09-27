@@ -70,8 +70,8 @@ class CodeGenContext:
         self.alloc_variable(self.msg_buf_name, "char", None, "[1024][1024]")
         self.bindings = {}  # local qp -> remote qp
 
-        self.qp_recv_cq_binding = {}    # local qp -> cq
-        self.qp_send_cq_binding = {}    # local qp -> cq
+        self.qp_recv_cq_binding = {}  # local qp -> cq
+        self.qp_send_cq_binding = {}  # local qp -> cq
 
         self.contracts = ContractTable()
 

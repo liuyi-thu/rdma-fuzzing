@@ -247,6 +247,7 @@ def sge_boundary(
 ) -> Tuple[List[VerbCall], List[int]]:
     """One WR with num_sge=1, another with num_sge=max_send_sge (scatter/gather path)."""
     sg_list_big = [IbvSge(mr=mr, length=64 * (i + 1)) for i in range(max(1, max_send_sge))]
+    sg_list_overflow = sg_list_big + [IbvSge(mr=mr, length=64)]  # one more than max
     w1 = IbvSendWR(
         wr_id=0x4001,
         opcode="IBV_WR_SEND",
@@ -261,11 +262,20 @@ def sge_boundary(
         num_sge=len(sg_list_big),
         send_flags="IBV_SEND_SIGNALED",
     )
+    w3 = IbvSendWR(
+        wr_id=0x4003,
+        opcode="IBV_WR_SEND",
+        sg_list=sg_list_overflow,
+        num_sge=len(sg_list_overflow),
+        send_flags="IBV_SEND_SIGNALED",
+    )
     seq = [
         RegMR(pd=pd, mr=mr, addr=buf, length=8192, access="IBV_ACCESS_LOCAL_WRITE"),
         PostSend(qp=qp, wr_obj=w1),
         PollCQ(cq=cq),
         PostSend(qp=qp, wr_obj=w2),
+        PollCQ(cq=cq),
+        PostSend(qp=qp, wr_obj=w3),
         PollCQ(cq=cq),
     ]
     return seq, [1, 3]
