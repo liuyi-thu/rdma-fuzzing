@@ -15,15 +15,15 @@ MY_FUZZ_CMD = ["python3", str(CWD / "my_fuzz_test.py")]
 COORDINATOR_CMD = [
     "python3",
     str(CWD / "coordinator.py"),
-    "--server-update", str(CWD / "build/asan/server_update.json"),
-    "--client-update", str(CWD / "build/asan/client_update.json"),
-    "--server-view", str(CWD / "build/asan/server_view.json"),
-    "--client-view", str(CWD / "build/asan/client_view.json"),
+    "--server-update", str(CWD / "server_update.json"),
+    "--client-update", str(CWD / "client_update.json"),
+    "--server-view", str(CWD / "server_view.json"),
+    "--client-view", str(CWD / "client_view.json"),
 ]
 SERVER_BIN = str(CWD / "build" / "asan" / "server")
 CLIENT_BIN = str(CWD / "build" / "asan" / "client")
-SERVER_VIEW = str(CWD / "build" / "asan" / "server_view.json")
-CLIENT_VIEW = str(CWD / "build" / "asan" / "client_view.json")
+SERVER_VIEW = str(CWD / "server_view.json")
+CLIENT_VIEW = str(CWD / "client_view.json")
 CLIENT_SRC = str(CWD / "client.cpp")
 
 REPO_DIR = Path("./repo")
@@ -37,6 +37,15 @@ logger.setLevel(logging.INFO)
 h = logging.StreamHandler(sys.stdout)
 h.setFormatter(logging.Formatter("[+] %(asctime)s [%(levelname)s] %(message)s"))
 logger.addHandler(h)
+
+def clean_cached_files(cached_files: list):
+    for f in cached_files:
+        file = os.path.join(CWD, f)
+        if os.path.exists(file):
+            try:
+                os.remove(f)
+            except Exception:
+                pass
 
 
 def next_index() -> str:
@@ -53,7 +62,6 @@ def next_index() -> str:
                 existing.append(int(digits))
     n = max(existing) + 1 if existing else 1
     return f"{n:06d}"
-
 
 def safe_terminate(proc: subprocess.Popen, name: str):
     if proc is None or proc.poll() is not None:
@@ -164,6 +172,13 @@ class ClientCapture:
 
 def run_once():
     # 立即保存client.cpp到repo，无论编译是否成功
+    files_to_delete = [
+        'server_update.json',
+        'client_update.json',
+        'server_view.json',
+        'client_view.json'
+    ]
+    clean_cached_files(files_to_delete)
     idx = next_index()
     src_path = REPO_DIR / f"{idx}_client.cpp"
     try:
@@ -219,6 +234,8 @@ def run_once():
         logger.exception("Failed to start coordinator.py")
         coord_proc = None
 
+    time.sleep(0.6)
+
     server_proc = None
     try:
         env_s = os.environ.copy()
@@ -229,6 +246,9 @@ def run_once():
         logger.exception("Failed to start server")
         server_proc = None
 
+    time.sleep(0.4)
+
+    logger.info("Starting client...")
     cc = ClientCapture(idx)  # 使用已经生成的idx
     env_c = os.environ.copy()
     env_c["RDMA_FUZZ_RUNTIME"] = CLIENT_VIEW
