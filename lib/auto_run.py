@@ -15,15 +15,15 @@ MY_FUZZ_CMD = ["python3", str(CWD / "my_fuzz_test.py")]
 COORDINATOR_CMD = [
     "python3",
     str(CWD / "coordinator.py"),
-    "--server-update", str(CWD / "server_update.json"),
-    "--client-update", str(CWD / "client_update.json"),
-    "--server-view", str(CWD / "server_view.json"),
-    "--client-view", str(CWD / "client_view.json"),
+    "--server-update", str(CWD / "build/asan/server_update.json"),
+    "--client-update", str(CWD / "build/asan/client_update.json"),
+    "--server-view", str(CWD / "build/asan/server_view.json"),
+    "--client-view", str(CWD / "build/asan/client_view.json"),
 ]
 SERVER_BIN = str(CWD / "build" / "asan" / "server")
 CLIENT_BIN = str(CWD / "build" / "asan" / "client")
-SERVER_VIEW = str(CWD / "server_view.json")
-CLIENT_VIEW = str(CWD / "client_view.json")
+SERVER_VIEW = str(CWD / "build" / "asan" / "server_view.json")
+CLIENT_VIEW = str(CWD / "build" / "asan" / "client_view.json")
 CLIENT_SRC = str(CWD / "client.cpp")
 
 REPO_DIR = Path("./repo")
@@ -251,3 +251,6 @@ def run_once():
         if cc.thread is not None:
             cc.thread.join(timeout=2)
         logger.info("Run finished")
+
+if __name__ == "__main__":
+    run_once()
