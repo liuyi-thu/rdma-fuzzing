@@ -11,11 +11,11 @@ BIN_DIR   := $(BUILD_DIR)
 BIN_SERVER:= $(BIN_DIR)/server
 BIN_CLIENT:= $(BIN_DIR)/client
 
-# 视图/更新文件统一放在 build/ 下（更干净）
-SERVER_UPDATE := $(BUILD_DIR)/server_update.json
-CLIENT_UPDATE := $(BUILD_DIR)/client_update.json
-SERVER_VIEW   := $(BUILD_DIR)/server_view.json
-CLIENT_VIEW   := $(BUILD_DIR)/client_view.json
+# 视图/更新文件放在当前目录（与代码中的路径一致）
+SERVER_UPDATE := server_update.json
+CLIENT_UPDATE := client_update.json
+SERVER_VIEW   := server_view.json
+CLIENT_VIEW   := client_view.json
 
 # ---- Sanitizer Switches ----
 # 用法： make SAN=asan        # 开启 AddressSanitizer 构建到 build/asan
@@ -24,21 +24,18 @@ ASAN_OPTIONS ?= halt_on_error=1,detect_leaks=1,detect_stack_use_after_return=1,a
 LSAN_OPTIONS ?= report_objects=1
 
 # 根据 SAN 改写构建目录，避免和非SAN产物混淆
+# JSON文件始终保持在当前目录
 ifneq ($(SAN),)
 BUILD_DIR := build/$(SAN)
 BIN_DIR   := $(BUILD_DIR)
 BIN_SERVER:= $(BIN_DIR)/server
 BIN_CLIENT:= $(BIN_DIR)/client
-SERVER_UPDATE := $(BUILD_DIR)/server_update.json
-CLIENT_UPDATE := $(BUILD_DIR)/client_update.json
-SERVER_VIEW   := $(BUILD_DIR)/server_view.json
-CLIENT_VIEW   := $(BUILD_DIR)/client_view.json
 endif
 
 # 运行命令前缀：把工作目录切到 BIN_DIR 再执行
 RUN_PREFIX := cd $(BIN_DIR) &&
 
-# 默认运行命令（在 BIN_DIR 下运行二进制）
+# 默认运行命令（coordinator在项目根目录，server/client在BIN_DIR下运行）
 COORD_CMD := python3 coordinator.py --server-update $(SERVER_UPDATE) --client-update $(CLIENT_UPDATE) --server-view $(SERVER_VIEW) --client-view $(CLIENT_VIEW)
 SERVER_CMD := $(RUN_PREFIX) RDMA_FUZZ_RUNTIME=$(abspath $(SERVER_VIEW)) ./server
 CLIENT_CMD := $(RUN_PREFIX) RDMA_FUZZ_RUNTIME=$(abspath $(CLIENT_VIEW)) ./client
@@ -84,10 +81,10 @@ $(BIN_SERVER): $(BUILD_DIR)/server.o $(BUILD_DIR)/pair_runtime.o $(BUILD_DIR)/ru
 $(BIN_CLIENT): $(BUILD_DIR)/client.o $(BUILD_DIR)/pair_runtime.o $(BUILD_DIR)/runtime_resolver.o | $(BUILD_DIR)
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
-# ====== JSON files (ensure they exist) ======
+# ====== JSON files (ensure they exist in current directory) ======
 jsons: $(SERVER_UPDATE) $(CLIENT_UPDATE) $(SERVER_VIEW) $(CLIENT_VIEW)
 
-$(SERVER_UPDATE) $(CLIENT_UPDATE) $(SERVER_VIEW) $(CLIENT_VIEW): | $(BUILD_DIR)
+$(SERVER_UPDATE) $(CLIENT_UPDATE) $(SERVER_VIEW) $(CLIENT_VIEW):
 	@touch $@
 
 # ====== Run (tmux split panes) ======
@@ -96,7 +93,7 @@ TMUX_SESSION := rdma-fuzz
 run: all prepare tmux-run
 
 prepare: jsons
-	@echo "Prepared view/update JSONs in $(BUILD_DIR)/"
+	@echo "Prepared view/update JSONs in current directory"
 
 tmux-run:
 	@command -v tmux >/dev/null 2>&1 || { echo "Error: 未安装 tmux。使用 NO_TMUX=1 切换为后台运行模式：make run NO_TMUX=1"; exit 1; }

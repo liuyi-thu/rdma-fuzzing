@@ -299,7 +299,7 @@ if __name__ == "__main__":
     mutator = fuzz_mutate.ContractAwareMutator(rng)
 
     # 配置批量变异参数
-    BATCH_SIZE = 20  # 每批变异数量，可根据需要调整
+    BATCH_SIZE = 5  # 每批变异数量，可根据需要调整
 
     while True:
         # Generate seed index and setup logging
