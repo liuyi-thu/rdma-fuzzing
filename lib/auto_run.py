@@ -9,6 +9,8 @@ import time
 import filecmp
 import select
 
+from lib.dmesg_collector import DmesgCollector
+
 CWD = Path.cwd()
 
 MY_FUZZ_CMD = ["python3", str(CWD / "my_fuzz_test.py")]
@@ -96,8 +98,12 @@ class ClientCapture:
         self.lock = threading.Lock()
         self.proc = None
         self.thread = None
+        self.dmesg_collector = DmesgCollector(REPO_DIR)  # 添加dmesg收集器
 
     def start(self, env: dict):
+        # 在client启动前设置dmesg基线
+        self.dmesg_collector.get_baseline()
+
         cmd = ["stdbuf", "-oL", "-eL", CLIENT_BIN]
         logger.info("Starting client: %s RDMA_FUZZ_RUNTIME=%s", " ".join(cmd), CLIENT_VIEW)
         try:
@@ -168,6 +174,10 @@ class ClientCapture:
             logger.info("Updated client binary cache: %s", CACHE_BIN)
         except Exception:
             logger.exception("Failed to update client binary cache")
+
+    def collect_dmesg_after_exit(self) -> str:
+        """收集client退出后的新增dmesg信息"""
+        return self.dmesg_collector.collect_new_messages(self.index)
 
 
 def run_once():
@@ -260,6 +270,13 @@ def run_once():
         if client_proc is not None:
             exit_code = client_proc.wait()
             logger.info("client exited, exit code=%s", exit_code)
+
+            # 收集client退出后的新增dmesg信息
+            new_dmesg = cc.collect_dmesg_after_exit()
+            if new_dmesg:
+                logger.info("Collected new dmesg: %d characters", len(new_dmesg))
+            else:
+                logger.debug("No new dmesg messages found")
         else:
             logger.warning("client not started, cleaning up other processes directly")
     except Exception:

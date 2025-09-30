@@ -11,6 +11,7 @@ import random
 from lib import utils
 from lib.auto_run import run_once
 from lib.fingerprint import FingerprintManager
+from lib.dmesg_collector import DmesgCollector
 
 FP_MANAGER = FingerprintManager()
 
@@ -126,6 +127,29 @@ def parse_crash_site(log_path: str) -> Optional[str]:
 # ========== 需要你接到现有实现的钩子 ==========
 
 
+def collect_latest_dmesg() -> str:
+    """收集最新生成的dmesg文件内容"""
+    from pathlib import Path
+    repo_dir = Path("./repo")
+
+    # 查找最新的dmesg文件
+    dmesg_files = list(repo_dir.glob("*_dmesg.log"))
+    if not dmesg_files:
+        return ""
+
+    # 获取最新的文件
+    latest_dmesg_file = max(dmesg_files, key=lambda x: x.stat().st_mtime)
+
+    try:
+        with open(latest_dmesg_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        print(f"[+] Loaded dmesg from {latest_dmesg_file}, {len(content)} characters")
+        return content
+    except Exception as e:
+        print(f"[-] Failed to read dmesg file {latest_dmesg_file}: {e}")
+        return ""
+
+
 def build_and_run() -> Dict[str, Any]:
     """编译 & 执行 verbs 序列，并返回一次性原始指标。
     期望返回：
@@ -142,6 +166,10 @@ def build_and_run() -> Dict[str, Any]:
 
     run_once()
     print("[+] run_once finished")
+
+    # 收集dmesg信息
+    dmesg_content = collect_latest_dmesg()
+
     coverage_edges = feed_back()
     sem_signature = extract_sem_signature("./repo/client.tmp.stdout.log")
     print(f"[+] Extracted sem_signature, count={len(sem_signature)}")
@@ -159,6 +187,7 @@ def build_and_run() -> Dict[str, Any]:
         "coverage_edges": coverage_edges,
         "sem_signature": sem_signature,
         "crash_site": crash_site,
+        "dmesg_new": dmesg_content,  # 新增dmesg字段
     }
 
 
@@ -188,15 +217,14 @@ def execute_and_collect() -> Dict[str, Any]:
     cov_new = diff["cov_new"]
     sem_new = diff["sem_new"]
     print(f"[+] Coverage delta: {cov_new}, Semantic delta: {sem_new}")
-    # cov_new = diff_coverage_and_semantics(raw.get("coverage_edges"), raw.get("sem_signature"))["cov_new"]
-    # sem_new = diff_coverage_and_semantics(raw.get("coverage_edges"), raw.get("sem_signature"))["sem_new"]
-    # score = compute_score(cov_new, sem_new, raw.get("outcome", "ok"), int(raw.get("runtime_ms", 0)))
-    # score = random.uniform(0, 1)  # 暂时用一个随机数
-    # cov_new = 0
-    # sem_new = 0
 
-    # keep = (cov_new > 0) or (sem_new > 0) or (raw.get("outcome") in ("asan", "crash"))
-    # keep = True  # 暂时全部保留，方便调试
+    # 检查dmesg信息
+    dmesg_content = raw.get("dmesg_new", "")
+    if dmesg_content:
+        print(f"[+] New dmesg content: {len(dmesg_content)} characters")
+    else:
+        print("[-] No new dmesg content")
+
     score = compute_score(cov_new, sem_new, raw.get("outcome", "ok"), int(raw.get("runtime_ms", 0)))
     print(f"[+] Computed score: {score:.3f}")
 
@@ -213,5 +241,6 @@ def execute_and_collect() -> Dict[str, Any]:
         "runtime_ms": int(raw.get("runtime_ms", 0)),
         "crash_site": raw.get("crash_site"),
         "score": score,
+        "dmesg_new": dmesg_content,  # 传递dmesg信息
         "detail": raw,
     }
