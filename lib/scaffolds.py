@@ -50,6 +50,7 @@ from .verbs import (
     DestroyQP,
     DestroySRQ,
     ModifyQP,
+    ModifySRQ,
     PollCQ,
     PostRecv,
     PostSend,
@@ -777,6 +778,176 @@ class ScaffoldBuilder:
     atomic_pair = staticmethod(atomic_pair)
 
 
+def notify_cq_basic(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrN", buf="bufN", recv_len=256, send_len=128
+) -> Tuple[List[VerbCall], List[int]]:
+    """触发一次完成，走 ReqNotifyCQ / AckCQEvents 分支，再 PollCQ 验证。"""
+    recv_wr = IbvRecvWR(wr_id=0x9101, sg_list=[IbvSge(mr=mr, length=recv_len)], num_sge=1)
+    send_wr = IbvSendWR(
+        wr_id=0x9201,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=send_len)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    seq: List[VerbCall] = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=max(recv_len, send_len, 4096), access="IBV_ACCESS_LOCAL_WRITE"),
+        PostRecv(qp=qp, wr_obj=recv_wr),
+        ReqNotifyCQ(cq=cq, solicited_only=0),  # 允许任何完成唤醒
+        PostSend(qp=qp, wr_obj=send_wr),
+        AckCQEvents(cq=cq, nevents=1),
+        PollCQ(cq=cq),
+    ]
+    # 热点：PostSend、Ack、Poll
+    return seq, [3, 4, 5]
+
+
+def resize_cq_flow(
+    pd="pd0", cq="cqR", qp="qpR", mr="mrRZ", buf="bufRZ", old_cqe=128, new_cqe=512, burst=8
+) -> Tuple[List[VerbCall], List[int]]:
+    """先用较小 cqe 跑一波完成，再 ResizeCQ，之后再发一批 WR 验证。"""
+    seq: List[VerbCall] = [
+        CreateCQ(cq=cq, cqe=old_cqe),
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"),
+    ]
+    for i in range(burst):
+        wr = IbvSendWR(
+            wr_id=0xA000 + i,
+            opcode="IBV_WR_SEND",
+            sg_list=[IbvSge(mr=mr, length=64)],
+            num_sge=1,
+            send_flags="IBV_SEND_SIGNALED",
+        )
+        seq.append(PostSend(qp=qp, wr_obj=wr))
+    seq += [PollCQ(cq=cq)]
+    seq.append(ResizeCQ(cq=cq, cqe=new_cqe))
+    for i in range(burst):
+        wr = IbvSendWR(
+            wr_id=0xA100 + i,
+            opcode="IBV_WR_SEND",
+            sg_list=[IbvSge(mr=mr, length=64)],
+            num_sge=1,
+            send_flags="IBV_SEND_SIGNALED",
+        )
+        seq.append(PostSend(qp=qp, wr_obj=wr))
+    seq += [PollCQ(cq=cq)]
+    # 热点：ResizeCQ 前后的 PostSend 区段
+    first_send = 2
+    after_resize = first_send + burst + 2  # Poll + Resize
+    hotspots = list(range(first_send, first_send + burst)) + list(range(after_resize, after_resize + burst))
+    return seq, hotspots
+
+
+def rereg_mr_variants(
+    pd="pd0", other_pd="pd1", cq="cq0", qp="qp0", mr="mrRR", buf="bufRR", length=4096
+) -> Tuple[List[VerbCall], List[int]]:
+    """RegMR → ReRegMR 多种 flags；中间穿插一次 send 验证每次变更后可用性。"""
+    seq: List[VerbCall] = [
+        AllocPD(other_pd),  # 用于换 PD 的一例
+        RegMR(pd=pd, mr=mr, addr=buf, length=length, access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ"),
+        # 1) 改 access
+        ReRegMR(
+            mr=mr,
+            flags="IBV_REREG_MR_CHANGE_ACCESS",
+            access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE",
+        ),
+    ]
+    wr_ok = IbvSendWR(
+        wr_id=0xB001,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=128)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    seq += [PostSend(qp=qp, wr_obj=wr_ok), PollCQ(cq=cq)]
+    # 2) 改 translation（地址/长度）
+    seq.append(ReRegMR(mr=mr, flags="IBV_REREG_MR_CHANGE_TRANSLATION", addr=buf, length=length))
+    seq += [PostSend(qp=qp, wr_obj=wr_ok), PollCQ(cq=cq)]
+    # 3) 改 PD
+    seq.append(ReRegMR(mr=mr, flags="IBV_REREG_MR_CHANGE_PD", pd=other_pd))
+    seq += [PostSend(qp=qp, wr_obj=wr_ok), PollCQ(cq=cq)]
+    hotspots = [2, 4, 6, 8]  # 三次 ReRegMR 之后的 PostSend 紧邻处
+    return seq, hotspots
+
+
+def query_suite(pd="pd0", cq="cq0", qp="qp0", port=1) -> Tuple[List[VerbCall], List[int]]:
+    """RTS 后查询一把，覆盖 query 分支（适配 RXE 环境）。"""
+    seq: List[VerbCall] = [
+        QueryQP(qp=qp, attr_mask="IBV_QP_STATE | IBV_QP_CAP | IBV_QP_PATH_MTU", out_init_attr=True),
+        QueryPortAttr(port=port),
+        QueryGID(port=port, index=0),
+        QueryPKey(port=port, index=0),
+    ]
+    return seq, [0, 1, 2, 3]
+
+
+def mw_bind_cycle(
+    pd="pd0", cq="cq0", qp="qp0", mr="mrMW", buf="bufMW", mw="mw0", mw_type="IBV_MW_TYPE_1"
+) -> Tuple[List[VerbCall], List[int]]:
+    """覆盖 MW 的发放/违规/修复路径。"""
+    seq: List[VerbCall] = [
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ"),
+        AllocMW(pd=pd, mw=mw, mw_type=mw_type),
+        # 合法绑定
+        BindMW(mw=mw, mr=mr, access="IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ"),
+    ]
+    # 触发一次使用
+    wr_ok = IbvSendWR(
+        wr_id=0xC001,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=64)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    seq += [PostSend(qp=qp, wr_obj=wr_ok), PollCQ(cq=cq)]
+    # 故意非法再次绑定（例如去掉必须权限）
+    seq.append(BindMW(mw=mw, mr=mr, access="0"))
+    # 修复为合法
+    seq.append(BindMW(mw=mw, mr=mr, access="IBV_ACCESS_LOCAL_WRITE"))
+    seq += [DeallocMW(mw=mw)]
+    hotspots = [2, 3, 5]  # 首次合法 bind + 首次使用 + 修复后的 bind
+    return seq, hotspots
+
+
+def srq_limit_pressure(
+    pd="pd0", cq="cqS", srq="srqL", qp="qpS", mr="mrS", buf="bufS", port=1, n_post=32
+) -> Tuple[List[VerbCall], List[int]]:
+    """建 SRQ → 先小量 Recv → 降低 limit → 连续发送 → Poll 完成，触发 SRQ 边界/事件分支。"""
+    init = _init_attr(cq, cq, srq=srq)
+    rwr = IbvRecvWR(wr_id=0xD101, sg_list=[IbvSge(mr=mr, length=256)], num_sge=1)
+    swr = IbvSendWR(
+        wr_id=0xD201,
+        opcode="IBV_WR_SEND",
+        sg_list=[IbvSge(mr=mr, length=64)],
+        num_sge=1,
+        send_flags="IBV_SEND_SIGNALED",
+    )
+    seq: List[VerbCall] = [
+        CreateSRQ(pd=pd, srq=srq, srq_init_obj=IbvSrqInitAttr(attr=IbvSrqAttr(max_wr=128, max_sge=1))),
+        CreateCQ(cq=cq, cqe=max(256, n_post * 2)),
+        CreateQP(pd=pd, qp=qp, init_attr_obj=init, remote_qp="peerS"),
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"),
+        # 先填充少量 SRQ Recv
+        PostSRQRecv(srq=srq, wr_obj=rwr),
+        PostSRQRecv(srq=srq, wr_obj=IbvRecvWR(wr_id=0xD102, sg_list=[IbvSge(mr=mr, length=256)], num_sge=1)),
+        # 降低 limit
+        ModifySRQ(srq=srq, srq_attr_obj=IbvSrqAttr(srqlimit=1)),
+    ]
+    # 连续发送，施压 SRQ
+    for i in range(n_post):
+        wr = IbvSendWR(
+            wr_id=0xD300 + i,
+            opcode="IBV_WR_SEND",
+            sg_list=[IbvSge(mr=mr, length=64)],
+            num_sge=1,
+            send_flags="IBV_SEND_SIGNALED",
+        )
+        seq.append(PostSend(qp=qp, wr_obj=wr))
+    seq += [PollCQ(cq=cq), PollCQ(cq=cq)]
+    hotspots = list(range(8, 8 + n_post))  # 连续发送段
+    return seq, hotspots
+
+
 # A uniform registry for discovery/testing/CLI integration
 SCAFFOLD_REGISTRY: Dict[str, Callable[[], Tuple[List[VerbCall], List[int]]]] = {
     # control-plane
@@ -796,6 +967,12 @@ SCAFFOLD_REGISTRY: Dict[str, Callable[[], Tuple[List[VerbCall], List[int]]]] = {
     "multi_qp_shared_cq": multi_qp_shared_cq,
     "srq_path": srq_path,
     "atomic_pair": atomic_pair,
+    "notify_cq_basic": notify_cq_basic,
+    "resize_cq_flow": resize_cq_flow,
+    "rereg_mr_variants": rereg_mr_variants,
+    "query_suite": query_suite,
+    "mw_bind_cycle": mw_bind_cycle,
+    "srq_limit_pressure": srq_limit_pressure,
 }
 
 
