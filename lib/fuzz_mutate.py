@@ -6,16 +6,16 @@ import random
 import re
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from termcolor import colored
 
 from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
 
+from .codegen_context import CodeGenContext
+from .scaffolds import SCAFFOLD_REGISTRY, ScaffoldBuilder
 from .value import Value
 from .verbs import ModifyQP, VerbCall
-from .scaffolds import ScaffoldBuilder, SCAFFOLD_REGISTRY
-from .codegen_context import CodeGenContext
 
 try:
     from .contracts import ContractError, ContractTable, State

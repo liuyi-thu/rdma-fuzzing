@@ -22,36 +22,48 @@ Notes:
 """
 
 from __future__ import annotations
-from typing import List, Tuple, Dict, Callable
+
+from typing import Callable, Dict, List, Tuple
+
+from .IbvAHAttr import IbvAHAttr, IbvGlobalRoute
+from .IbvQPAttr import IbvQPAttr
+from .IbvQPCap import IbvQPCap
+from .IbvQPInitAttr import IbvQPInitAttr
+from .IbvRecvWR import IbvRecvWR
+from .IbvSendWR import IbvAtomicInfo, IbvRdmaInfo, IbvSendWR
+from .IbvSge import IbvSge
+from .IbvSrqAttr import IbvSrqAttr
+from .IbvSrqInitAttr import IbvSrqInitAttr
 
 # ---- Imports aligned with your package layout ----
 from .verbs import (
+    AckCQEvents,
+    AllocMW,
     AllocPD,
+    BindMW,
     CreateCQ,
     CreateQP,
+    CreateSRQ,
+    DeallocMW,
+    DeregMR,
     DestroyCQ,
     DestroyQP,
+    DestroySRQ,
     ModifyQP,
-    RegMR,
-    DeregMR,
+    PollCQ,
     PostRecv,
     PostSend,
     PostSRQRecv,
-    PollCQ,
-    CreateSRQ,
-    DestroySRQ,
+    QueryGID,
+    QueryPKey,
+    QueryPortAttr,
+    QueryQP,
+    RegMR,
+    ReqNotifyCQ,
+    ReRegMR,
+    ResizeCQ,
     VerbCall,
 )
-from .IbvQPInitAttr import IbvQPInitAttr
-from .IbvQPCap import IbvQPCap
-from .IbvQPAttr import IbvQPAttr
-from .IbvRecvWR import IbvRecvWR
-from .IbvSendWR import IbvSendWR, IbvRdmaInfo, IbvAtomicInfo
-from .IbvSge import IbvSge
-from .IbvSrqInitAttr import IbvSrqInitAttr
-from .IbvSrqAttr import IbvSrqAttr
-from .IbvAHAttr import IbvAHAttr, IbvGlobalRoute
-
 
 # ---------------------------------------------------------------------------
 # Core building blocks
