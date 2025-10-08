@@ -24,7 +24,6 @@ from .IbvWQInitAttr import IbvWQInitAttr
 from .IbvXRCDInitAttr import IbvXRCDInitAttr
 from .value import (
     ConstantValue,
-    DeferredValue,
     EnumValue,
     FlagValue,
     IntValue,
@@ -281,7 +280,9 @@ class AckCQEvents(VerbCall):
     CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str | None = None, nevents: int | None = None):
-        self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        if not cq:
+            raise ValueError("CQ name must be provided")
+        self.cq = ResourceValue(resource_type="cq", value=cq) if cq else None
         self.nevents = IntValue(nevents or 0)
         # 是这样的，如果是None那么后面就不生成
         # 但是本函数并非如此
@@ -309,7 +310,9 @@ class AckCQEvents(VerbCall):
     def generate_c(self, ctx: CodeGenContext) -> str:
         return f"""
     /* ibv_ack_cq_events */
-    ibv_ack_cq_events({self.cq}, {self.nevents});
+    IF_OK_PTR({self.cq}, {{
+        ibv_ack_cq_events({self.cq}, {self.nevents});
+    }});
 """
 
 
@@ -5316,7 +5319,9 @@ class ReqNotifyCQ(VerbCall):
     CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None, solicited_only: int = None):
-        self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        if not cq:
+            raise ValueError("CQ name must be provided")
+        self.cq = ResourceValue(resource_type="cq", value=cq) if cq else None
         # Default solicited_only value
         self.solicited_only = IntValue(solicited_only or 0)
         self.tracker = None
@@ -5342,7 +5347,7 @@ class ReqNotifyCQ(VerbCall):
         return cls(cq=cq, solicited_only=solicited_only)
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        cq_name = self.cq
+        cq_name = coerce_str(self.cq)
         return f"""
     /* ibv_req_notify_cq */
     IF_OK_PTR({cq_name}, {{

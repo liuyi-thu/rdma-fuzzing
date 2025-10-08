@@ -1,21 +1,19 @@
 # lib/fuzz_mutate.py (refactored)
 from __future__ import annotations
 
+import importlib
 import logging
+import os
+import pkgutil
 import random
 import re
 import traceback
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from termcolor import colored
-
-from lib.debug_dump import diff_verb_snapshots, dump_verbs, snapshot_verbs, summarize_verb, summarize_verb_list
-
-from .codegen_context import CodeGenContext
-from .scaffolds import SCAFFOLD_REGISTRY, ScaffoldBuilder
-from .value import Value
-from .verbs import ModifyQP, VerbCall
+from lib.codegen_context import CodeGenContext
+from lib.debug_dump import summarize_verb
+from lib.verbs import ModifyQP, VerbCall
 
 try:
     from .contracts import ContractError, ContractTable, State
@@ -761,6 +759,17 @@ def _pick_unused_from_snap(snap: dict, rtype: str, rng: random.Random, excludes:
     # return rng.choice(cands) if cands else None
 
 
+def gen_name(kind, snap, rng, excludes: List[str] = []):
+    if snap is None:
+        return f"{kind}_{rng.randrange(1 << 16)}"
+    existing = {n for (t, n) in snap.keys() if t == kind}
+    for _ in range(1000):
+        name = f"{kind}_{rng.randrange(1 << 16)}"
+        if name not in existing and name not in excludes:
+            return name
+    return None
+
+
 # ========================= Insertion templates =========================
 def _pick_insertion_template(
     rng: random.Random, verbs: List[VerbCall], i: int, choice: str = None, global_snapshot=None
@@ -1140,10 +1149,10 @@ def _enumerate_mutable_paths(obj, prefix=""):
         FlagValue,
         IntValue,
         ListValue,
+        LocalResourceValue,
         OptionalValue,
         ResourceValue,
         Value,
-        LocalResourceValue,
     )
 
     out = []
@@ -1813,327 +1822,97 @@ class ContractAwareMutator:
         # idx: Optional[int] = None,
         choice: str = None,
         snap=None,
-        gloabal_snapshot=None,
+        global_snapshot=None,
         ctx: CodeGenContext = None,
         rng=None,
     ) -> bool:
         if not rng:
             rng = self.rng
 
-        def gen_name(kind, snap, rng, excludes: List[str] = []):
-            if snap is None:
-                return f"{kind}_{rng.randrange(1 << 16)}"
-            existing = {n for (t, n) in snap.keys() if t == kind}
-            for _ in range(1000):
-                name = f"{kind}_{rng.randrange(1 << 16)}"
-                if name not in existing and name not in excludes:
-                    return name
+        # 发现并缓存
+        _SCAFFOLD_BUILDERS: Dict[str, Callable[[dict, dict, "random.Random"], Tuple[List["VerbCall"], List[int]]]] = {}
+
+        base_dir = os.path.dirname(__file__)
+        pkg_name = __package__  # 'lib'
+        scaffolds_pkg = f"{pkg_name}.scaffolds"
+        scaffolds_dir = os.path.join(base_dir, "scaffolds")
+
+        if not os.path.isdir(scaffolds_dir):
             return None
 
-        CHOICES = list(SCAFFOLD_REGISTRY.keys())
-        if choice is None:
-            choice = random.choices(CHOICES, k=1)[0]
+        for modinfo in pkgutil.iter_modules([scaffolds_dir]):
+            mod_name = modinfo.name  # 如 'base_connect'
+            fqmn = f"{scaffolds_pkg}.{mod_name}"
+            try:
+                mod = importlib.import_module(fqmn)
+            except Exception as e:
+                # 发现失败不致命，跳过该模块
+                print(f"[scaffold] import failed: {fqmn}: {e}")
+                continue
 
-        match choice:
-            case "base_connect":
-                # have no dependencies, can be inserted anywhere
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    return ScaffoldBuilder.base_connect(pd, cq, qp, port=1, remote_qp=remote_qp)  # remote_qpn TBD
-                return None
+            build_fn = getattr(mod, "build", None)
+            if callable(build_fn):
+                _SCAFFOLD_BUILDERS[mod_name] = build_fn
+            else:
+                # 允许模块只导出具体函数名（如 base_connect.base_connect），但没有 build() 则跳过
+                pass
 
-            # case "send_recv_basic":
-            #     pd = _pick_live_from_snap(snap, "pd", rng)
-            #     mr = gen_name("mr", gloabal_snapshot, rng)
-            #     # cq = _pick_live_from_snap(snap, "cq", rng)
-            #     qp = _pick_from_snap(
-            #         snap, "qp", rng, state=State.RTS, metadata={"pd": pd}
-            #     )  # 要求 qp 和 mr 在同一个 pd 下
+        if not _SCAFFOLD_BUILDERS:
+            print("[scaffold] no scaffold builders discovered under lib/scaffolds/")
+            return None
 
-            #     cq = ctx.qp_send_cq_binding[qp] if ctx and qp in ctx.qp_send_cq_binding else None
-            #     buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-            #     if pd and mr and cq and qp and buf:
-            #         return ScaffoldBuilder.send_recv_basic(pd, cq, qp, mr, buf)  # 为了保证成功，其实qp和cq需要绑定
-            #     else:
-            #         # print("snap:", snap)
-            #         # print("send_recv failed:", pd, mr, cq, qp, buf)
-            #         return None
+        # 选择策略：
+        # - 若指定 choice（可以是模块名或别名），尝试精确命中；
+        # - 否则从全部 builder 中随机挑一个。
+        candidates = list(_SCAFFOLD_BUILDERS.items())
 
-            case "send_recv_basic":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(
-                        pd, cq, qp, port=1, remote_qp=remote_qp
-                    )  # remote_qpn TBD
-                else:
-                    return None
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.send_recv_basic(
-                        pd, cq, qp, mr, buf
-                    )  # 为了保证成功，其实qp和cq需要绑定
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    # print(verbs)
-                    return verbs, hotspots
-                else:
-                    print("send_recv failed:", pd, mr, cq, qp, buf)
-                    return None
+        sel_name = None
+        sel_build = None
+        if choice:
+            # 允许传 'base_connect' 或 'lib.scaffolds.base_connect'
+            short = choice.rsplit(".", 1)[-1]
+            if choice in _SCAFFOLD_BUILDERS:
+                sel_name = choice
+                sel_build = _SCAFFOLD_BUILDERS[choice]
+            elif short in _SCAFFOLD_BUILDERS:
+                sel_name = short
+                sel_build = _SCAFFOLD_BUILDERS[short]
+            else:
+                # 允许模糊匹配：以 choice 为子串
+                for name, fn in candidates:
+                    if choice in name:
+                        sel_name, sel_build = name, fn
+                        break
+                if sel_build is None:
+                    print(f"[scaffold] choice '{choice}' not found; fallback to random.")
+        if sel_build is None:
+            sel_name, sel_build = rng.choice(candidates)
 
-            case "rdma_write_basic":
-                # 前提：需要对端 raddr/rkey（用导入脚本 --replace 或你的 DeferredValue 绑定）
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(pd, cq, qp, port=1, remote_qp=remote_qp)
-                else:
-                    return None
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                remote_mr = _pick_live_from_snap(snap, "remote_mr", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.rdma_write_basic(pd, cq, qp, mr, buf, remote_mr=remote_mr)
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    return verbs, hotspots
-                else:
-                    return None
+        # 调用具体的 build()，传入（local_snapshot, global_snapshot, rng）
+        try:
+            ret = sel_build(snap, global_snapshot, rng)
+        except Exception as e:
+            print(f"[scaffold] build() error in '{sel_name}': {e}")
+            print(traceback.format_exc())
+            return None
 
-            case "rdma_read_basic":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(pd, cq, qp, port=1, remote_qp=remote_qp)
-                else:
-                    return None
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                remote_mr = _pick_live_from_snap(snap, "remote_mr", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.rdma_read_basic(pd, cq, qp, mr, buf, remote_mr=remote_mr)
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    return verbs, hotspots
-                else:
-                    return None
+        # 结构校验
+        if not ret or not isinstance(ret, tuple) or len(ret) != 2:
+            print(f"[scaffold] invalid return from '{sel_name}'; expect (verbs, hotspots)")
+            return None
+        verbs, hotspots = ret
+        if not isinstance(verbs, list):
+            print(f"[scaffold] '{sel_name}' verbs not a list")
+            return None
+        # 允许 hotspots 为 None/[]，但若给了就应为 list[int]
+        if hotspots is not None and not isinstance(hotspots, list):
+            print(f"[scaffold] '{sel_name}' hotspots not a list")
+            return None
 
-            case "inline_boundary_pair":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(
-                        pd, cq, qp, port=1, remote_qp=remote_qp
-                    )  # remote_qpn TBD
-                else:
-                    return None
-
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.inline_boundary_pair(
-                        pd, cq, qp, mr, buf
-                    )  # 为了保证成功，其实qp和cq需要绑定
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    # print(verbs)
-                    return verbs, hotspots
-                else:
-                    return None
-
-            case "sge_boundary":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(
-                        pd, cq, qp, port=1, remote_qp=remote_qp
-                    )  # remote_qpn TBD
-                else:
-                    return None
-
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.sge_boundary(
-                        pd, cq, qp, mr, buf
-                    )  # 为了保证成功，其实qp和cq需要绑定
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    # print(verbs)
-                    return verbs, hotspots
-                else:
-                    return None
-
-            case "wr_chain_16":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(
-                        pd, cq, qp, port=1, remote_qp=remote_qp
-                    )  # remote_qpn TBD
-                else:
-                    return None
-
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.wr_chain_16(
-                        pd, cq, qp, mr, buf
-                    )  # 为了保证成功，其实qp和cq需要绑定
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    # print(verbs)
-                    return verbs, hotspots
-                else:
-                    return None
-
-            case "cq_pressure":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(
-                        pd, cq, qp, port=1, remote_qp=remote_qp
-                    )  # remote_qpn TBD
-                else:
-                    return None
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.cq_pressure(
-                        pd, cq, qp, mr, buf, reuse_cq=True
-                    )  # 为了保证成功，其实qp和cq需要绑定
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    # print(verbs)
-                    return verbs, hotspots
-                else:
-                    return None
-
-            case "rnr_then_recover":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(
-                        pd, cq, qp, port=1, remote_qp=remote_qp
-                    )  # remote_qpn TBD
-                else:
-                    return None
-
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.rnr_then_recover(
-                        pd, cq, qp, mr, buf
-                    )  # 为了保证成功，其实qp和cq需要绑定
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    # print(verbs)
-                    return verbs, hotspots
-                else:
-                    return None
-
-            case "failure_then_fix":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(
-                        pd, cq, qp, port=1, remote_qp=remote_qp
-                    )  # remote_qpn TBD
-                else:
-                    return None
-
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.failure_then_fix(
-                        pd, cq, qp, mr, buf
-                    )  # 为了保证成功，其实qp和cq需要绑定
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    # print(verbs)
-                    return verbs, hotspots
-                else:
-                    return None
-
-            case "multi_qp_shared_cq":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp1 = gen_name("qp", gloabal_snapshot, rng)
-                qp2 = gen_name("qp", gloabal_snapshot, rng, excludes=[qp1])
-                mr1 = gen_name("mr", gloabal_snapshot, rng)
-                mr2 = gen_name("mr", gloabal_snapshot, rng, excludes=[mr1])
-                buf1 = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                buf2 = _pick_unused_from_snap(gloabal_snapshot, "buf", rng, excludes=[buf1])
-                remote_qp1 = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                remote_qp2 = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng, excludes=[remote_qp1])
-                if pd and cq and qp1 and qp2 and mr1 and mr2 and buf1 and buf2 and remote_qp1 and remote_qp2:
-                    return ScaffoldBuilder.multi_qp_shared_cq(
-                        pd, cq, qp1, qp2, mr1, mr2, buf1, buf2, remote_qp1, remote_qp2
-                    )
-                return None
-
-            case "srq_path":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                srq = gen_name("srq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and srq and qp and mr and buf and remote_qp:
-                    return ScaffoldBuilder.srq_path(pd, cq, srq, qp, mr, buf, remote_qp)
-                return None
-
-            case "atomic_pair":
-                pd = gen_name("pd", gloabal_snapshot, rng)
-                cq = gen_name("cq", gloabal_snapshot, rng)
-                qp = gen_name("qp", gloabal_snapshot, rng)
-                remote_qp = _pick_unused_from_snap(gloabal_snapshot, "remote_qp", rng)
-                if pd and cq and qp and remote_qp:
-                    verbs, hotspots = ScaffoldBuilder.base_connect(
-                        pd, cq, qp, port=1, remote_qp=remote_qp
-                    )  # remote_qpn TBD
-                else:
-                    return None
-
-                mr = gen_name("mr", gloabal_snapshot, rng)
-                buf = _pick_unused_from_snap(gloabal_snapshot, "buf", rng)
-                remote_mr = _pick_live_from_snap(snap, "remote_mr", rng)
-                if pd and mr and cq and qp and buf:
-                    verbs2, hotspots2 = ScaffoldBuilder.atomic_pair(
-                        pd, cq, qp, mr, buf, remote_mr
-                    )  # 为了保证成功，其实qp和cq需要绑定
-                    verbs += verbs2
-                    hotspots += hotspots2
-                    # print(verbs)
-                    return verbs, hotspots
-                else:
-                    return None
-
-            case _:
-                return None
+        # 成功
+        # 这里你可以：记录选择到的 scaffold 名称，用于 bandit 反馈
+        # self.bandit_note_scaffold_used(sel_name)  # 若有类似接口，可在此处调用
+        return verbs, hotspots
 
     def mutate_insert(self, verbs: List[VerbCall], idx: Optional[int] = None, choice: str = None) -> bool:
         """
@@ -2167,7 +1946,7 @@ class ContractAwareMutator:
             # 根据 choice 决定生成哪种 verb
             cand: Optional[List[VerbCall] | VerbCall] = None
 
-            if rng.random() < 0.7:
+            if rng.random() < 0:
                 # 1.1 选模板
                 builder = _pick_insertion_template(
                     rng, verbs, i, choice, global_snapshot
@@ -2180,7 +1959,7 @@ class ContractAwareMutator:
 
             else:
                 cand = self.build_scaffold(
-                    choice=choice, snap=local_snapshot, gloabal_snapshot=global_snapshot, ctx=local_ctx, rng=rng
+                    choice=choice, snap=local_snapshot, global_snapshot=global_snapshot, ctx=local_ctx, rng=rng
                 )
                 if cand:
                     cand = cand[0]

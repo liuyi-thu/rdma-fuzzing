@@ -45,10 +45,6 @@ from .verbs import (
     CreateQP,
     CreateSRQ,
     DeallocMW,
-    DeregMR,
-    DestroyCQ,
-    DestroyQP,
-    DestroySRQ,
     ModifyQP,
     ModifySRQ,
     PollCQ,
@@ -754,30 +750,6 @@ def srq_post_burst(pd="pd0", srq="srqB", mr="mrSB", buf="bufSB", burst: int = 64
     return seq, hotspots
 
 
-# ---------------------------------------------------------------------------
-# Public builder API + registry
-# ---------------------------------------------------------------------------
-class ScaffoldBuilder:
-    """Back-compat callable methods + more variants."""
-
-    # Original set
-    base_connect = staticmethod(base_connect)
-    send_recv_basic = staticmethod(send_recv_basic)
-    rdma_write_basic = staticmethod(rdma_write_basic)
-    rdma_read_basic = staticmethod(rdma_read_basic)
-
-    # New high-coverage variants
-    inline_boundary_pair = staticmethod(inline_boundary_pair)
-    sge_boundary = staticmethod(sge_boundary)
-    wr_chain_16 = staticmethod(wr_chain_16)
-    cq_pressure = staticmethod(cq_pressure)
-    rnr_then_recover = staticmethod(rnr_then_recover)
-    failure_then_fix = staticmethod(failure_then_fix)
-    multi_qp_shared_cq = staticmethod(multi_qp_shared_cq)
-    srq_path = staticmethod(srq_path)
-    atomic_pair = staticmethod(atomic_pair)
-
-
 def notify_cq_basic(
     pd="pd0", cq="cq0", qp="qp0", mr="mrN", buf="bufN", recv_len=256, send_len=128
 ) -> Tuple[List[VerbCall], List[int]]:
@@ -946,6 +918,41 @@ def srq_limit_pressure(
     seq += [PollCQ(cq=cq), PollCQ(cq=cq)]
     hotspots = list(range(8, 8 + n_post))  # 连续发送段
     return seq, hotspots
+
+
+# ---------------------------------------------------------------------------
+# Public builder API + registry
+# ---------------------------------------------------------------------------
+class ScaffoldBuilder:
+    """Back-compat callable methods + more variants."""
+
+    # Original set
+    base_connect = staticmethod(base_connect)
+    send_recv_basic = staticmethod(send_recv_basic)
+    rdma_write_basic = staticmethod(rdma_write_basic)
+    rdma_read_basic = staticmethod(rdma_read_basic)
+
+    # New high-coverage variants
+    inline_boundary_pair = staticmethod(inline_boundary_pair)
+    sge_boundary = staticmethod(sge_boundary)
+    wr_chain_16 = staticmethod(wr_chain_16)
+    cq_pressure = staticmethod(cq_pressure)
+    rnr_then_recover = staticmethod(rnr_then_recover)
+    failure_then_fix = staticmethod(failure_then_fix)
+    multi_qp_shared_cq = staticmethod(multi_qp_shared_cq)
+    srq_path = staticmethod(srq_path)
+    atomic_pair = staticmethod(atomic_pair)
+
+    inline_zero_and_cap_pair = staticmethod(inline_zero_and_cap_pair)
+    rdma_len_edge_pairs = staticmethod(rdma_len_edge_pairs)
+    sge_max_vs_overflow = staticmethod(sge_max_vs_overflow)
+    srq_post_burst = staticmethod(srq_post_burst)
+    notify_cq_basic = staticmethod(notify_cq_basic)
+    resize_cq_flow = staticmethod(resize_cq_flow)
+    rereg_mr_variants = staticmethod(rereg_mr_variants)
+    query_suite = staticmethod(query_suite)
+    mw_bind_cycle = staticmethod(mw_bind_cycle)
+    srq_limit_pressure = staticmethod(srq_limit_pressure)
 
 
 # A uniform registry for discovery/testing/CLI integration
