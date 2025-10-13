@@ -34,13 +34,13 @@ class DestroyCmId(VerbCall):
     CONTRACT = Contract(
         requires=[
             # The cm_id must exist and be owned/allocated by us.
-            RequireSpec(rtype="cm_id", state=State.ALLOCATED, name_attr="id"),
+            RequireSpec(rtype="cm_id", state=None, name_attr="id"),
             # Note: Semantic preconditions (QP destroyed and events acked) are documented,
             # but enforced by the scenario generator; they are not hard-checked here.
         ],
         produces=[],
         transitions=[
-            TransitionSpec(rtype="cm_id", from_state=State.ALLOCATED, to_state=State.FREED, name_attr="id"),
+            TransitionSpec(rtype="cm_id", from_state=None, to_state=State.DESTROYED, name_attr="id"),
         ],
     )
 

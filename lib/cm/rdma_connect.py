@@ -6,6 +6,7 @@
 # state and an ESTABLISHED event is expected via the CM event channel later.
 
 
+from lib.cm.rdma_conn_param import RdmaConnParam
 from lib.codegen_context import CodeGenContext
 from lib.contracts import Contract, RequireSpec, State, TransitionSpec
 from lib.value import (
@@ -46,11 +47,11 @@ class RdmaConnect(VerbCall):
         ],
         transitions=[
             # The cm_id begins the connection process
-            TransitionSpec(rtype="cm_id", from_state=State.ROUTE_RESOLVED, to_state=State.CONNECTING, name_attr="id"),
+            TransitionSpec(rtype="cm_id", from_state=State.ROUTE_RESOLVED, to_state=State.CONNECTED, name_attr="id"),
         ],
     )
 
-    def __init__(self, id: str, conn_param_obj=None):
+    def __init__(self, id: str, conn_param_obj: RdmaConnParam = None):
         """
         Args:
             id: Name of the rdma_cm_id resource to connect.

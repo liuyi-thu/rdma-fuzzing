@@ -51,11 +51,14 @@ class RDMADisconnect(VerbCall):
             # No new resources produced by rdma_disconnect.
         ],
         transitions=[
-            TransitionSpec(rtype="cm_id", from_state=State.CONNECTED, to_state=State.DISCONNECTED, name_attr="id"),
+            TransitionSpec(
+                rtype="cm_id", from_state=State.CONNECTED, to_state=State.DISCONNECTED, name_attr="id"
+            ),  # 相当于禁止了复用 cm_id; TODO: 其实可以允许复用的
             # Note: The CM transitions any associated QP to ERROR. If your framework tracks
             # cm_id -> qp binding, it can add a corresponding transition externally.
             # Example (if supported by your State enum and binding path resolution):
             # TransitionSpec(rtype="qp", from_state=State.RTS, to_state=State.ERROR, name_attr="id.qp"),
+            # TODO: 我们还没有建模 cm_id -> qp 的绑定关系
         ],
     )
 

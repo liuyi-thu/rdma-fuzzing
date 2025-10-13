@@ -35,16 +35,10 @@ Behavior:
 
 from typing import Optional, Sequence, Union
 
-# These imports assume the framework layout; provide fallbacks for standalone usage.
-try:
-    from .base import Attr
-    from .codegen import emit_assign
-    from .values import IntValue, OptionalValue
-except ImportError:
-    # Fallbacks for environments where relative imports are not available.
-    from base import Attr
-    from codegen import emit_assign
-    from values import IntValue, OptionalValue
+from lib.attr import Attr
+from lib.codegen_context import CodeGenContext
+from lib.utils import emit_assign
+from lib.value import IntValue, OptionalValue
 
 
 class RdmaConnParam(Attr):
@@ -126,13 +120,14 @@ class RdmaConnParam(Attr):
         # Accept list/sequence of ints; clamp to 0..255
         return bytes(int(x) & 0xFF for x in data)
 
-    def to_cxx(self, varname, ctx=None):
+    def to_cxx(self, varname: str, ctx: CodeGenContext = None):
         if ctx:
             ctx.alloc_variable(varname, "struct rdma_conn_param")
         s = ""
         s += f"    memset(&{varname}, 0, sizeof({varname}));\n"
 
         # Handle private_data and private_data_len together.
+        # 现在我们认为 pd (private data) 始终为空
         pd = getattr(self, "private_data")
         pd_len_opt = getattr(self, "private_data_len")
         pd_len_val = None
