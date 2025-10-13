@@ -1,6 +1,6 @@
 import json
 import random
-from typing import Optional, List
+from typing import List, Optional
 
 
 def load_coverage_data(file_path: str) -> dict:
@@ -15,7 +15,7 @@ def load_coverage_data(file_path: str) -> dict:
     """
     try:
         print(f"[+] 正在加载覆盖率文件: {file_path}")
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         print(f"[+] 覆盖率文件加载成功")
         return data
@@ -42,7 +42,7 @@ def load_function_list(file_path: str) -> set:
     """
     try:
         print(f"[+] 正在加载函数列表: {file_path}")
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             functions = set(line.strip() for line in f if line.strip())
         print(f"[+] 加载了 {len(functions)} 个函数名")
         return functions
@@ -78,11 +78,11 @@ def extract_zero_coverage_functions(coverage_data: dict, target_functions: set) 
 
 
 def get_random_uncovered_function(
-        space: str = "user",
-        user_coverage_path: Optional[str] = None,
-        kernel_coverage_path: Optional[str] = None,
-        user_list_path: Optional[str] = None,
-        kernel_list_path: Optional[str] = None
+    space: str = "user",
+    user_coverage_path: Optional[str] = None,
+    kernel_coverage_path: Optional[str] = None,
+    user_list_path: Optional[str] = None,
+    kernel_list_path: Optional[str] = None,
 ) -> Optional[str]:
     """
     从覆盖率数据中随机选择一个未覆盖的函数
@@ -144,11 +144,11 @@ def get_random_uncovered_function(
 
 
 def get_all_uncovered_functions(
-        space: str = "user",
-        user_coverage_path: Optional[str] = None,
-        kernel_coverage_path: Optional[str] = None,
-        user_list_path: Optional[str] = None,
-        kernel_list_path: Optional[str] = None
+    space: str = "user",
+    user_coverage_path: Optional[str] = None,
+    kernel_coverage_path: Optional[str] = None,
+    user_list_path: Optional[str] = None,
+    kernel_list_path: Optional[str] = None,
 ) -> List[str]:
     """
     获取所有未覆盖的函数列表
@@ -204,7 +204,7 @@ if __name__ == "__main__":
         user_coverage_path="user_coverage.json",
         kernel_coverage_path="kernel_coverage.json",
         user_list_path="user.txt",
-        kernel_list_path="kernel.txt"
+        kernel_list_path="kernel.txt",
     )
     if kernel_func:
         print(f"\n[+] 随机选择的内核态未覆盖函数: {kernel_func}")

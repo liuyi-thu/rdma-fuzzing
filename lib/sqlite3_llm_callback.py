@@ -1,6 +1,6 @@
-import sqlite3
 import random
-from typing import Tuple, Optional
+import sqlite3
+from typing import Optional, Tuple
 
 
 def get_connection(db_path: str = "callchain.db") -> sqlite3.Connection:

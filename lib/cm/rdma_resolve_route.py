@@ -38,11 +38,13 @@ class RdmaResolveRoute(VerbCall):
     # - In a coarse-grained model, we transition cm_id to USED to enable next steps like rdma_connect.
     CONTRACT = Contract(
         requires=[
-            RequireSpec(rtype="cm_id", state=State.ALLOCATED, name_attr="id"),
+            RequireSpec(rtype="cm_id", state=State.ADDR_RESOLVED, name_attr="id"),
         ],
         produces=[],
         transitions=[
-            TransitionSpec(rtype="cm_id", from_state=State.ALLOCATED, to_state=State.USED, name_attr="id"),
+            TransitionSpec(
+                rtype="cm_id", from_state=State.ADDR_RESOLVED, to_state=State.ROUTE_RESOLVED, name_attr="id"
+            ),
         ],
     )
 

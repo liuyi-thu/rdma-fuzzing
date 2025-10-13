@@ -1,7 +1,7 @@
 import logging
 import random
 import re
-from abc import ABC, abstractmethod
+from abc import ABC
 
 try:
     from objtracker import ObjectTracker
@@ -285,6 +285,13 @@ class EnumValue(Value):
         # 3: 'IBV_MW_TYPE_4',
         1: "IBV_MW_TYPE_1",
         2: "IBV_MW_TYPE_2",
+    }
+
+    rdma_port_space = {
+        0x0002: "RDMA_PS_IPOIB",
+        0x0106: "RDMA_PS_TCP",
+        0x0111: "RDMA_PS_UDP",
+        0x013F: "RDMA_PS_IB",
     }
 
     def __init__(self, value: str = None, enum_type: str = None, mutable: bool = True):

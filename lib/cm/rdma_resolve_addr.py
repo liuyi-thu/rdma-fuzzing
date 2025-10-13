@@ -61,7 +61,7 @@ class RdmaResolveAddr(VerbCall):
             TransitionSpec(
                 rtype="cm_id",
                 from_state=State.ALLOCATED,
-                to_state=State.USED,
+                to_state=State.ADDR_RESOLVED,
                 name_attr="cm_id",
             ),
         ],
@@ -81,7 +81,7 @@ class RdmaResolveAddr(VerbCall):
             raise ValueError("dst_addr must be provided for RdmaResolveAddr")
 
         # CM ID resource
-        self.cm_id = ResourceValue(resource_type="cm_id", value=cm_id, mutable=False)
+        self.cm_id = ResourceValue(resource_type="cm_id", value=cm_id, mutable=False)  # 是否应该 mutable
 
         # Sockaddr resources. src is optional (NULL allowed).
         self.dst_addr = LocalResourceValue(resource_type="sockaddr", value=dst_addr)

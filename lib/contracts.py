@@ -1,7 +1,6 @@
 # lib/contracts.py
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional, Tuple
@@ -172,6 +171,8 @@ class State(Enum):
     DESTROYED = auto()
     IMPORTED = auto()
     USED = auto()  # for local resources only
+    ADDR_RESOLVED = auto()
+    ROUTE_RESOLVED = auto()
 
 
 @dataclass(frozen=True)

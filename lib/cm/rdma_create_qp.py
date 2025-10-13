@@ -12,6 +12,7 @@ from typing import Optional
 
 from lib.codegen_context import CodeGenContext
 from lib.contracts import Contract, ProduceSpec, RequireSpec, State
+from lib.IbvQPInitAttr import IbvQPInitAttr
 from lib.value import (
     ResourceValue,
 )
@@ -61,34 +62,35 @@ class RdmaCreateQP(VerbCall):
         self,
         id: str,
         pd: Optional[str] = None,
-        qp: str = None,
-        init_attr_obj=None,  # IbvQPInitAttr-like object with to_cxx(attr_name, ctx)
+        init_attr_obj: IbvQPInitAttr = None,  # IbvQPInitAttr-like object with to_cxx(attr_name, ctx)
     ):
         if not id:
             raise ValueError("id (cm_id) must be provided for RdmaCreateQP")
-        if not qp:
-            raise ValueError("qp must be provided for RdmaCreateQP")
 
         # rdma_cm_id to bind QP to
-        self.id = ResourceValue(resource_type="cm_id", value=id, mutable=False)
+        self.id = ResourceValue(
+            resource_type="cm_id", value=id, mutable=False
+        )  # 这个地方我想的是不要 mutable，减少困难
         # PD may be NULL (default PD will be used by librdmacm)
         self.pd = ResourceValue(resource_type="pd", value=pd) if pd else "NULL"
-        # Target QP variable to hold id->qp after successful rdma_create_qp
-        self.qp = ResourceValue(resource_type="qp", value=qp, mutable=False)
+        # # Target QP variable to hold id->qp after successful rdma_create_qp
+        # self.qp = ResourceValue(resource_type="qp", value=qp, mutable=False)
+        self.qp = ResourceValue(resource_type="qp", value=f"{id}->qp", mutable=False)
         # QP init attr object (responsible for generating the ibv_qp_init_attr C struct)
         self.init_attr_obj = init_attr_obj
 
     def apply(self, ctx: CodeGenContext):
         # Allocate the QP variable name in the codegen context (pointer, initialized to NULL)
-        ctx.alloc_variable(str(self.qp), "struct ibv_qp *", "NULL")
+        # ctx.alloc_variable(str(self.qp), "struct ibv_qp *", "NULL")
 
         # Best-effort binding hints for visualization/tracking
         # If available in context, register that this QP is associated with this cm_id.
-        if hasattr(ctx, "make_cm_qp_binding"):
-            try:
-                ctx.make_cm_qp_binding(str(self.id), str(self.qp))
-            except Exception:
-                pass
+        # if hasattr(ctx, "make_cm_qp_binding"):
+        #     try:
+        #         ctx.make_cm_qp_binding(str(self.id), str(self.qp))
+        #     except Exception:
+        #         pass
+        # 暂时不知道是否必要
 
         # Contract application (state/resource tracking)
         if hasattr(ctx, "contracts"):
@@ -116,27 +118,11 @@ class RdmaCreateQP(VerbCall):
         if (rc) {{
             fprintf(stderr, "rdma_create_qp failed for id {id_name} (rc=%d)\\n", rc);
         }} else {{
-            /* QP is created and attached to cm_id; capture pointer into our named variable */
-            {qp_name} = {id_name}->qp;
-            IF_OK_PTR({qp_name}, {{
-                qps[qps_size++] = (PR_QP){{
-                    .id = "{qp_name}",
-                    .qpn = {qp_name}->qp_num,
-                    .psn = 0,
-                    .port = 1,
-                    .lid = 0,
-                    .gid = "" /* will set below */
-                }};
 
-                snprintf(qps[qps_size-1].gid, sizeof(qps[qps_size-1].gid),
-                         "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
-                         {ctx.gid_var}.raw[0], {ctx.gid_var}.raw[1], {ctx.gid_var}.raw[2], {ctx.gid_var}.raw[3],
-                         {ctx.gid_var}.raw[4], {ctx.gid_var}.raw[5], {ctx.gid_var}.raw[6], {ctx.gid_var}.raw[7],
-                         {ctx.gid_var}.raw[8], {ctx.gid_var}.raw[9], {ctx.gid_var}.raw[10], {ctx.gid_var}.raw[11],
-                         {ctx.gid_var}.raw[12], {ctx.gid_var}.raw[13], {ctx.gid_var}.raw[14], {ctx.gid_var}.raw[15]);
-
-                pr_write_client_update_claimed(CLIENT_UPDATE_PATH, qps, qps_size, mrs, mrs_size, prs, prs_size);
-            }});
         }}
-    }});
-"""
+    }});"""
+
+        # /* On success, the created QP pointer is in id->qp */
+        # {qp_name} = {id_name}->qp;
+        # assert({qp_name} != NULL);
+        # /* QP is now in RESET state and ready for posting receives (if unconnected) */
