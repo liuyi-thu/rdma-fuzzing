@@ -162,6 +162,7 @@ def _get_by_path(root, path: str, *, missing_ok: bool = False):
 
 
 # -------- 资源状态机：可按需扩展 --------
+# 不区分资源类型
 class State(Enum):
     ALLOCATED = auto()  # 一般对象刚创建
     RESET = auto()  # QP 创建后初始状态
@@ -173,6 +174,8 @@ class State(Enum):
     USED = auto()  # for local resources only
     ADDR_RESOLVED = auto()
     ROUTE_RESOLVED = auto()
+    CONNECTED = auto()
+    DISCONNECTED = auto()
 
 
 @dataclass(frozen=True)
