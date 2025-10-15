@@ -23,7 +23,7 @@ def get_connection(db_path: str = "callchain.db") -> sqlite3.Connection:
         raise
 
 
-def function(function_name: str, space: str) -> Optional[Tuple[str, str]]:
+def get_call_chain(function_name: str, space: str) -> Optional[Tuple[str, str]]:
     """
     根据函数名和空间类型查询对应的 source_function 和 call_chain
 

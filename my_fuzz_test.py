@@ -8,7 +8,7 @@ from typing import List
 
 from jinja2 import Environment, FileSystemLoader
 
-from lib import fuzz_mutate
+from lib import fuzz_mutate, sqlite3_llm_callback
 from lib.codegen_context import CodeGenContext
 from lib.corpus import Corpus
 from lib.debug_dump import summarize_verb, summarize_verb_list
