@@ -6,15 +6,18 @@ import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import random
 
 from lib import utils
 from lib.auto_run import run_once
 from lib.fingerprint import FingerprintManager
 from lib.dmesg_collector import DmesgCollector
+from lib.gcov_llm_callback import get_uncovered_function_count, get_random_uncovered_function
+from lib.sqlite3_llm_callback import get_call_chain
 
 FP_MANAGER = FingerprintManager()
 
+user_no_change_streak = 0
+kernel_no_change_streak = 0
 
 def feed_back():
     utils.run_cmd("rm -f /home/user_coverage.json")
@@ -233,6 +236,46 @@ def execute_and_collect() -> Dict[str, Any]:
         print("[+] Keep this input (valuable)")
     else:
         print("[-] Discard this input (no novelty)")
+        # Call get_uncovered_function_count for user and kernel spaces
+
+    user_uncovered_count = get_uncovered_function_count(space="user")
+    kernel_uncovered_count = get_uncovered_function_count(space="kernel")
+
+    global user_no_change_streak, kernel_no_change_streak
+    # Update streak counters
+    if user_uncovered_count == 0:
+        user_no_change_streak += 1
+    else:
+        user_no_change_streak = 0
+
+    if kernel_uncovered_count == 0:
+        kernel_no_change_streak += 1
+    else:
+        kernel_no_change_streak = 0
+
+    # Print uncovered function statistics
+    print(f"[+] User uncovered functions: {user_uncovered_count}, No change streak: {user_no_change_streak}")
+    print(f"[+] Kernel uncovered functions: {kernel_uncovered_count}, No change streak: {kernel_no_change_streak}")
+
+    # Check if either streak reaches 20
+    if user_no_change_streak >=20:
+        user_no_change_streak = 0
+        user_function = get_random_uncovered_function(space="user").strip()
+        source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
+
+        """
+        请在这里调用gen_scaffold函数生成新的scaffold
+        """
+    elif kernel_no_change_streak >=20:
+        kernel_no_change_streak = 0
+        kernel_function = get_random_uncovered_function(space="kernel").strip()
+        source_function, call_chain = get_call_chain(kernel_function, space="kernel") or (None, None)
+
+        """
+        请在这里调用gen_scaffold函数生成新的scaffold
+        """
+
+
     return {
         "keep": keep,
         "outcome": raw.get("outcome"),
@@ -241,6 +284,6 @@ def execute_and_collect() -> Dict[str, Any]:
         "runtime_ms": int(raw.get("runtime_ms", 0)),
         "crash_site": raw.get("crash_site"),
         "score": score,
-        "dmesg_new": dmesg_content,  # 传递dmesg信息
+        "dmesg_new": dmesg_content,
         "detail": raw,
     }
