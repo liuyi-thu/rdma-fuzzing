@@ -5,19 +5,20 @@ import os.path
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from lib import utils
 from lib.auto_run import run_once
 from lib.fingerprint import FingerprintManager
-from lib.dmesg_collector import DmesgCollector
-from lib.gcov_llm_callback import get_uncovered_function_count, get_random_uncovered_function
+from lib.gcov_llm_callback import get_random_uncovered_function, get_uncovered_function_count
+from lib.llm_utils import gen_scaffold
 from lib.sqlite3_llm_callback import get_call_chain
 
 FP_MANAGER = FingerprintManager()
 
 user_no_change_streak = 0
 kernel_no_change_streak = 0
+
 
 def feed_back():
     utils.run_cmd("rm -f /home/user_coverage.json")
@@ -133,6 +134,7 @@ def parse_crash_site(log_path: str) -> Optional[str]:
 def collect_latest_dmesg() -> str:
     """收集最新生成的dmesg文件内容"""
     from pathlib import Path
+
     repo_dir = Path("./repo")
 
     # 查找最新的dmesg文件
@@ -208,8 +210,12 @@ def compute_score(cov_new: int, sem_new: int, outcome: str, runtime_ms: int, fla
     score = w_cov * cov_new + w_sem * sem_new + w_crash * crash_bonus
     score -= w_flaky * flaky_rate
     score -= w_slow * max(runtime_ms - 200, 0)  # 修复：去掉重复的w_slow
-    print(f"[DEBUG] Score calculation: cov_new={cov_new}, sem_new={sem_new}, outcome={outcome}, runtime_ms={runtime_ms}")
-    print(f"[DEBUG] crash_bonus={crash_bonus}, base_score={w_cov * cov_new + w_sem * sem_new + w_crash * crash_bonus:.3f}, penalty={w_slow * max(runtime_ms - 200, 0):.3f}")
+    print(
+        f"[DEBUG] Score calculation: cov_new={cov_new}, sem_new={sem_new}, outcome={outcome}, runtime_ms={runtime_ms}"
+    )
+    print(
+        f"[DEBUG] crash_bonus={crash_bonus}, base_score={w_cov * cov_new + w_sem * sem_new + w_crash * crash_bonus:.3f}, penalty={w_slow * max(runtime_ms - 200, 0):.3f}"
+    )
     return max(score, 0.0)
 
 
@@ -258,23 +264,23 @@ def execute_and_collect() -> Dict[str, Any]:
     print(f"[+] Kernel uncovered functions: {kernel_uncovered_count}, No change streak: {kernel_no_change_streak}")
 
     # Check if either streak reaches 20
-    if user_no_change_streak >=20:
+    if user_no_change_streak >= 20:
         user_no_change_streak = 0
         user_function = get_random_uncovered_function(space="user").strip()
         source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
+        gen_scaffold()
 
         """
         请在这里调用gen_scaffold函数生成新的scaffold
         """
-    elif kernel_no_change_streak >=20:
+    elif kernel_no_change_streak >= 20:
         kernel_no_change_streak = 0
         kernel_function = get_random_uncovered_function(space="kernel").strip()
         source_function, call_chain = get_call_chain(kernel_function, space="kernel") or (None, None)
-
+        gen_scaffold()
         """
         请在这里调用gen_scaffold函数生成新的scaffold
         """
-
 
     return {
         "keep": keep,
