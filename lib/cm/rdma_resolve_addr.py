@@ -31,7 +31,7 @@ C generation:
 """
 
 from lib.codegen_context import CodeGenContext
-from lib.contracts import Contract, RequireSpec, State, TransitionSpec
+from lib.contracts import Contract, ProduceSpec, RequireSpec, State, TransitionSpec
 from lib.value import (
     ConstantValue,
     IntValue,
@@ -56,7 +56,7 @@ class RdmaResolveAddr(VerbCall):
             RequireSpec(rtype="cm_id", state=State.ALLOCATED, name_attr="cm_id"),
             RequireSpec(rtype="sockaddr", state=State.ALLOCATED, name_attr="dst_addr"),
         ],
-        produces=[],
+        produces=[ProduceSpec(rtype="context", state=State.BOUND, name_attr="ctx")],
         transitions=[
             TransitionSpec(
                 rtype="cm_id",
@@ -92,6 +92,8 @@ class RdmaResolveAddr(VerbCall):
 
         # Timeout
         self.timeout_ms = IntValue(timeout_ms)
+
+        self.ctx = ResourceValue(resource_type="context", value=f"{cm_id}->verbs", mutable=False)
 
     def apply(self, ctx: CodeGenContext):
         # If any context-specific side effects are needed (like bindings), do them here.

@@ -176,6 +176,7 @@ class State(Enum):
     ROUTE_RESOLVED = auto()
     CONNECTED = auto()
     DISCONNECTED = auto()
+    BOUND = auto()
 
 
 @dataclass(frozen=True)
@@ -417,6 +418,7 @@ class ContractTable:
                 raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
                 self.require(spec.rtype, str(name), spec.state, spec.exclude_states)
+                print(f"  [contract] required {spec.rtype} {name} in state {spec.state} exclude {spec.exclude_states}")
 
         # 2) transitions
         for spec in contract.transitions:
@@ -426,6 +428,7 @@ class ContractTable:
                 raise ContractError(f"transition: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
                 self.transition(spec.rtype, str(name), spec.to_state, spec.from_state)
+                print(f"  [contract] transitioned {spec.rtype} {name} to state {spec.to_state}")
 
         # 3) produces
         for spec in contract.produces:
@@ -445,6 +448,7 @@ class ContractTable:
                     )
             for name in _as_iter(val):
                 self.put(spec.rtype, str(name), spec.state, metadata=metadata)
+                print(f"  [contract] produced {spec.rtype} {name} in state {spec.state}")
                 # if metadata:
                 #     print(f"  [contract] produced {spec.rtype} {name} with metadata {metadata}")
 
