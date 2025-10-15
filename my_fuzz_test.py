@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import sys
+import traceback
 from pathlib import Path
 from typing import List
 
@@ -25,7 +26,7 @@ from lib.ibv_all import (
     IbvSrqAttr,
     IbvSrqInitAttr,
 )
-from lib.llm_utils import gen_scaffold
+from lib.runexec import execute_and_collect
 from lib.verbs import (
     AllocDM,
     AllocPD,
@@ -277,15 +278,6 @@ def setup_seed_logging(seed_index: str) -> logging.Logger:
 
 if __name__ == "__main__":
     print("This is my_fuzz_test.py - Multi-mutation batch mode")
-    logger = logging.getLogger()
-    logging.basicConfig(level=logging.DEBUG)
-    for h in list(logger.handlers):
-        logger.removeHandler(h)
-
-    fh = logging.FileHandler("out.log", mode="w", encoding="utf-8")
-    fmt = logging.Formatter("%(message)s")
-    fh.setFormatter(fmt)
-    logger.addHandler(fh)
 
     corpus = Corpus("seeds")
     verbs = copy.deepcopy(INITIAL_VERBS)
@@ -296,92 +288,95 @@ if __name__ == "__main__":
 
     rng = None
     mutator = fuzz_mutate.ContractAwareMutator(rng)
-    print(summarize_verb_list(verbs, deep=True))
-    print()
-    for i in range(10):
-        flag = mutator.mutate_insert(verbs, idx=None, choice="srq_post_burst")
-    gen_scaffold()
-    # if not flag:
-    #     print("Mutation failed...")
-    print(summarize_verb_list(verbs, deep=True))
-    rendered = render(verbs)
-    with open("client.cpp", "w") as f:
-        f.write(rendered)
 
-    # # 配置批量变异参数
-    # BATCH_SIZE = 20  # 每批变异数量，可根据需要调整
+    # 配置批量变异参数
+    BATCH_SIZE = 5  # 每批变异数量，可根据需要调整
 
-    # while True:
-    #     # Generate seed index and setup logging
-    #     seed_index = next_seed_index()
-    #     logger = setup_seed_logging(seed_index)
-    #     logger.info("Starting batch of %d mutations for seed %s", BATCH_SIZE, seed_index)
+    while True:
+        # Generate seed index and setup logging
+        seed_index = next_seed_index()
+        logger = setup_seed_logging(seed_index)
+        logger.info("Starting batch of %d mutations for seed %s", BATCH_SIZE, seed_index)
 
-    #     base_sid = corpus.pick_for_fuzz()
-    #     logger.info("Picked seed: %s", base_sid)
-    #     if not base_sid:
-    #         base_sid = sid0
-    #     base_verbs = corpus.load_verbs(base_sid)
-    #     if not base_verbs:
-    #         base_verbs = copy.deepcopy(verbs)
-    #     logger.info("Base verbs: %s", summarize_verb_list(base_verbs, deep=True))
+        base_sid = corpus.pick_for_fuzz()
+        logger.info("Picked seed: %s", base_sid)
+        if not base_sid:
+            base_sid = sid0
+        base_verbs = corpus.load_verbs(base_sid)
+        if not base_verbs:
+            base_verbs = copy.deepcopy(verbs)
+        logger.info("Base verbs: %s", summarize_verb_list(base_verbs, deep=True))
 
-    #     # 执行多次变异，只在verbs阶段，最后一次才生成cpp
-    #     cur_verbs = copy.deepcopy(base_verbs)
+        # 执行多次变异，只在verbs阶段，最后一次才生成cpp
+        cur_verbs = copy.deepcopy(base_verbs)
 
-    #     # 进行多次变异（除了最后一次，都只停留在verbs阶段）
-    #     for mutation_idx in range(BATCH_SIZE):
-    #         logger.info("Processing mutation %d/%d (verbs only)", mutation_idx + 1, BATCH_SIZE)
+        # 进行多次变异（除了最后一次，都只停留在verbs阶段）
+        for mutation_idx in range(BATCH_SIZE):
+            logger.info("Processing mutation %d/%d (verbs only)", mutation_idx + 1, BATCH_SIZE)
 
-    #         # 执行变异
-    #         logger.info("Starting mutation %d on seed %s", mutation_idx + 1, seed_index)
-    #         try:
-    #             mutator.mutate(cur_verbs)
-    #             logger.info("Mutation %d completed for seed %s (verbs: %s)",
-    #                        mutation_idx + 1, seed_index,
-    #                        summarize_verb_list(cur_verbs, deep=False, max_items=3))
-    #         except Exception as e:
-    #             logger.error("Mutation %d failed: %s", mutation_idx + 1, str(e))
-    #             # 如果变异失败，使用之前的状态继续
-    #             continue
+            # 执行变异
+            logger.info("Starting mutation %d on seed %s", mutation_idx + 1, seed_index)
+            try:
+                mutator.mutate(cur_verbs)
+                logger.info(
+                    "Mutation %d completed for seed %s (verbs: %s)",
+                    mutation_idx + 1,
+                    seed_index,
+                    summarize_verb_list(cur_verbs, deep=False),
+                )
+            except Exception as e:
+                logger.error("Mutation %d failed: %s", mutation_idx + 1, str(e))
+                # 如果变异失败，使用之前的状态继续
+                continue
 
-    #     # 现在只对最终的verbs生成cpp并执行（完全按照原有流程）
-    #     logger.info("Final verbs after %d mutations: %s", BATCH_SIZE, summarize_verb_list(cur_verbs, deep=True))
+        # 现在只对最终的verbs生成cpp并执行（完全按照原有流程）
+        logger.info("Final verbs after %d mutations: %s", BATCH_SIZE, summarize_verb_list(cur_verbs, deep=True))
 
-    #     rendered = render(cur_verbs)
-    #     with open("client.cpp", "w") as f:
-    #         f.write(rendered)
-    #     logger.info("Generated client.cpp for seed %s (after %d mutations)", seed_index, BATCH_SIZE)
+        try:
+            rendered = render(cur_verbs)
+            with open("client.cpp", "w") as f:
+                f.write(rendered)
+            logger.info("Generated client.cpp for seed %s (after %d mutations)", seed_index, BATCH_SIZE)
+        except Exception as e:
+            logger.error("Failed to render client.cpp for seed %s: %s", seed_index, str(e))
+            logger.error("Traceback: %s", traceback.format_exc())
+            # 跳过当前种子，继续下一个
+            continue
 
-    #     logger.info("Executing and collecting metrics for seed %s", seed_index)
-    #     metrics = execute_and_collect()
-    #     logger.info("Metrics for seed %s: %s", seed_index, metrics)
+        logger.info("Executing and collecting metrics for seed %s", seed_index)
+        metrics = execute_and_collect()
+        logger.info("Metrics for seed %s: %s", seed_index, metrics)
 
-    #     new_sid = corpus.add(
-    #         cur_verbs,
-    #         meta={
-    #             "cov_bits_new": int(metrics.get("cov_new", 0)),
-    #             "sem_novelty": float(metrics.get("sem_novelty", 0.0)),
-    #             "mutation_count": BATCH_SIZE,  # 记录进行了多少次变异
-    #         },
-    #     )
-    #     logger.info("Added to corpus as new_sid: %s", new_sid)
+        new_sid = corpus.add(
+            cur_verbs,
+            meta={
+                "cov_bits_new": int(metrics.get("cov_new", 0)),
+                "sem_novelty": float(metrics.get("sem_novelty", 0.0)),
+                "mutation_count": BATCH_SIZE,  # 记录进行了多少次变异
+            },
+        )
+        logger.info("Added to corpus as new_sid: %s", new_sid)
 
-    #     corpus.record_run(
-    #         new_sid,
-    #         {
-    #             "outcome": metrics.get("outcome"),
-    #             "cov_delta": int(metrics.get("cov_new", 0)),
-    #             "runtime_ms": int(metrics.get("runtime_ms", 0)),
-    #             "score": float(metrics.get("score", 0.0)),
-    #             "detail": metrics.get("detail"),
-    #             "mutation_count": BATCH_SIZE,
-    #         },
-    #     )
-    #     logger.info("Recorded run for seed %s with outcome: %s, score: %.3f (after %d mutations)",
-    #                seed_index, metrics.get("outcome"), float(metrics.get("score", 0.0)), BATCH_SIZE)
+        corpus.record_run(
+            new_sid,
+            {
+                "outcome": metrics.get("outcome"),
+                "cov_delta": int(metrics.get("cov_new", 0)),
+                "runtime_ms": int(metrics.get("runtime_ms", 0)),
+                "score": float(metrics.get("score", 0.0)),
+                "detail": metrics.get("detail"),
+                "mutation_count": BATCH_SIZE,
+            },
+        )
+        logger.info(
+            "Recorded run for seed %s with outcome: %s, score: %.3f (after %d mutations)",
+            seed_index,
+            metrics.get("outcome"),
+            float(metrics.get("score", 0.0)),
+            BATCH_SIZE,
+        )
 
-    #     # Close logger handlers to free resources
-    #     for handler in logger.handlers[:]:
-    #         logger.removeHandler(handler)
-    #         handler.close()
+        # Close logger handlers to free resources
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            handler.close()
