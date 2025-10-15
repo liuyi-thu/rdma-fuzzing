@@ -25,7 +25,7 @@ try:
 except ImportError:
     from value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
 
-from .contracts import Contract, ProduceSpec, RequireSpec, State, TransitionSpec
+from lib.contracts import Contract
 
 IBV_QP_TYPE_ENUM = {
     2: "IBV_QPT_RC",
@@ -43,9 +43,10 @@ class IbvQPInitAttr(Attr):
     MUTABLE_FIELDS = FIELD_LIST
     CONTRACT = Contract(
         requires=[
-            RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="send_cq"),
-            RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="recv_cq"),
-            RequireSpec(rtype="srq", state=State.ALLOCATED, name_attr="srq"),
+            # RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="send_cq"),
+            # RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="recv_cq"),
+            # RequireSpec(rtype="srq", state=State.ALLOCATED, name_attr="srq"),
+            # this is duplicated
         ],
         produces=[],
         transitions=[],
@@ -57,15 +58,15 @@ class IbvQPInitAttr(Attr):
         )  # 默认值为0
         self.send_cq = OptionalValue(
             ResourceValue(value=send_cq, resource_type="cq") if send_cq is not None else None,
-            factory=lambda: ResourceValue(value="send_cq_0", resource_type="cq"),
+            factory=lambda: ResourceValue(value="NULL", resource_type="cq"),
         )  # 默认值为"send_cq_0"
         self.recv_cq = OptionalValue(
             ResourceValue(value=recv_cq, resource_type="cq") if recv_cq is not None else None,
-            factory=lambda: ResourceValue(value="recv_cq_0", resource_type="cq"),
+            factory=lambda: ResourceValue(value="NULL", resource_type="cq"),
         )  # 默认值为"recv_cq_0"
         self.srq = OptionalValue(
             ResourceValue(value=srq, resource_type="srq") if srq is not None else None,
-            factory=lambda: ResourceValue(value="srq_0", resource_type="srq"),
+            factory=lambda: ResourceValue(value="NULL", resource_type="srq"),
         )  # 默认值为"srq_0"
         self.cap = OptionalValue(cap if cap is not None else None, factory=lambda: IbvQPCap())  # 默认值为IbvQPCap()
         self.qp_type = OptionalValue(
