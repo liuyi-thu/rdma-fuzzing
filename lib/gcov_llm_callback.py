@@ -195,6 +195,72 @@ def get_all_uncovered_functions(
         return []
 
 
+def get_uncovered_function_count(
+        space: str = "user",
+        user_coverage_path: Optional[str] = None,
+        kernel_coverage_path: Optional[str] = None,
+        user_list_path: Optional[str] = None,
+        kernel_list_path: Optional[str] = None,
+) -> int:
+    """
+    获取未覆盖函数的数量
+
+    Args:
+        space: 空间类型，"user" 或 "kernel"
+        user_coverage_path: 用户态覆盖率JSON文件路径，默认为 /home/user_coverage.json
+        kernel_coverage_path: 内核态覆盖率JSON文件路径，默认为 /home/kernel_coverage.json
+        user_list_path: 用户态函数列表文件路径，默认为 user.txt
+        kernel_list_path: 内核态函数列表文件路径，默认为 kernel.txt
+
+    Returns:
+        int: 未覆盖函数的数量
+    """
+    if user_coverage_path is None:
+        user_coverage_path = "/home/user_coverage.json"
+    if kernel_coverage_path is None:
+        kernel_coverage_path = "/home/kernel_coverage.json"
+    if user_list_path is None:
+        user_list_path = "user.txt"
+    if kernel_list_path is None:
+        kernel_list_path = "kernel.txt"
+
+    try:
+        if space.lower() == "user":
+            coverage_path = user_coverage_path
+            function_list_path = user_list_path
+            print(f"[+] 统计用户态未覆盖函数")
+        elif space.lower() == "kernel":
+            coverage_path = kernel_coverage_path
+            function_list_path = kernel_list_path
+            print(f"[+] 统计内核态未覆盖函数")
+        else:
+            print(f"[-] 错误: space 参数必须是 'user' 或 'kernel'，当前值为 '{space}'")
+            return 0
+
+        coverage_data = load_coverage_data(coverage_path)
+        target_functions = load_function_list(function_list_path)
+
+        print(f"[+] 正在统计execution_count为0的函数...")
+        zero_coverage_funcs = extract_zero_coverage_functions(coverage_data, target_functions)
+
+        # 去重
+        unique_zero_coverage_funcs = list(set(zero_coverage_funcs))
+        count = len(unique_zero_coverage_funcs)
+
+        total_target_count = len(target_functions)
+        coverage_rate = ((total_target_count - count) / total_target_count * 100) if total_target_count > 0 else 0
+
+        print(f"[+] 目标函数总数: {total_target_count}")
+        print(f"[+] 未覆盖函数数量: {count}")
+        print(f"[+] 覆盖率: {coverage_rate:.2f}%")
+
+        return count
+
+    except Exception as e:
+        print(f"[-] 统计过程中出错: {e}")
+        return 0
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("[+] 测试内核态未覆盖函数查找 (使用自定义路径)")
