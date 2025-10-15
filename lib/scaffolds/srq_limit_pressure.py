@@ -70,7 +70,7 @@ def srq_limit_pressure(
         PostSRQRecv(srq=srq, wr_obj=rwr),
         PostSRQRecv(srq=srq, wr_obj=IbvRecvWR(wr_id=0xD102, sg_list=[IbvSge(mr=mr, length=256)], num_sge=1)),
         # 降低 limit
-        ModifySRQ(srq=srq, srq_attr_obj=IbvSrqAttr(srqlimit=1)),
+        ModifySRQ(srq=srq, attr_obj=IbvSrqAttr(srqlimit=1)),
     ]
     # 连续发送，施压 SRQ
     for i in range(n_post):
@@ -187,7 +187,7 @@ def build(local_snapshot, global_snapshot, rng) -> Tuple[List[VerbCall], List[in
     verbs.append(PostSRQRecv(srq=srq, wr_obj=IbvRecvWR(wr_id=0xD101, sg_list=[IbvSge(mr=mr, length=256)], num_sge=1)))
     verbs.append(PostSRQRecv(srq=srq, wr_obj=IbvRecvWR(wr_id=0xD102, sg_list=[IbvSge(mr=mr, length=256)], num_sge=1)))
     # 降低 srqlimit，制造回压
-    verbs.append(ModifySRQ(srq=srq, srq_attr_obj=IbvSrqAttr(srq_limit=1)))
+    verbs.append(ModifySRQ(srq=srq, attr_obj=IbvSrqAttr(srq_limit=1)))
 
     # 4) 连续发送施压 + Poll
     burst = 32

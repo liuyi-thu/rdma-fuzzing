@@ -12,7 +12,7 @@ from lib.verbs import QueryGID, QueryPKey, QueryPortAttr, QueryQP, VerbCall
 def query_suite(pd="pd0", cq="cq0", qp="qp0", port=1) -> Tuple[List[VerbCall], List[int]]:
     """RTS 后查询一把，覆盖 query 分支（适配 RXE 环境）。"""
     seq: List[VerbCall] = [
-        QueryQP(qp=qp, attr_mask="IBV_QP_STATE | IBV_QP_CAP | IBV_QP_PATH_MTU", out_init_attr=True),
+        QueryQP(qp=qp, attr_mask="IBV_QP_STATE | IBV_QP_CAP | IBV_QP_PATH_MTU"),
         QueryPortAttr(port=port),
         QueryGID(port=port, index=0),
         QueryPKey(port=port, index=0),
