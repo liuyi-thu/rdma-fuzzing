@@ -1946,7 +1946,7 @@ class ContractAwareMutator:
             # 根据 choice 决定生成哪种 verb
             cand: Optional[List[VerbCall] | VerbCall] = None
 
-            if rng.random() < 0:
+            if rng.random() < 0.7:
                 # 1.1 选模板
                 builder = _pick_insertion_template(
                     rng, verbs, i, choice, global_snapshot
