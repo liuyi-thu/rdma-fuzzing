@@ -98,10 +98,10 @@ class ClientCapture:
         self.lock = threading.Lock()
         self.proc = None
         self.thread = None
-        self.dmesg_collector = DmesgCollector(REPO_DIR)  # 添加dmesg收集器
+        self.dmesg_collector = DmesgCollector(REPO_DIR)  # 添加journalctl收集器
 
     def start(self, env: dict):
-        # 在client启动前设置dmesg基线
+        # 在client启动前设置时间基线
         self.dmesg_collector.get_baseline()
 
         cmd = ["stdbuf", "-oL", "-eL", CLIENT_BIN]
@@ -176,7 +176,7 @@ class ClientCapture:
             logger.exception("Failed to update client binary cache")
 
     def collect_dmesg_after_exit(self) -> str:
-        """收集client退出后的新增dmesg信息"""
+        """收集client退出后的新增journalctl信息"""
         return self.dmesg_collector.collect_new_messages(self.index)
 
 
@@ -271,12 +271,12 @@ def run_once():
             exit_code = client_proc.wait()
             logger.info("client exited, exit code=%s", exit_code)
 
-            # 收集client退出后的新增dmesg信息
+            # 收集client退出后的新增journalctl信息
             new_dmesg = cc.collect_dmesg_after_exit()
             if new_dmesg:
-                logger.info("Collected new dmesg: %d characters", len(new_dmesg))
+                logger.info("Collected new journalctl: %d characters", len(new_dmesg))
             else:
-                logger.debug("No new dmesg messages found")
+                logger.debug("No new journalctl messages found")
         else:
             logger.warning("client not started, cleaning up other processes directly")
     except Exception:
