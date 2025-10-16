@@ -16,6 +16,9 @@ from lib.sqlite3_llm_callback import get_call_chain
 
 FP_MANAGER = FingerprintManager()
 
+last_user_coverage = None
+last_kernel_coverage = None
+
 user_no_change_streak = 0
 kernel_no_change_streak = 0
 
@@ -220,6 +223,9 @@ def compute_score(cov_new: int, sem_new: int, outcome: str, runtime_ms: int, fla
 
 
 def execute_and_collect() -> Dict[str, Any]:
+    global user_no_change_streak, kernel_no_change_streak
+    global last_user_coverage, last_kernel_coverage
+
     print("[+] Collecting fuzz execution metrics")
     raw = build_and_run()
     diff = diff_coverage_and_semantics(raw.get("coverage_edges", set()), raw.get("sem_signature", set()))
@@ -227,7 +233,7 @@ def execute_and_collect() -> Dict[str, Any]:
     sem_new = diff["sem_new"]
     print(f"[+] Coverage delta: {cov_new}, Semantic delta: {sem_new}")
 
-    # 检查dmesg信息
+    # Check dmesg information
     dmesg_content = raw.get("dmesg_new", "")
     if dmesg_content:
         print(f"[+] New dmesg content: {len(dmesg_content)} characters")
@@ -242,22 +248,23 @@ def execute_and_collect() -> Dict[str, Any]:
         print("[+] Keep this input (valuable)")
     else:
         print("[-] Discard this input (no novelty)")
-        # Call get_uncovered_function_count for user and kernel spaces
 
+    # Call get_uncovered_function_count for user and kernel spaces
     user_uncovered_count = get_uncovered_function_count(space="user")
     kernel_uncovered_count = get_uncovered_function_count(space="kernel")
 
-    global user_no_change_streak, kernel_no_change_streak
-    # Update streak counters
-    if user_uncovered_count == 0:
+    # Compare with last coverage counts
+    if last_user_coverage is not None and user_uncovered_count == last_user_coverage:
         user_no_change_streak += 1
     else:
         user_no_change_streak = 0
+        last_user_coverage = user_uncovered_count
 
-    if kernel_uncovered_count == 0:
+    if last_kernel_coverage is not None and kernel_uncovered_count == last_kernel_coverage:
         kernel_no_change_streak += 1
     else:
         kernel_no_change_streak = 0
+        last_kernel_coverage = kernel_uncovered_count
 
     # Print uncovered function statistics
     print(f"[+] User uncovered functions: {user_uncovered_count}, No change streak: {user_no_change_streak}")
@@ -270,17 +277,11 @@ def execute_and_collect() -> Dict[str, Any]:
         source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
         gen_scaffold()
 
-        """
-        请在这里调用gen_scaffold函数生成新的scaffold
-        """
     elif kernel_no_change_streak >= 20:
         kernel_no_change_streak = 0
         kernel_function = get_random_uncovered_function(space="kernel").strip()
         source_function, call_chain = get_call_chain(kernel_function, space="kernel") or (None, None)
         gen_scaffold()
-        """
-        请在这里调用gen_scaffold函数生成新的scaffold
-        """
 
     return {
         "keep": keep,

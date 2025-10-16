@@ -128,7 +128,10 @@ def gen_scaffold(
     fname = f"scaffold_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
     with open(os.path.join(output_dir, fname), "w", encoding="utf-8") as f:
         f.write(resp)
-    # print("Saved to:", fname)
+    print("Saved to:", fname)
 
     # # （可选）查看 token 用量
     # print("usage:", completion.usage)  # prompt_tokens / completion_tokens / total_tokens
+
+
+gen_scaffold()
