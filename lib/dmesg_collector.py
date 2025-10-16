@@ -3,126 +3,175 @@ import logging
 import time
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 class DmesgCollector:
-    """高效的增量dmesg信息收集器"""
+    """基于journalctl的内核日志收集器"""
 
     def __init__(self, repo_dir: Path = None):
-        self.last_line_count = 0
+        self.start_time = None
+        self.end_time = None
         self.repo_dir = repo_dir or Path("./repo")
         self.repo_dir.mkdir(parents=True, exist_ok=True)
 
     def get_baseline(self) -> bool:
-        """获取当前dmesg行数基线，返回是否成功"""
-        try:
-            result = subprocess.run(
-                ["dmesg"],
-                capture_output=True, text=True, timeout=3
-            )
-            if result.returncode == 0:
-                self.last_line_count = len(result.stdout.splitlines())
-                logger.debug("dmesg baseline set to %d lines", self.last_line_count)
-                return True
-            else:
-                logger.warning("Failed to get dmesg baseline: %s", result.stderr)
-                return False
-        except subprocess.TimeoutExpired:
-            logger.warning("dmesg baseline command timed out")
-            return False
-        except Exception as e:
-            logger.exception("Failed to get dmesg baseline: %s", e)
-            return False
+        """记录当前时间作为基线时间"""
+        self.start_time = datetime.now()
+        logger.debug("Journalctl baseline time set to %s", self.start_time)
+        return True
 
     def collect_new_messages(self, idx: str) -> str:
-        """只收集新增的dmesg消息，返回新增内容"""
+        """收集两个时间点之间的内核日志消息，返回相关内容"""
+        self.end_time = datetime.now()
+        
+        if self.start_time is None:
+            logger.warning("No start time recorded, cannot collect journalctl messages")
+            return ""
+
         try:
-            # 获取最新的dmesg
+            # 格式化时间以供journalctl使用
+            start_time_str = self.start_time.strftime("%Y-%m-%d %H:%M:%S")
+            end_time_str = self.end_time.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 使用journalctl收集指定时间范围内的内核日志
+            # 只收集内核日志并进行过滤，避免读取过多无用信息
+            cmd = [
+                "journalctl",
+                "--since", start_time_str,
+                "--until", end_time_str,
+                "-k",  # 只显示内核日志
+                "-o", "short-iso"  # 使用标准格式
+            ]
+            
             result = subprocess.run(
-                ["dmesg"],
-                capture_output=True, text=True, timeout=5
+                cmd,
+                capture_output=True, text=True, timeout=10
             )
+            
             if result.returncode != 0:
-                logger.warning("dmesg command failed: %s", result.stderr)
+                logger.warning("journalctl command failed: %s", result.stderr)
                 return ""
 
-            all_lines = result.stdout.splitlines()
-            # 只取新增的行
-            new_lines = all_lines[self.last_line_count:]
-            new_content = "\n".join(new_lines)
+            # 过滤包含KASAN、Oops等关键字的行，这些通常是内核错误信息
+            lines = result.stdout.splitlines()
+            filtered_lines = []
+            keywords = ["KASAN", "Oops", "kernel", "null-ptr-deref", "BUG", "WARNING", "segfault"]
+            
+            for line in lines:
+                # 检查是否包含我们关心的关键字
+                if any(keyword in line for keyword in keywords):
+                    filtered_lines.append(line)
+            
+            new_content = "\n".join(filtered_lines)
 
             if new_content:
                 dmesg_path = self.repo_dir / f"{idx}_dmesg.log"
                 try:
                     with open(dmesg_path, "w", encoding="utf-8") as f:
                         f.write(new_content)
-                    logger.info("Saved %d new dmesg lines to %s", len(new_lines), dmesg_path)
+                    logger.info("Saved %d filtered journalctl lines to %s", len(filtered_lines), dmesg_path)
                 except Exception as e:
-                    logger.exception("Failed to save dmesg to file: %s", e)
+                    logger.exception("Failed to save journalctl to file: %s", e)
             else:
-                logger.debug("No new dmesg messages found")
+                logger.debug("No relevant journalctl messages found")
 
-            # 更新基线
-            self.last_line_count = len(all_lines)
             return new_content
 
         except subprocess.TimeoutExpired:
-            logger.warning("dmesg collection command timed out")
+            logger.warning("journalctl collection command timed out")
             return ""
         except Exception as e:
-            logger.exception("Failed to collect new dmesg messages: %s", e)
+            logger.exception("Failed to collect journalctl messages: %s", e)
             return ""
 
     def collect_recent_messages(self, idx: str, seconds_ago: int = 30) -> str:
-        """收集最近N秒的dmesg信息（备用方法）"""
+        """收集最近N秒的内核日志信息（备用方法）"""
         try:
-            # 使用--since参数（如果系统支持）
-            start_time = time.time() - seconds_ago
-            start_time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time))
+            # 计算开始时间
+            start_time = datetime.now().timestamp() - seconds_ago
+            start_time_str = datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
+
+            # 使用journalctl收集最近的日志
+            cmd = [
+                "journalctl",
+                "--since", start_time_str,
+                "-k",  # 只显示内核日志
+                "-o", "short-iso"
+            ]
 
             result = subprocess.run(
-                ["dmesg", "--since", start_time_str],
-                capture_output=True, text=True, timeout=5
+                cmd,
+                capture_output=True, text=True, timeout=10
             )
 
             if result.returncode == 0:
                 content = result.stdout
                 if content:
+                    # 过滤内容
+                    lines = content.splitlines()
+                    filtered_lines = []
+                    keywords = ["KASAN", "Oops", "kernel", "null-ptr-deref", "BUG", "WARNING", "segfault"]
+                    
+                    for line in lines:
+                        if any(keyword in line for keyword in keywords):
+                            filtered_lines.append(line)
+                    
+                    filtered_content = "\n".join(filtered_lines)
+                    
                     dmesg_path = self.repo_dir / f"{idx}_dmesg_recent.log"
                     with open(dmesg_path, "w", encoding="utf-8") as f:
-                        f.write(content)
-                    logger.info("Saved recent dmesg (%ds) to %s", seconds_ago, dmesg_path)
+                        f.write(filtered_content)
+                    logger.info("Saved recent journalctl (%ds) to %s", seconds_ago, dmesg_path)
                 return content
             else:
-                # 如果--since不支持，回退到tail方法
-                return self._collect_tail_fallback(idx, lines=100)
+                logger.warning("journalctl command failed: %s", result.stderr)
+                return ""
 
         except Exception:
-            logger.debug("dmesg --since not supported, using tail fallback")
-            return self._collect_tail_fallback(idx, lines=100)
+            logger.exception("Failed to collect recent journalctl messages")
+            return ""
 
     def _collect_tail_fallback(self, idx: str, lines: int = 100) -> str:
-        """回退方法：使用tail获取最近的行"""
+        """回退方法：使用journalctl获取最近的行"""
         try:
-            # 如果dmesg不支持--since，尝试--tail
+            # 使用journalctl的--lines选项获取最近的日志
+            cmd = [
+                "journalctl",
+                "-k",  # 只显示内核日志
+                "--lines", str(lines),
+                "-o", "short-iso"
+            ]
+            
             result = subprocess.run(
-                ["dmesg", "--tail", str(lines)],
-                capture_output=True, text=True, timeout=3
+                cmd,
+                capture_output=True, text=True, timeout=10
             )
 
             if result.returncode == 0:
                 content = result.stdout
                 if content:
+                    # 过滤内容
+                    lines = content.splitlines()
+                    filtered_lines = []
+                    keywords = ["KASAN", "Oops", "kernel", "null-ptr-deref", "BUG", "WARNING", "segfault"]
+                    
+                    for line in lines:
+                        if any(keyword in line for keyword in keywords):
+                            filtered_lines.append(line)
+                    
+                    filtered_content = "\n".join(filtered_lines)
+                    
                     dmesg_path = self.repo_dir / f"{idx}_dmesg_tail.log"
                     with open(dmesg_path, "w", encoding="utf-8") as f:
-                        f.write(content)
-                    logger.info("Saved dmesg tail (%d lines) to %s", lines, dmesg_path)
+                        f.write(filtered_content)
+                    logger.info("Saved journalctl tail (%d lines) to %s", len(filtered_lines), dmesg_path)
                 return content
             else:
-                logger.warning("dmesg tail fallback failed: %s", result.stderr)
+                logger.warning("journalctl tail fallback failed: %s", result.stderr)
                 return ""
 
         except Exception as e:
-            logger.exception("dmesg tail fallback failed: %s", e)
+            logger.exception("journalctl tail fallback failed: %s", e)
             return ""

@@ -101,26 +101,34 @@ def extract_sem_signature(log_path: str) -> set[str]:
 
 
 def parse_crash_site(log_path: str) -> Optional[str]:
-    SUMMARY_RE = re.compile(r"^SUMMARY: AddressSanitizer: \S+ (\S+):(\d+) in")
+    SUMMARY_RE = re.compile(r"^SUMMARY: AddressSanitizer: \S+ (\S+):(\d+) in (\S+)")
     FRAME_SRC_RE = re.compile(r"^\s*#\d+\s+\S+\s+in\s+\S+\s+(/[^:]+):(\d+)")
     FRAME_MODULE_RE = re.compile(r"\(([^)]+)\+0x([0-9a-fA-F]+)\)")
+
     log_text = ""
     with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         log_text = f.read()
-    if "AddressSanitizer" not in log_text and "Address" not in log_text:
+
+    if "AddressSanitizer" not in log_text:
         return None
+
+    # Try to extract from SUMMARY
     for line in log_text.splitlines():
         m = SUMMARY_RE.search(line)
         if m:
-            filepath, lineno = m.group(1), m.group(2)
+            filepath, lineno, function = m.group(1), m.group(2), m.group(3)
             lib = Path(filepath).name
-            return f"bt#{lib}+{lineno}"
+            return f"bt#{lib}:{lineno} in {function}"
+
+    # Fallback: Extract from stack frames
     for line in log_text.splitlines():
         m = FRAME_SRC_RE.search(line)
         if m:
             filepath, lineno = m.group(1), m.group(2)
             lib = Path(filepath).name
-            return f"bt#{lib}+{lineno}"
+            return f"bt#{lib}:{lineno}"
+
+    # Fallback: Extract from module offsets
     for line in log_text.splitlines():
         m = FRAME_MODULE_RE.search(line)
         if m:
@@ -275,13 +283,19 @@ def execute_and_collect() -> Dict[str, Any]:
         user_no_change_streak = 0
         user_function = get_random_uncovered_function(space="user").strip()
         source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
-        gen_scaffold()
+        try:
+            gen_scaffold()
+        except Exception as e:
+            print(f"[-] gen_scaffold() failed: {e}")
 
     elif kernel_no_change_streak >= 20:
         kernel_no_change_streak = 0
         kernel_function = get_random_uncovered_function(space="kernel").strip()
         source_function, call_chain = get_call_chain(kernel_function, space="kernel") or (None, None)
-        gen_scaffold()
+        try:
+            gen_scaffold()
+        except Exception as e:
+            print(f"[-] gen_scaffold() failed: {e}")
 
     return {
         "keep": keep,
