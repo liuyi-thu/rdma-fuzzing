@@ -1,0 +1,82 @@
+# -*- coding: utf-8 -*-
+"""
+Scaffold plugin for RDMA CM API modeling.
+
+This plugin models the rdma_create_event_channel API as a high-level VerbCall.
+It encapsulates the semantics needed by the fuzzing framework to:
+- Track resource lifetimes via contracts (produce an event channel resource).
+- Generate corresponding C code that calls rdma_create_event_channel and assigns
+  it to a named variable.
+- Register the C variable in the code generation context.
+
+Users should ensure that the created event channel is eventually destroyed by
+rdma_destroy_event_channel and used to retrieve events via rdma_get_cm_event.
+"""
+
+from lib.codegen_context import CodeGenContext
+from lib.contracts import Contract, ProduceSpec, State
+from lib.value import (
+    ResourceValue,
+)
+from lib.verbs import VerbCall
+
+
+class CreateEventChannel(VerbCall):
+    """
+    Model for rdma_create_event_channel.
+
+    C prototype:
+        struct rdma_event_channel *rdma_create_event_channel(void);
+
+    Semantics:
+      - No input requirements.
+      - Produces a cm_event_channel resource in ALLOCATED state.
+      - The returned event channel maps to a file descriptor and should be
+        consumed by rdma_get_cm_event and destroyed by rdma_destroy_event_channel.
+    """
+
+    MUTABLE_FIELDS = ["channel"]
+
+    CONTRACT = Contract(
+        requires=[
+            # rdma_create_event_channel has no preconditions.
+        ],
+        produces=[
+            ProduceSpec(rtype="cm_event_channel", state=State.ALLOCATED, name_attr="channel"),
+        ],
+        transitions=[
+            # No transitions for other resources.
+        ],
+    )
+
+    def __init__(self, channel: str = None):
+        """
+        Parameters:
+            channel: The variable name to bind the created rdma_event_channel*.
+                     Must be provided so subsequent steps can reference it.
+        """
+        if not channel:
+            raise ValueError("channel must be provided for CreateEventChannel")
+        self.channel = ResourceValue(resource_type="cm_event_channel", value=channel, mutable=False)
+
+    def apply(self, ctx: CodeGenContext):
+        # Keep context for potential auxiliary bindings.
+        self.context = ctx
+
+        # Allocate the C variable for the event channel in the codegen context.
+        if self.context:
+            self.context.alloc_variable(str(self.channel), "struct rdma_event_channel *", "NULL")
+
+        # Apply the resource contract to the global contract engine, if present.
+        if hasattr(ctx, "contracts"):
+            ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
+
+    def generate_c(self, ctx: CodeGenContext) -> str:
+        ch_name = str(self.channel)
+        return f"""
+    /* rdma_create_event_channel */
+    {ch_name} = rdma_create_event_channel();
+    if (!{ch_name}) {{
+        fprintf(stderr, "Failed to create RDMA event channel {ch_name}\\n");
+    }}
+"""

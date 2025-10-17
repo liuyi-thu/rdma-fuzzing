@@ -79,6 +79,32 @@ class RdmaCreateQP(VerbCall):
         # QP init attr object (responsible for generating the ibv_qp_init_attr C struct)
         self.init_attr_obj = init_attr_obj
 
+    def _contract(self) -> Contract:
+        # override the CONTRACT if needed
+
+        CONTRACT = Contract(
+            requires=[
+                # rdma_cm_id must be bound to a device before creation
+                RequireSpec(rtype="cm_id", state=State.BOUND, name_attr="id"),
+                # qp_init_attr must reference valid CQs (required by verbs)
+                # SRQ is optional; if present within qp_init_attr, it must be allocated
+                # RequireSpec(rtype="srq", state=State.ALLOCATED, name_attr="init_attr_obj.srq"),
+            ],
+            produces=[
+                ProduceSpec(rtype="qp", state=State.RESET, name_attr="qp", metadata_fields=["pd", "id"]),
+            ],
+            transitions=[],
+        )
+        if self.pd != "NULL":
+            # If a specific PD is provided, ensure it is allocated
+            CONTRACT.requires.append(RequireSpec(rtype="pd", state=State.ALLOCATED, name_attr="pd"))
+        # if self.init_attr_obj.send_cq != "NULL":
+        #     CONTRACT.requires.append(RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="init_attr_obj.send_cq"))
+        # if self.init_attr_obj.recv_cq != "NULL":
+        #     CONTRACT.requires.append(RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="init_attr_obj.recv_cq"))
+
+        return self.CONTRACT
+
     def apply(self, ctx: CodeGenContext):
         # Allocate the QP variable name in the codegen context (pointer, initialized to NULL)
         # ctx.alloc_variable(str(self.qp), "struct ibv_qp *", "NULL")

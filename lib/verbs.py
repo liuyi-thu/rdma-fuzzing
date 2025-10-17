@@ -1,28 +1,28 @@
-from .codegen_context import CodeGenContext
-from .IbvAHAttr import IbvAHAttr
-from .IbvAllocDmAttr import IbvAllocDmAttr
-from .IbvCQInitAttrEx import IbvCQInitAttrEx
-from .IbvECE import IbvECE
-from .IbvFlowAttr import IbvFlowAttr
-from .IbvModifyCQAttr import IbvModifyCQAttr
-from .IbvMwBind import IbvMwBind
-from .IbvParentDomainInitAttr import IbvParentDomainInitAttr
-from .IbvQPAttr import IbvQPAttr
-from .IbvQPInitAttr import IbvQPInitAttr
-from .IbvQPInitAttrEx import IbvQPInitAttrEx
-from .IbvQPOpenAttr import IbvQPOpenAttr
-from .IbvQPRateLimitAttr import IbvQPRateLimitAttr
-from .IbvRecvWR import IbvRecvWR
-from .IbvSendWR import IbvSendWR
-from .IbvSge import IbvSge
-from .IbvSrqAttr import IbvSrqAttr
-from .IbvSrqInitAttr import IbvSrqInitAttr
-from .IbvSrqInitAttrEx import IbvSrqInitAttrEx
-from .IbvTdInitAttr import IbvTdInitAttr
-from .IbvWQAttr import IbvWQAttr
-from .IbvWQInitAttr import IbvWQInitAttr
-from .IbvXRCDInitAttr import IbvXRCDInitAttr
-from .value import (
+from lib.codegen_context import CodeGenContext
+from lib.IbvAHAttr import IbvAHAttr
+from lib.IbvAllocDmAttr import IbvAllocDmAttr
+from lib.IbvCQInitAttrEx import IbvCQInitAttrEx
+from lib.IbvECE import IbvECE
+from lib.IbvFlowAttr import IbvFlowAttr
+from lib.IbvModifyCQAttr import IbvModifyCQAttr
+from lib.IbvMwBind import IbvMwBind
+from lib.IbvParentDomainInitAttr import IbvParentDomainInitAttr
+from lib.IbvQPAttr import IbvQPAttr
+from lib.IbvQPInitAttr import IbvQPInitAttr
+from lib.IbvQPInitAttrEx import IbvQPInitAttrEx
+from lib.IbvQPOpenAttr import IbvQPOpenAttr
+from lib.IbvQPRateLimitAttr import IbvQPRateLimitAttr
+from lib.IbvRecvWR import IbvRecvWR
+from lib.IbvSendWR import IbvSendWR
+from lib.IbvSge import IbvSge
+from lib.IbvSrqAttr import IbvSrqAttr
+from lib.IbvSrqInitAttr import IbvSrqInitAttr
+from lib.IbvSrqInitAttrEx import IbvSrqInitAttrEx
+from lib.IbvTdInitAttr import IbvTdInitAttr
+from lib.IbvWQAttr import IbvWQAttr
+from lib.IbvWQInitAttr import IbvWQInitAttr
+from lib.IbvXRCDInitAttr import IbvXRCDInitAttr
+from lib.value import (
     ConstantValue,
     EnumValue,
     FlagValue,
@@ -58,7 +58,7 @@ except Exception:
         unwrap_all,
     )
 
-from .contracts import Contract, InstantiatedContract, ProduceSpec, RequireSpec, State, TransitionSpec
+from lib.contracts import Contract, InstantiatedContract, ProduceSpec, RequireSpec, State, TransitionSpec
 
 
 def mask_fields_to_c(mask):
@@ -3881,6 +3881,11 @@ class OpenDevice(VerbCall):
     """Open an RDMA device and create a context for use."""
 
     MUTABLE_FIELDS = ["device"]
+    CONTRACT = Contract(
+        requires=[],
+        produces=[ProduceSpec("context", State.ALLOCATED, "ctx_name")],
+        transitions=[],  # 若你有 WQ 状态机，可加 transitions
+    )
 
     def __init__(self, device: str = None, ctx_name: str = None):
         # Device name or variable, e.g., "dev_list[
@@ -3899,7 +3904,7 @@ class OpenDevice(VerbCall):
         self.context.alloc_variable(self.context.ib_ctx, "struct ibv_context *")
 
     def generate_c(self, ctx: CodeGenContext) -> str:
-        ib_ctx = self.context.ib_ctx if self.context else "ctx"
+        ib_ctx = self.ctx_name
         dev_list = self.context.dev_list  # Assuming correct allocation of device list
         return f"""
     /* ibv_open_device */
