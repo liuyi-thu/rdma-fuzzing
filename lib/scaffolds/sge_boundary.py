@@ -39,7 +39,7 @@ def sge_boundary(
         send_flags="IBV_SEND_SIGNALED",
     )
     seq = [
-        RegMR(pd=pd, mr=mr, addr=buf, length=8192, access="IBV_ACCESS_LOCAL_WRITE"),
+        RegMR(pd=pd, mr=mr, addr=buf, length=4096, access="IBV_ACCESS_LOCAL_WRITE"),
         PostSend(qp=qp, wr_obj=w1),
         PollCQ(cq=cq),
         PostSend(qp=qp, wr_obj=w2),

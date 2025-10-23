@@ -75,11 +75,11 @@ class IbvRdmaInfo(Attr):
     FIELD_LIST = ["remote_addr", "rkey"]
     MUTABLE_FIELDS = ["remote_addr", "rkey"]
 
-    def __init__(self, remote_addr=None, rkey=None, remote_mr=None):
+    def __init__(self, remote_mr=None):
         # self.remote_addr = IntValue(remote_addr, 2**64 - 1) if remote_addr is not None else None
         # self.rkey = IntValue(rkey, 0xFFFFFFFF) if rkey is not None else None
         if not remote_mr:
-            pass
+            raise ValueError("remote_mr must be provided for IbvRdmaInfo")
 
         self.remote_mr = remote_mr
         self.remote_addr = OptionalValue(
@@ -111,9 +111,9 @@ class IbvAtomicInfo(Attr):
     FIELD_LIST = ["remote_addr", "compare_add", "swap", "rkey"]
     MUTABLE_FIELDS = ["remote_addr", "compare_add", "swap", "rkey"]
 
-    def __init__(self, remote_addr=None, compare_add=None, swap=None, rkey=None, remote_mr=None):
+    def __init__(self, compare_add=None, swap=None, remote_mr=None):
         if not remote_mr:
-            pass
+            raise ValueError("remote_mr must be provided for IbvAtomicInfo")
 
         self.remote_mr = remote_mr
         self.compare_add = IntValue(compare_add, 2**64 - 1) if compare_add is not None else None

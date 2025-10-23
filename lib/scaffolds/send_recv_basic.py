@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
-from ..fuzz_mutate import _pick_unused_from_snap, gen_name
-from ..IbvRecvWR import IbvRecvWR
-from ..IbvSendWR import IbvSendWR
-from ..IbvSge import IbvSge
+from lib.fuzz_mutate import _pick_unused_from_snap, gen_name
+from lib.IbvRecvWR import IbvRecvWR
+from lib.IbvSendWR import IbvSendWR
+from lib.IbvSge import IbvSge
+from lib.scaffolds.base_connect import base_connect
 
 # ---- Imports aligned with your package layout ----
-from ..verbs import PollCQ, PostRecv, PostSend, RegMR, VerbCall
-from .base_connect import base_connect
+from lib.verbs import PollCQ, PostRecv, PostSend, RegMR, VerbCall
 
 
 def send_recv_basic(
@@ -39,16 +39,6 @@ def send_recv_basic(
 
 
 def build(local_snapshot, global_snapshot, rng) -> Tuple[List[VerbCall], List[int]] | None:
-    # pd = gen_name("pd", global_snapshot, rng)
-    # cq = gen_name("cq", global_snapshot, rng)
-    # qp = gen_name("qp", global_snapshot, rng)
-    # mr = gen_name("mr", global_snapshot, rng)
-    # buf = _pick_unused_from_snap(global_snapshot, "buf", rng)
-    # if pd and cq and qp and mr and buf:
-    #     return send_recv_basic(
-    #         pd=pd, cq=cq, qp=qp, mr=mr, buf=buf, recv_len=256, send_len=128, inline=False, build_mr=True
-    #     )
-    # return None
     pd = gen_name("pd", global_snapshot, rng)
     cq = gen_name("cq", global_snapshot, rng)
     qp = gen_name("qp", global_snapshot, rng)
@@ -57,14 +47,13 @@ def build(local_snapshot, global_snapshot, rng) -> Tuple[List[VerbCall], List[in
         verbs, hotspots = base_connect(pd, cq, qp, port=1, remote_qp=remote_qp)  # remote_qpn TBD
     else:
         return None
+    
     mr = gen_name("mr", global_snapshot, rng)
     buf = _pick_unused_from_snap(global_snapshot, "buf", rng)
     if pd and mr and cq and qp and buf:
         verbs2, hotspots2 = send_recv_basic(pd, cq, qp, mr, buf)  # 为了保证成功，其实qp和cq需要绑定
         verbs += verbs2
         hotspots += hotspots2
-        # print(verbs)
         return verbs, hotspots
     else:
-        print("send_recv failed:", pd, mr, cq, qp, buf)
         return None

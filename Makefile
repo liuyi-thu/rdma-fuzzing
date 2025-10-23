@@ -12,8 +12,8 @@ BIN_SERVER:= $(BIN_DIR)/server
 BIN_CLIENT:= $(BIN_DIR)/client
 
 # 视图/更新文件放在当前目录（与代码中的路径一致）
-SERVER_UPDATE := server_update.json
-CLIENT_UPDATE := client_update.json
+SERVER_UPDATE := $(BUILD_DIR)/server_update.json
+CLIENT_UPDATE := $(BUILD_DIR)/client_update.json
 SERVER_VIEW   := server_view.json
 CLIENT_VIEW   := client_view.json
 

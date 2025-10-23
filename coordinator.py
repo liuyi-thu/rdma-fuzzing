@@ -24,8 +24,13 @@
 #
 # This script uses only stdlib.
 
-import argparse, json, os, time, sys, socket
-from typing import Dict, Any, Tuple
+import argparse
+import json
+import os
+import socket
+import sys
+import time
+from typing import Any, Dict, Tuple
 
 POLL_INTERVAL = 0.1  # seconds
 
@@ -144,7 +149,7 @@ def main():
     args = ap.parse_args()
     # if args.clean:
 
-    # clean_cached_files([args.server_update, args.client_update, args.server_view, args.client_view])
+    clean_cached_files([args.server_update, args.client_update, args.server_view, args.client_view])
 
     prev_server_view = load_json(args.server_view)
     prev_client_view = load_json(args.client_view)

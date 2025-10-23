@@ -7,4 +7,3 @@ select = [         # 选择的规则
     "UP",
 ]
 ignore = ["F401", "F841", "W291"]   # 忽略的规则
-extend-select = ["I"]

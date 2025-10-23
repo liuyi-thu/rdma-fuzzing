@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from typing import List, Tuple
 
 from lib.fuzz_mutate import _pick_unused_from_snap, gen_name
@@ -37,7 +38,7 @@ def cq_pressure(
         )
         seq.append(PostSend(qp=qp, wr_obj=wr))
 
-    seq += [PollCQ(cq=cq) for _ in range(3)]
+    seq += [PollCQ(cq=cq) for _ in range(random.randint(burst // 8, burst // 4))]
 
     # Hotspots: the PostSend range we appended（根据是否创建CQ来对齐索引）
     first_ps = 2 if not reuse_cq else 1

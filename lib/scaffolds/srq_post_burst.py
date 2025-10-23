@@ -28,17 +28,7 @@ from lib.IbvSge import IbvSge
 from lib.IbvSrqAttr import IbvSrqAttr
 from lib.IbvSrqInitAttr import IbvSrqInitAttr
 from lib.scaffolds.base_connect import base_connect
-from lib.verbs import (
-    AllocPD,
-    CreateCQ,
-    CreateQP,
-    CreateSRQ,
-    ModifyQP,
-    PostSend,
-    PostSRQRecv,
-    RegMR,
-    VerbCall,
-)
+from lib.verbs import AllocPD, CreateCQ, CreateQP, CreateSRQ, ModifyQP, PollCQ, PostSend, PostSRQRecv, RegMR, VerbCall
 
 
 def _init_attr(
@@ -184,6 +174,8 @@ def srq_post_burst(
         )
         verbs.append(PostSend(qp=qp_srq, wr_obj=swr))
         hotspots.append(len(verbs) - 1)
+
+    verbs += [PollCQ(cq=cq) for _ in range(burst + min(4, burst))]  # Drain some completions
 
     return verbs, hotspots
 

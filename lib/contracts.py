@@ -416,6 +416,8 @@ class ContractTable:
             except Exception as e:
                 raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
+                if str(name) == "NULL":
+                    continue # skip NULL resources
                 self.require(spec.rtype, str(name), spec.state, spec.exclude_states)
 
         # 2) transitions
@@ -425,6 +427,8 @@ class ContractTable:
             except Exception as e:
                 raise ContractError(f"transition: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
+                if str(name) == "NULL":
+                    continue # skip NULL resources
                 self.transition(spec.rtype, str(name), spec.to_state, spec.from_state)
 
         # 3) produces

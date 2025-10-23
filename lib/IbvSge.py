@@ -27,7 +27,7 @@ class IbvSge(Attr):
 
     def __init__(self, addr=None, length=None, lkey=None, mr=None):
         self.addr = None
-        self.length = None
+        self.length = length
         self.lkey = None
         if mr is not None:
             # 允许传字符串或 ResourceValue
@@ -62,10 +62,16 @@ class IbvSge(Attr):
             ConstantValue(f"(uint64_t){mr}->addr"),
             factory=lambda: ConstantValue(f"(uint64_t){mr}->addr"),
         )
-        self.length = OptionalValue(
-            ConstantValue(f"{mr}->length"),
-            factory=lambda: ConstantValue(f"{mr}->length"),
-        )
+        if self.length is None:
+            self.length = OptionalValue(
+                ConstantValue(f"{mr}->length"),
+                factory=lambda: ConstantValue(f"{mr}->length"),
+            )
+        else:
+            self.length = OptionalValue(
+                ConstantValue(f"std::min<size_t>({self.length},{mr}->length)"),
+                factory=lambda: ConstantValue(f"std::min<size_t>({self.length},{mr}->length)"),
+            )
         self.lkey = OptionalValue(
             ConstantValue(f"{mr}->lkey"),
             factory=lambda: ConstantValue(f"{mr}->lkey"),

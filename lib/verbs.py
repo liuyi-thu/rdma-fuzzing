@@ -1,28 +1,28 @@
-from .codegen_context import CodeGenContext
-from .IbvAHAttr import IbvAHAttr
-from .IbvAllocDmAttr import IbvAllocDmAttr
-from .IbvCQInitAttrEx import IbvCQInitAttrEx
-from .IbvECE import IbvECE
-from .IbvFlowAttr import IbvFlowAttr
-from .IbvModifyCQAttr import IbvModifyCQAttr
-from .IbvMwBind import IbvMwBind
-from .IbvParentDomainInitAttr import IbvParentDomainInitAttr
-from .IbvQPAttr import IbvQPAttr
-from .IbvQPInitAttr import IbvQPInitAttr
-from .IbvQPInitAttrEx import IbvQPInitAttrEx
-from .IbvQPOpenAttr import IbvQPOpenAttr
-from .IbvQPRateLimitAttr import IbvQPRateLimitAttr
-from .IbvRecvWR import IbvRecvWR
-from .IbvSendWR import IbvSendWR
-from .IbvSge import IbvSge
-from .IbvSrqAttr import IbvSrqAttr
-from .IbvSrqInitAttr import IbvSrqInitAttr
-from .IbvSrqInitAttrEx import IbvSrqInitAttrEx
-from .IbvTdInitAttr import IbvTdInitAttr
-from .IbvWQAttr import IbvWQAttr
-from .IbvWQInitAttr import IbvWQInitAttr
-from .IbvXRCDInitAttr import IbvXRCDInitAttr
-from .value import (
+from lib.codegen_context import CodeGenContext
+from lib.IbvAHAttr import IbvAHAttr
+from lib.IbvAllocDmAttr import IbvAllocDmAttr
+from lib.IbvCQInitAttrEx import IbvCQInitAttrEx
+from lib.IbvECE import IbvECE
+from lib.IbvFlowAttr import IbvFlowAttr
+from lib.IbvModifyCQAttr import IbvModifyCQAttr
+from lib.IbvMwBind import IbvMwBind
+from lib.IbvParentDomainInitAttr import IbvParentDomainInitAttr
+from lib.IbvQPAttr import IbvQPAttr
+from lib.IbvQPInitAttr import IbvQPInitAttr
+from lib.IbvQPInitAttrEx import IbvQPInitAttrEx
+from lib.IbvQPOpenAttr import IbvQPOpenAttr
+from lib.IbvQPRateLimitAttr import IbvQPRateLimitAttr
+from lib.IbvRecvWR import IbvRecvWR
+from lib.IbvSendWR import IbvSendWR
+from lib.IbvSge import IbvSge
+from lib.IbvSrqAttr import IbvSrqAttr
+from lib.IbvSrqInitAttr import IbvSrqInitAttr
+from lib.IbvSrqInitAttrEx import IbvSrqInitAttrEx
+from lib.IbvTdInitAttr import IbvTdInitAttr
+from lib.IbvWQAttr import IbvWQAttr
+from lib.IbvWQInitAttr import IbvWQInitAttr
+from lib.IbvXRCDInitAttr import IbvXRCDInitAttr
+from lib.value import (
     ConstantValue,
     EnumValue,
     FlagValue,
@@ -58,7 +58,7 @@ except Exception:
         unwrap_all,
     )
 
-from .contracts import Contract, InstantiatedContract, ProduceSpec, RequireSpec, State, TransitionSpec
+from lib.contracts import Contract, InstantiatedContract, ProduceSpec, RequireSpec, State, TransitionSpec
 
 
 def mask_fields_to_c(mask):
@@ -4110,7 +4110,7 @@ class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数
                     }}
                     if (n == 1) {{
                         if (wc.status != IBV_WC_SUCCESS) {{
-                            fprintf(stderr, "bad completion: status=0x%x vendor=0x%x cq={cq_name}\\n",
+                            fprintf(stderr, "**bad** completion: status=0x%x vendor=0x%x cq={cq_name}\\n",
                                     wc.status, wc.vendor_err);
                         }}
                         /* success – got one completion */
@@ -5363,13 +5363,13 @@ class ReRegMR(VerbCall):
     MUTABLE_FIELDS = ["mr", "flags", "pd", "addr", "length", "access"]
     CONTRACT = Contract(
         requires=[
-            RequireSpec("mr", State.ALLOCATED, "mr"),
+            RequireSpec("mr", None, "mr", exclude_states=[State.DESTROYED]),
             RequireSpec("pd", State.ALLOCATED, "pd"),
-            RequireSpec("buf", State.ALLOCATED, "addr"),
+            RequireSpec("buf", None, "addr", exclude_states=[State.DESTROYED]),
         ],
         # produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
         produces=[],
-        transitions=[TransitionSpec("buf", from_state=State.ALLOCATED, to_state=State.USED, name_attr="addr")],
+        transitions=[TransitionSpec("buf", from_state=None, to_state=State.USED, name_attr="addr")],
     )
     """Re-register a memory region (MR) with the specified protection domain (PD)."""
 
@@ -5382,11 +5382,11 @@ class ReRegMR(VerbCall):
         length: int = 0,
         access: int = 0,
     ):
-        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else "NULL"
         self.flags = FlagValue(flags or 0, flag_type="IBV_REREG_MR_FLAGS_ENUM")
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else None  # Optional PD
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else "NULL"  # Optional PD
         # Default address variable name
-        self.addr = ConstantValue(addr or "NULL")
+        self.addr = ConstantValue(addr) if addr else "NULL"
         self.length = IntValue(length or 0)  # Default length
         # Default access flags
         self.access = FlagValue(access or 0, flag_type="IBV_ACCESS_FLAGS_ENUM")
@@ -5396,18 +5396,18 @@ class ReRegMR(VerbCall):
     def apply(self, ctx: CodeGenContext):
         self.required_resources = []
         self.tracker = ctx.tracker if ctx else None
-        if self.tracker:
-            # Register the MR address in the tracker
-            self.tracker.use("mr", self.mr.value)
-            self.required_resources.append({"type": "mr", "name": self.mr.value, "position": "mr"})  # 记录需要的资源
-            # Register the PD address if specified
-            if self.pd:
-                self.tracker.use("pd", self.pd.value)
-                self.required_resources.append(
-                    {"type": "pd", "name": self.pd.value, "position": "pd"}
-                )  # 记录需要的资源
-            # # Register the MR variable in the tracker
-            # self.tracker.create('mr_var', mr)
+        # if self.tracker:
+        #     # Register the MR address in the tracker
+        #     self.tracker.use("mr", self.mr.value)
+        #     self.required_resources.append({"type": "mr", "name": self.mr.value, "position": "mr"})  # 记录需要的资源
+        #     # Register the PD address if specified
+        #     if self.pd:
+        #         self.tracker.use("pd", self.pd.value)
+        #         self.required_resources.append(
+        #             {"type": "pd", "name": self.pd.value, "position": "pd"}
+        #         )  # 记录需要的资源
+        #     # # Register the MR variable in the tracker
+        #     # self.tracker.create('mr_var', mr)
         if hasattr(ctx, "contracts"):
             ctx.contracts.apply_contract(self, self.CONTRACT if hasattr(self, "CONTRACT") else self._contract())
 
@@ -5426,17 +5426,26 @@ class ReRegMR(VerbCall):
         mr_name = self.mr
         pd_name = self.pd if self.pd else "NULL"
         addr = self.addr if self.addr else "NULL"
-        return f"""
-    /* ibv_rereg_mr */
-    IF_OK_PTR({mr_name}, {{
-        IF_OK_PTR({pd_name}, {{
-                if (ibv_rereg_mr({mr_name}, {self.flags}, {pd_name}, {addr}, {self.length}, {self.access}) != 0) {{
+        if pd_name != "NULL":
+            return f"""
+        /* ibv_rereg_mr */
+        IF_OK_PTR({mr_name}, {{
+            IF_OK_PTR({pd_name}, {{
+                    if (ibv_rereg_mr({mr_name}, {self.flags}, {pd_name}, {addr}, {self.length}, {self.access}) != 0) {{
+                    fprintf(stderr, "Failed to re-register MR {mr_name}\\n");
+                }}
+            }});
+        }});
+    """
+        else:
+            return f"""
+        /* ibv_rereg_mr */
+        IF_OK_PTR({mr_name}, {{
+                if (ibv_rereg_mr({mr_name}, {self.flags}, NULL, {addr}, {self.length}, {self.access}) != 0) {{
                 fprintf(stderr, "Failed to re-register MR {mr_name}\\n");
             }}
-        }}
-    }});
+        }});
 """
-
 
 class ResizeCQ(VerbCall):
     MUTABLE_FIELDS = ["cq", "cqe"]
