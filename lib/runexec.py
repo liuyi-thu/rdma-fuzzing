@@ -17,49 +17,38 @@ from lib.sqlite3_llm_callback import get_call_chain
 FP_MANAGER = FingerprintManager()
 
 last_user_coverage = None
-last_kernel_coverage = None
 
 user_no_change_streak = 0
-kernel_no_change_streak = 0
 
 
 def feed_back():
-    utils.run_cmd("rm -f /home/user_coverage.json")
-    utils.run_cmd("rm -f /home/kernel_coverage.json")
+    utils.run_cmd("rm -f /home/lbz/user_coverage.json")
 
-    user_cmd = "python3 /home/fastcov/fastcov.py -f /home/rdma-core-master/build/librdmacm/CMakeFiles/rspreload.dir/*.gcda /home/rdma-core-master/build/libibverbs/CMakeFiles/ibverbs.dir/*.gcda /home/rdma-core-master/build/librdmacm/CMakeFiles/rdmacm.dir/*.gcda -e /home/rdma-core-master/build/include -o /home/user_coverage.json -X"
+    user_cmd = "python3 /home/lbz/fastcov-master/fastcov.py -f /home/lbz/rdma-core/build/librdmacm/CMakeFiles/rspreload.dir/*.gcda /home/lbz/rdma-core/build/libibverbs/CMakeFiles/ibverbs.dir/*.gcda /home/lbz/rdma-core/build/librdmacm/CMakeFiles/rdmacm.dir/*.gcda -e /home/lbz/rdma-core/build/include -o /home/lbz/user_coverage.json -X"
     for i in range(5):
         utils.run_cmd(user_cmd)
-        if utils.retry_until_file_exist("/home/user_coverage.json"):
+        if utils.retry_until_file_exist("/home/lbz/user_coverage.json"):
             print("[+] User coverage generated successfully")
             break
         else:
-            print("[-] /home/user_coverage.json not found, retrying...")
+            print("[-] /home/lbz/user_coverage.json not found, retrying...")
 
-    kernel_cmd = "python3 /home/fastcov/fastcov.py -f /sys/kernel/debug/gcov/home/lbz/qemu/noble/drivers/infiniband/core/*.gcda /sys/kernel/debug/gcov/home/lbz/qemu/noble/drivers/infiniband/sw/rxe/*.gcda -i /home/lbz/qemu/noble/drivers/infiniband/ -o /home/kernel_coverage.json -X"
-    for i in range(5):
-        utils.run_cmd(kernel_cmd)
-        if utils.retry_until_file_exist("/home/kernel_coverage.json"):
-            print("[+] Kernel coverage generated successfully")
-            break
-        else:
-            print("[-] /home/kernel_coverage.json not found, retrying...")
-
-    if os.path.exists("/home/user_coverage.json") and os.path.exists("/home/kernel_coverage.json"):
-        all_edges = collect_all_edges("/home/user_coverage.json", "/home/kernel_coverage.json")
+    if os.path.exists("/home/lbz/user_coverage.json"):
+        all_edges = collect_all_edges("/home/lbz/user_coverage.json", None)
         print(f"[+] Coverage collection done, edges: {len(all_edges)}")
         return all_edges
     else:
-        print("[-] Error")
+        print("[-] Error: user_coverage.json not found")
         return set()
 
 
-def collect_all_edges(user_json: str, kernel_json: str) -> set[str]:
+def collect_all_edges(user_json: str, kernel_json: str = None) -> set[str]:
     edges = set()
     if os.path.exists(user_json):
         edges |= parse_fastgcov_edges(user_json)  # 并集
-    if os.path.exists(kernel_json):
-        edges |= parse_fastgcov_edges(kernel_json)
+    # 移除了内核覆盖率收集
+    # if kernel_json and os.path.exists(kernel_json):
+    #     edges |= parse_fastgcov_edges(kernel_json)
     return edges
 
 
@@ -142,28 +131,10 @@ def parse_crash_site(log_path: str) -> Optional[str]:
 # ========== 需要你接到现有实现的钩子 ==========
 
 
-def collect_latest_dmesg() -> str:
-    """收集最新生成的dmesg文件内容"""
-    from pathlib import Path
-
-    repo_dir = Path("./repo")
-
-    # 查找最新的dmesg文件
-    dmesg_files = list(repo_dir.glob("*_dmesg.log"))
-    if not dmesg_files:
-        return ""
-
-    # 获取最新的文件
-    latest_dmesg_file = max(dmesg_files, key=lambda x: x.stat().st_mtime)
-
-    try:
-        with open(latest_dmesg_file, "r", encoding="utf-8") as f:
-            content = f.read()
-        print(f"[+] Loaded dmesg from {latest_dmesg_file}, {len(content)} characters")
-        return content
-    except Exception as e:
-        print(f"[-] Failed to read dmesg file {latest_dmesg_file}: {e}")
-        return ""
+# 已移除内核dmesg收集功能
+# def collect_latest_dmesg() -> str:
+#     """收集最新生成的dmesg文件内容"""
+#     return ""
 
 
 def build_and_run() -> Dict[str, Any]:
@@ -183,8 +154,8 @@ def build_and_run() -> Dict[str, Any]:
     run_once()
     print("[+] run_once finished")
 
-    # 收集dmesg信息
-    dmesg_content = collect_latest_dmesg()
+    # 已移除内核dmesg收集
+    # dmesg_content = collect_latest_dmesg()
 
     coverage_edges = feed_back()
     sem_signature = extract_sem_signature("./repo/client.tmp.stdout.log")
@@ -203,7 +174,8 @@ def build_and_run() -> Dict[str, Any]:
         "coverage_edges": coverage_edges,
         "sem_signature": sem_signature,
         "crash_site": crash_site,
-        "dmesg_new": dmesg_content,  # 新增dmesg字段
+        # 已移除内核dmesg字段
+        # "dmesg_new": dmesg_content,
     }
 
 
@@ -231,8 +203,8 @@ def compute_score(cov_new: int, sem_new: int, outcome: str, runtime_ms: int, fla
 
 
 def execute_and_collect() -> Dict[str, Any]:
-    global user_no_change_streak, kernel_no_change_streak
-    global last_user_coverage, last_kernel_coverage
+    global user_no_change_streak
+    global last_user_coverage
 
     print("[+] Collecting fuzz execution metrics")
     raw = build_and_run()
@@ -241,12 +213,8 @@ def execute_and_collect() -> Dict[str, Any]:
     sem_new = diff["sem_new"]
     print(f"[+] Coverage delta: {cov_new}, Semantic delta: {sem_new}")
 
-    # Check dmesg information
-    dmesg_content = raw.get("dmesg_new", "")
-    if dmesg_content:
-        print(f"[+] New dmesg content: {len(dmesg_content)} characters")
-    else:
-        print("[-] No new dmesg content")
+    # 已移除内核dmesg检查
+    # dmesg_content = raw.get("dmesg_new", "")
 
     score = compute_score(cov_new, sem_new, raw.get("outcome", "ok"), int(raw.get("runtime_ms", 0)))
     print(f"[+] Computed score: {score:.3f}")
@@ -257,9 +225,8 @@ def execute_and_collect() -> Dict[str, Any]:
     else:
         print("[-] Discard this input (no novelty)")
 
-    # Call get_uncovered_function_count for user and kernel spaces
+    # 只检查用户态覆盖率
     user_uncovered_count = get_uncovered_function_count(space="user")
-    kernel_uncovered_count = get_uncovered_function_count(space="kernel")
 
     # Compare with last coverage counts
     if last_user_coverage is not None and user_uncovered_count == last_user_coverage:
@@ -268,30 +235,14 @@ def execute_and_collect() -> Dict[str, Any]:
         user_no_change_streak = 0
         last_user_coverage = user_uncovered_count
 
-    if last_kernel_coverage is not None and kernel_uncovered_count == last_kernel_coverage:
-        kernel_no_change_streak += 1
-    else:
-        kernel_no_change_streak = 0
-        last_kernel_coverage = kernel_uncovered_count
-
     # Print uncovered function statistics
     print(f"[+] User uncovered functions: {user_uncovered_count}, No change streak: {user_no_change_streak}")
-    print(f"[+] Kernel uncovered functions: {kernel_uncovered_count}, No change streak: {kernel_no_change_streak}")
 
-    # Check if either streak reaches 20
+    # Check if user streak reaches 20
     if user_no_change_streak >= 20:
         user_no_change_streak = 0
         user_function = get_random_uncovered_function(space="user").strip()
         source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
-        try:
-            gen_scaffold()
-        except Exception as e:
-            print(f"[-] gen_scaffold() failed: {e}")
-
-    elif kernel_no_change_streak >= 20:
-        kernel_no_change_streak = 0
-        kernel_function = get_random_uncovered_function(space="kernel").strip()
-        source_function, call_chain = get_call_chain(kernel_function, space="kernel") or (None, None)
         try:
             gen_scaffold()
         except Exception as e:
@@ -305,6 +256,7 @@ def execute_and_collect() -> Dict[str, Any]:
         "runtime_ms": int(raw.get("runtime_ms", 0)),
         "crash_site": raw.get("crash_site"),
         "score": score,
-        "dmesg_new": dmesg_content,
+        # 已移除内核dmesg字段
+        # "dmesg_new": dmesg_content,
         "detail": raw,
     }

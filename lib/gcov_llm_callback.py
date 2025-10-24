@@ -1,3 +1,10 @@
+"""
+gcov_llm_callback.py - 覆盖率数据分析工具
+
+注意：此文件支持用户态和内核态覆盖率分析，但当前配置仅使用用户态(space="user")。
+内核态相关功能已在调用处被禁用，以避免收集内核覆盖率和内核崩溃信息。
+"""
+
 import json
 import random
 from typing import List, Optional
@@ -89,7 +96,7 @@ def get_random_uncovered_function(
 
     Args:
         space: 空间类型，"user" 或 "kernel"
-        user_coverage_path: 用户态覆盖率JSON文件路径，默认为 /home/user_coverage.json
+        user_coverage_path: 用户态覆盖率JSON文件路径，默认为 /home/lbz/user_coverage.json
         kernel_coverage_path: 内核态覆盖率JSON文件路径，默认为 /home/kernel_coverage.json
         user_list_path: 用户态函数列表文件路径，默认为 user.txt
         kernel_list_path: 内核态函数列表文件路径，默认为 kernel.txt
@@ -98,7 +105,7 @@ def get_random_uncovered_function(
         Optional[str]: 随机选择的未覆盖函数名，如果没有则返回None
     """
     if user_coverage_path is None:
-        user_coverage_path = "/home/user_coverage.json"
+        user_coverage_path = "/home/lbz/user_coverage.json"
     if kernel_coverage_path is None:
         kernel_coverage_path = "/home/kernel_coverage.json"
     if user_list_path is None:
@@ -155,7 +162,7 @@ def get_all_uncovered_functions(
 
     Args:
         space: 空间类型，"user" 或 "kernel"
-        user_coverage_path: 用户态覆盖率JSON文件路径，默认为 /home/user_coverage.json
+        user_coverage_path: 用户态覆盖率JSON文件路径，默认为 /home/lbz/user_coverage.json
         kernel_coverage_path: 内核态覆盖率JSON文件路径，默认为 /home/kernel_coverage.json
         user_list_path: 用户态函数列表文件路径，默认为 user.txt
         kernel_list_path: 内核态函数列表文件路径，默认为 kernel.txt
@@ -164,7 +171,7 @@ def get_all_uncovered_functions(
         List[str]: 所有未覆盖函数名列表
     """
     if user_coverage_path is None:
-        user_coverage_path = "/home/user_coverage.json"
+        user_coverage_path = "/home/lbz/user_coverage.json"
     if kernel_coverage_path is None:
         kernel_coverage_path = "/home/kernel_coverage.json"
     if user_list_path is None:
@@ -207,7 +214,7 @@ def get_uncovered_function_count(
 
     Args:
         space: 空间类型，"user" 或 "kernel"
-        user_coverage_path: 用户态覆盖率JSON文件路径，默认为 /home/user_coverage.json
+        user_coverage_path: 用户态覆盖率JSON文件路径，默认为 /home/lbz/user_coverage.json
         kernel_coverage_path: 内核态覆盖率JSON文件路径，默认为 /home/kernel_coverage.json
         user_list_path: 用户态函数列表文件路径，默认为 user.txt
         kernel_list_path: 内核态函数列表文件路径，默认为 kernel.txt
@@ -216,7 +223,7 @@ def get_uncovered_function_count(
         int: 未覆盖函数的数量
     """
     if user_coverage_path is None:
-        user_coverage_path = "/home/user_coverage.json"
+        user_coverage_path = "/home/lbz/user_coverage.json"
     if kernel_coverage_path is None:
         kernel_coverage_path = "/home/kernel_coverage.json"
     if user_list_path is None:
@@ -262,17 +269,18 @@ def get_uncovered_function_count(
 
 
 if __name__ == "__main__":
+    # 仅测试用户态功能（内核态功能已移除）
     print("\n" + "=" * 60)
-    print("[+] 测试内核态未覆盖函数查找 (使用自定义路径)")
+    print("[+] 测试用户态未覆盖函数查找")
     print("=" * 60)
-    kernel_func = get_random_uncovered_function(
-        space="kernel",
+    user_func = get_random_uncovered_function(
+        space="user",
         user_coverage_path="user_coverage.json",
-        kernel_coverage_path="kernel_coverage.json",
+        kernel_coverage_path="kernel_coverage.json",  # 不再使用
         user_list_path="user.txt",
-        kernel_list_path="kernel.txt",
+        kernel_list_path="kernel.txt",  # 不再使用
     )
-    if kernel_func:
-        print(f"\n[+] 随机选择的内核态未覆盖函数: {kernel_func}")
+    if user_func:
+        print(f"\n[+] 随机选择的用户态未覆盖函数: {user_func}")
 
     print("\n" + "=" * 60)
