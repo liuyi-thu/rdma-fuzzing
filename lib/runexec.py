@@ -241,12 +241,16 @@ def execute_and_collect() -> Dict[str, Any]:
     # Check if user streak reaches 20
     if user_no_change_streak >= 20:
         user_no_change_streak = 0
-        user_function = get_random_uncovered_function(space="user").strip()
-        source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
-        try:
-            gen_scaffold()
-        except Exception as e:
-            print(f"[-] gen_scaffold() failed: {e}")
+        user_function = get_random_uncovered_function(space="user")
+        if user_function:
+            user_function = user_function.strip()
+            source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
+            try:
+                gen_scaffold()
+            except Exception as e:
+                print(f"[-] gen_scaffold() failed: {e}")
+        else:
+            print("[!] No uncovered functions found, skipping LLM scaffold generation")
 
     return {
         "keep": keep,
