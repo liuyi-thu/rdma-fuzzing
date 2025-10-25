@@ -123,6 +123,8 @@ tmux-run:
 tmux-kill:
 	-@tmux kill-session -t $(TMUX_SESSION) 2>/dev/null || true
 
+kill: tmux-kill
+
 # ====== Cleaning ======
 clean:
 	@$(RM) $(OBJS_CPP) $(OBJS_C) $(DEPS) $(BIN_SERVER) $(BIN_CLIENT)
