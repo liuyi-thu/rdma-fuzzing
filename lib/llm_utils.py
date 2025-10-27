@@ -1,5 +1,7 @@
+import json
 import os
 from datetime import datetime
+from typing import List, Optional
 
 import httpx
 from openai import OpenAI
@@ -361,3 +363,146 @@ def mutate_scaffold(
 
     # # （可选）查看 token 用量
     # print("usage:", completion.usage)  # prompt_tokens / completion_tokens / total_tokens
+
+
+def generate_mvs_scaffold(
+    *,
+    target_symbol: str,
+    callchain: List[str],
+    entry_verb: str,
+    example_scaffold_path: str = "lib/scaffolds/base_connect.py",
+    class_defs_path: str = "CLASSES_IN_LIB.md",
+    output_dir: str = "lib/scaffolds",
+    model: str = "openai/gpt-5",
+    # 语义家族提示：影响生成策略与负例约束（避免走偏）
+    family_hint: Optional[str] = None,  # 例如: "srq", "atomic", "memory", "multi_qp"
+    # 额外的硬约束（例如必须包含哪些Verb或字段；或禁止哪些Verb）
+    hard_require_verbs: Optional[List[str]] = None,
+    hard_forbid_verbs: Optional[List[str]] = None,
+    # 你的项目里已有
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    proxy_url: Optional[str] = None,
+    temperature: float = 0.2,
+) -> str:
+    """
+    生成“最小可行（MVS）”的新 scaffold，用于命中指定调用链的用户态入口 verb。
+    产出一个 .py 插件文件：仅包含 1 个 scaffold 函数 + 1 个 build() 入口，遵守 CLASSES_IN_LIB.md 中的类签名。
+    返回保存的文件路径。
+    """
+
+    # 你项目里若有封装可直接替换这段
+    def _default_load_config():
+        # 占位：如果你已有 load_config/fail_if_no_creds，用它们替换即可
+        BU = base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        AK = api_key or os.getenv("OPENAI_API_KEY", "")
+        PX = proxy_url or os.getenv("HTTPS_PROXY", "") or os.getenv("HTTP_PROXY", "")
+        if not AK:
+            raise RuntimeError("Missing OpenAI API key")
+        return BU, AK, PX
+
+    base_url, api_key, proxy_url = _default_load_config()
+
+    # 读示例 & 类定义
+    with open(example_scaffold_path, "r", encoding="utf-8") as f:
+        example_scaffold = f.read()
+    with open(class_defs_path, "r", encoding="utf-8") as f:
+        class_defs = f.read()
+
+    # 语义家族与负例约束（自动增强）
+    family_hint = (family_hint or "").strip().lower()
+    hard_require_verbs = hard_require_verbs or []
+    hard_forbid_verbs = hard_forbid_verbs or []
+
+    # 常见“不要走偏”的负例：根据 family_hint 自动加入
+    # 例如 SRQ 家族就避免去做 CQ 通知相关
+    # if family_hint in {"srq", "atomic", "memory", "multi_qp"}:
+    #     for v in ["ReqNotifyCQ", "AckCQEvents", "PollCQ"]:  # 你明确不想卷入通知/事件
+    #         if v not in hard_forbid_verbs:
+    #             hard_forbid_verbs.append(v)
+
+    # 形成上下文
+    callchain_str = " -> ".join(callchain)
+    context = f"""
+[Target]
+- Uncovered symbol (kernel/user): {target_symbol}
+- Callchain (user entry at the left): {callchain_str}
+- Required user-space entry verb: {entry_verb}
+
+[Family hint]
+- {family_hint or "N/A"}
+
+[Hard constraints]
+- REQUIRED verbs (must include): {json.dumps(hard_require_verbs, ensure_ascii=False)}
+- FORBIDDEN verbs (must avoid): {json.dumps(hard_forbid_verbs, ensure_ascii=False)}
+    """.strip()
+
+    # 组装用户提示词（强约束、清晰结构、强调“新写MVS”而非变异）
+    user_prompt = f"""
+{context}
+
+以下是已有类定义（仅可使用这些，严格对齐构造签名，不得自定义新类型/字段）：
+{class_defs}
+
+—
+请“新写一个最小可行（MVS）”的 Python scaffold 插件文件，以命中上述调用链的**用户态入口 verb**：{entry_verb}
+要求：
+
+1) 使用约束
+- 只能使用我库里已有类（见上面的类定义）；所有 verbs 调用必须严格对齐已有类构造函数签名。
+- 若需要建链，请调用 base_connect()（不要复制实现）。
+- 禁止使用：{", ".join(hard_forbid_verbs) or "无"}。
+- 必须包含（若合理）：{", ".join(hard_require_verbs) or "无"}。
+
+2) 结构要求
+- 文件仅包含一个 scaffold 函数（函数名需简短明确，反映该 MVS 语义）。
+- scaffold 函数返回: (verbs: List[VerbCall], hotspots: List[int])。
+- 另提供一个入口函数：def build(local_snapshot, global_snapshot, rng) -> Tuple[List[VerbCall], List[int]] | None
+  自动生成资源名，调用该 scaffold。
+- 不得出现任何 I/O、sleep、threading 调用；不得定义新的结构类型。
+
+3) 语义要求
+- 围绕 {entry_verb} 的**必要前置资源与状态**，构造最小可行序列（例如 PD/CQ/QP/SRQ/MR 等依赖和绑定）。
+- 如果 {entry_verb} 只是控制面/创建类 API，需合理补齐上下文（例如 QP init_attr.srq=... 等），以确保运行路径能触达调用链深处。
+- hotspots 理应标注在关键点（如 Create*/Modify*/Post* 这些会触发内核路径的调用处）。
+
+4) 输出格式
+- 直接输出完整 .py 文件源代码（含 imports 与模块级 docstring，简述该 MVS 的语义与用途，并说明为什么这个 MVS 可能会触发 uncovered symbol {target_symbol}）。
+- 文件能直接放入 lib/scaffolds/ 并通过 importlib 加载。
+
+——
+给你一个 scaffold 文件作为风格参考（只能参考结构/风格，不要照搬逻辑；请“新写 MVS”而不是 mutate）：
+{example_scaffold}
+
+——
+你生成的 Python scaffold 插件文件代码为：
+""".strip()
+
+    # OpenAI Client
+    http_client = None if not proxy_url else httpx.Client(proxy=proxy_url)
+    client = OpenAI(base_url=base_url, api_key=api_key, http_client=http_client)
+
+    completion = client.chat.completions.create(
+        model=model,
+        temperature=temperature,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a programming assistant for an RDMA verbs fuzzing framework. "
+                    "Generate a brand new, minimal viable scaffold (MVS) targeting the specified user-space entry verb, "
+                    "strictly conforming to the provided Verb class signatures. "
+                    "No I/O, no threads, no sleeps. Output a single .py module with one scaffold function and a build() entry."
+                ),
+            },
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+
+    resp = completion.choices[0].message.content or ""
+    os.makedirs(output_dir, exist_ok=True)
+    fname = f"mvs_{entry_verb}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
+    fpath = os.path.join(output_dir, fname)
+    with open(fpath, "w", encoding="utf-8") as f:
+        f.write(resp)
+    return fpath
