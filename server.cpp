@@ -570,7 +570,7 @@ int main(int argc, char **argv)
         die("ibv_query_port");
     union ibv_gid my_gid;
     memset(&my_gid, 0, sizeof(my_gid));
-    (void)ibv_query_gid(ctx, IB_PORT, 1, &my_gid);
+    (void)ibv_query_gid(ctx, IB_PORT, 3, &my_gid);
 
     ServerState S;
     S.pool.resize(QP_POOL_SIZE);

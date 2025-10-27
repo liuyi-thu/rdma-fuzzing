@@ -197,7 +197,7 @@ def render(verbs: List[VerbCall]) -> str:
         FreeDeviceList(),
         QueryDeviceAttr(),
         QueryPortAttr(),
-        QueryGID(),
+        QueryGID(index=3),
     ] + verbs
     for v in verbs:
         v.apply(ctx)

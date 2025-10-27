@@ -36,7 +36,7 @@ def feed_back():
         else:
             print("[-] /home/user_coverage.json not found, retrying...")
 
-    kernel_cmd = "python3 /home/fastcov/fastcov.py -f /sys/kernel/debug/gcov/home/lbz/qemu/noble/drivers/infiniband/core/*.gcda /sys/kernel/debug/gcov/home/lbz/qemu/noble/drivers/infiniband/sw/rxe/*.gcda -i /home/lbz/qemu/noble/drivers/infiniband/ -o /home/kernel_coverage.json -X"
+    kernel_cmd = "python3 /home/fastcov/fastcov.py -f /sys/kernel/debug/gcov/usr/src/linux-source-6.8.0/linux-source-6.8.0/drivers/infiniband/core/*.gcda /sys/kernel/debug/gcov/usr/src/linux-source-6.8.0/linux-source-6.8.0/drivers/infiniband/sw/rxe/*.gcda /sys/kernel/debug/gcov/usr/src/linux-source-6.8.0/linux-source-6.8.0/drivers/infiniband/hw/mlx5/*.gcda -i /usr/src/linux-source-6.8.0/linux-source-6.8.0/drivers/infiniband/ -o /home/kernel_coverage.json -X"
     for i in range(5):
         utils.run_cmd(kernel_cmd)
         if utils.retry_until_file_exist("/home/kernel_coverage.json"):
