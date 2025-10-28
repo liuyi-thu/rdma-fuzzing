@@ -30,6 +30,11 @@ BUILD_DIR := build/$(SAN)
 BIN_DIR   := $(BUILD_DIR)
 BIN_SERVER:= $(BIN_DIR)/server
 BIN_CLIENT:= $(BIN_DIR)/client
+
+SERVER_UPDATE := $(BUILD_DIR)/server_update.json
+CLIENT_UPDATE := $(BUILD_DIR)/client_update.json
+SERVER_VIEW   := server_view.json
+CLIENT_VIEW   := client_view.json
 endif
 
 # 运行命令前缀：把工作目录切到 BIN_DIR 再执行
