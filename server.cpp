@@ -207,7 +207,7 @@ static int modify_qp_to_rtr(ibv_qp *qp, uint32_t dest_qpn, uint16_t dlid, const 
     a.ah_attr.grh.hop_limit = 1;
     a.ah_attr.grh.traffic_class = 0;
     a.ah_attr.grh.flow_label = 0;
-    a.ah_attr.grh.sgid_index = 1;
+    a.ah_attr.grh.sgid_index = 3;
     memcpy(a.ah_attr.grh.dgid.raw, dgid, 16);
     int flags = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
     return ibv_modify_qp(qp, &a, flags);
