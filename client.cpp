@@ -350,7 +350,7 @@ int main(int argc, char** argv){
     });
             printf("[18] done.\n");
 
-    printf("[19] ModifyQP(qp=qp0, attr_obj=IbvQPAttr{qp_state=IBV_QPS_RTR, path_mtu=IBV_MTU_256, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\"), rq_psn=0, max_dest_rd_atomic=1, min_rnr_timer=12, ah_attr=IbvAHAttr{dlid=rr_u32_by_id(\"remote.QP\", \"srv0\", \"lid\"), is_global=1, port_num=1, grh=IbvGlobalRoute{sgid_index=3, hop_limit=1, traffic_class=0, flow_label=0, dgid=rr_str_by_id(\"remote.QP\", \"srv0\", \"gid\")}, sl=0, src_path_bits=0}}, attr_mask=IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | ...) start.\n");
+    printf("[19] ModifyQP(qp=qp0, attr_obj=IbvQPAttr{qp_state=IBV_QPS_RTR, path_mtu=IBV_MTU_1024, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\"), rq_psn=0, max_dest_rd_atomic=1, min_rnr_timer=12, ah_attr=IbvAHAttr{dlid=rr_u32_by_id(\"remote.QP\", \"srv0\", \"lid\"), is_global=1, port_num=1, grh=IbvGlobalRoute{sgid_index=3, hop_limit=1, traffic_class=0, flow_label=0, dgid=rr_str_by_id(\"remote.QP\", \"srv0\", \"gid\")}, sl=0, src_path_bits=0}}, attr_mask=IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | ...) start.\n");
 
     IF_OK_PTR(qp0, {
         pr_wait_pair_state(BUNDLE_ENV, "pair-qp0-srv0", "BOTH_RTS", /*timeout_ms=*/15000);
@@ -358,7 +358,7 @@ int main(int argc, char** argv){
         
     memset(&qp_attr_qp0, 0, sizeof(qp_attr_qp0));
     qp_attr_qp0.qp_state = IBV_QPS_RTR;
-    qp_attr_qp0.path_mtu = IBV_MTU_256;
+    qp_attr_qp0.path_mtu = IBV_MTU_1024;
     qp_attr_qp0.rq_psn = 0;
     qp_attr_qp0.dest_qp_num = rr_u32_by_id("remote.QP", "srv0", "qpn");
 
