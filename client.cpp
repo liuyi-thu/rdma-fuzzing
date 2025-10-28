@@ -77,16 +77,8 @@ struct ibv_ah_attr qp_attr_qp0_ah;
 struct ibv_global_route qp_attr_qp0_ah_grh;
 struct ibv_srq_attr srq_attr_srq0;
 struct ibv_send_wr wr_qp0;
-struct ibv_sge wr_qp0_sg_list[1];
+struct ibv_sge wr_qp0_sg_list_0[1];
 struct ibv_send_wr * bad_wr_qp0 = NULL;
-struct ibv_recv_wr recv_wr_qp0;
-struct ibv_sge recv_wr_qp0_sg_list[2];
-struct ibv_recv_wr recv_wr_qp0_next;
-struct ibv_sge recv_wr_qp0_next_sg_list[2];
-struct ibv_recv_wr * bad_recv_wr_qp0 = NULL;
-struct ibv_recv_wr recv_wr_srq0;
-struct ibv_sge recv_wr_srq0_sg_list[1];
-struct ibv_recv_wr * bad_recv_wr_srq0 = NULL;
 
 // --- Prepare PR_* for CLAIMED ---
 PR_QP  qps[1000];
@@ -145,16 +137,16 @@ int main(int argc, char** argv){
 
     /* ibv_query_port */
     if (ibv_query_port(ctx, 1, &port_attr)) {
-        fprintf(stderr, "Failed to query port attributes\n");
+        fprintf(stderr, "Failed to query port attributes ctx, 1\n");
         return -1;
     }
     printf("[5] done.\n");
 
-    printf("[6] QueryGID(port_num=1, index=1) start.\n");
+    printf("[6] QueryGID(port_num=1, index=3) start.\n");
 
     /* ibv_query_gid */
-    if (ibv_query_gid(ctx, 1, 1, &gid)) {
-        fprintf(stderr, "Failed to query GID\n");
+    if (ibv_query_gid(ctx, 1, 3, &gid)) {
+        fprintf(stderr, "Failed to query GID ctx, 1, 3\n");
         return -1;
     }
     printf("[6] done.\n");
@@ -177,11 +169,11 @@ int main(int argc, char** argv){
     }
     printf("[8] done.\n");
 
-    printf("[9] AllocDM(dm=dm0, attr_obj=IbvAllocDmAttr{length=4096, log_align_req=12}, attr_var=dm_attr_dm0) start.\n");
+    printf("[9] AllocDM(dm=dm0, attr_obj=IbvAllocDmAttr{length=4096, log_align_req=0}, attr_var=dm_attr_dm0) start.\n");
 
     memset(&dm_attr_dm0, 0, sizeof(dm_attr_dm0));
     dm_attr_dm0.length = 4096;
-    dm_attr_dm0.log_align_req = 12;
+    dm_attr_dm0.log_align_req = 0;
 
     dm0 = ibv_alloc_dm(ctx, &dm_attr_dm0);
     if (!dm0) {
@@ -189,11 +181,11 @@ int main(int argc, char** argv){
     }
     printf("[9] done.\n");
 
-    printf("[10] AllocDM(dm=dm1, attr_obj=IbvAllocDmAttr{length=4096, log_align_req=12}, attr_var=dm_attr_dm1) start.\n");
+    printf("[10] AllocDM(dm=dm1, attr_obj=IbvAllocDmAttr{length=4096, log_align_req=0}, attr_var=dm_attr_dm1) start.\n");
 
     memset(&dm_attr_dm1, 0, sizeof(dm_attr_dm1));
     dm_attr_dm1.length = 4096;
-    dm_attr_dm1.log_align_req = 12;
+    dm_attr_dm1.log_align_req = 0;
 
     dm1 = ibv_alloc_dm(ctx, &dm_attr_dm1);
     if (!dm1) {
@@ -358,7 +350,7 @@ int main(int argc, char** argv){
     });
             printf("[18] done.\n");
 
-    printf("[19] ModifyQP(qp=qp0, attr_obj=IbvQPAttr{qp_state=IBV_QPS_RTR, path_mtu=IBV_MTU_1024, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\"), rq_psn=0, max_dest_rd_atomic=1, min_rnr_timer=12, ah_attr=IbvAHAttr{dlid=rr_u32_by_id(\"remote.QP\", \"srv0\", \"lid\"), is_global=1, port_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"port\"), grh=IbvGlobalRoute{sgid_index=1, hop_limit=1, traffic_class=0, flow_label=0, dgid=rr_str_by_id(\"remote.QP\", \"srv0\", \"gid\")}, sl=0, src_path_bits=0}}, attr_mask=IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | ...) start.\n");
+    printf("[19] ModifyQP(qp=qp0, attr_obj=IbvQPAttr{qp_state=IBV_QPS_RTR, path_mtu=IBV_MTU_256, dest_qp_num=rr_u32_by_id(\"remote.QP\", \"srv0\", \"qpn\"), rq_psn=0, max_dest_rd_atomic=1, min_rnr_timer=12, ah_attr=IbvAHAttr{dlid=rr_u32_by_id(\"remote.QP\", \"srv0\", \"lid\"), is_global=1, port_num=1, grh=IbvGlobalRoute{sgid_index=3, hop_limit=1, traffic_class=0, flow_label=0, dgid=rr_str_by_id(\"remote.QP\", \"srv0\", \"gid\")}, sl=0, src_path_bits=0}}, attr_mask=IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | ...) start.\n");
 
     IF_OK_PTR(qp0, {
         pr_wait_pair_state(BUNDLE_ENV, "pair-qp0-srv0", "BOTH_RTS", /*timeout_ms=*/15000);
@@ -366,7 +358,7 @@ int main(int argc, char** argv){
         
     memset(&qp_attr_qp0, 0, sizeof(qp_attr_qp0));
     qp_attr_qp0.qp_state = IBV_QPS_RTR;
-    qp_attr_qp0.path_mtu = IBV_MTU_1024;
+    qp_attr_qp0.path_mtu = IBV_MTU_256;
     qp_attr_qp0.rq_psn = 0;
     qp_attr_qp0.dest_qp_num = rr_u32_by_id("remote.QP", "srv0", "qpn");
 
@@ -375,7 +367,7 @@ int main(int argc, char** argv){
     memset(&qp_attr_qp0_ah_grh, 0, sizeof(qp_attr_qp0_ah_grh));
     pr_parse_gid(rr_str_by_id("remote.QP", "srv0", "gid"), qp_attr_qp0_ah_grh.dgid.raw);
     qp_attr_qp0_ah_grh.flow_label = 0;
-    qp_attr_qp0_ah_grh.sgid_index = 1;
+    qp_attr_qp0_ah_grh.sgid_index = 3;
     qp_attr_qp0_ah_grh.hop_limit = 1;
     qp_attr_qp0_ah_grh.traffic_class = 0;
     qp_attr_qp0_ah.grh = qp_attr_qp0_ah_grh;
@@ -383,7 +375,7 @@ int main(int argc, char** argv){
     qp_attr_qp0_ah.sl = 0;
     qp_attr_qp0_ah.src_path_bits = 0;
     qp_attr_qp0_ah.is_global = 1;
-    qp_attr_qp0_ah.port_num = rr_u32_by_id("remote.QP", "srv0", "port");
+    qp_attr_qp0_ah.port_num = 1;
     qp_attr_qp0.ah_attr = qp_attr_qp0_ah;
     qp_attr_qp0.max_dest_rd_atomic = 1;
     qp_attr_qp0.min_rnr_timer = 12;
@@ -437,11 +429,11 @@ int main(int argc, char** argv){
     memset(&wr_qp0, 0, sizeof(wr_qp0));
     wr_qp0.wr_id = 1;
 
-    memset(&wr_qp0_sg_list[0], 0, sizeof(wr_qp0_sg_list[0]));
-    wr_qp0_sg_list[0].addr = (uint64_t)mr0->addr;
-    wr_qp0_sg_list[0].length = mr0->length;
-    wr_qp0_sg_list[0].lkey = mr0->lkey;
-    wr_qp0.sg_list = wr_qp0_sg_list;
+    memset(&wr_qp0_sg_list_0[0], 0, sizeof(wr_qp0_sg_list_0[0]));
+    wr_qp0_sg_list_0[0].addr = (uint64_t)mr0->addr;
+    wr_qp0_sg_list_0[0].length = mr0->length;
+    wr_qp0_sg_list_0[0].lkey = mr0->lkey;
+    wr_qp0.sg_list = wr_qp0_sg_list_0;
     wr_qp0.num_sge = 1;
     wr_qp0.opcode = IBV_WR_SEND;
     wr_qp0.send_flags = IBV_SEND_SIGNALED;
@@ -453,78 +445,7 @@ int main(int argc, char** argv){
 
     printf("[22] done.\n");
 
-    printf("[23] PostRecv(qp=qp0, wr_obj=IbvRecvWR{num_sge=2, sg_list=[IbvSge x2: IbvSge{addr=(uint64_t)mr0->addr, length=mr0->length, lkey=mr0->lkey}], wr_id=1, next=IbvRecvWR{num_sge=2, sg_list=[IbvSge x2: IbvSge{addr=(uint64_t)mr0->addr, length=mr0->length, lkey=mr0->lkey}], wr_id=1}}, wr_var=recv_wr_qp0, bad_wr_var=bad_recv_wr_qp0) start.\n");
-
-    /* ibv_post_recv (fuzz-friendly guarded) */
-    IF_OK_PTR(qp0, {
-    IF_OK_PTR(mr0, {
-    IF_OK_PTR(mr1, {
-
-    memset(&recv_wr_qp0, 0, sizeof(recv_wr_qp0));
-    recv_wr_qp0.wr_id = 1;
-
-    memset(&recv_wr_qp0_sg_list[0], 0, sizeof(recv_wr_qp0_sg_list[0]));
-    recv_wr_qp0_sg_list[0].addr = (uint64_t)mr0->addr;
-    recv_wr_qp0_sg_list[0].length = mr0->length;
-    recv_wr_qp0_sg_list[0].lkey = mr0->lkey;
-
-    memset(&recv_wr_qp0_sg_list[1], 0, sizeof(recv_wr_qp0_sg_list[1]));
-    recv_wr_qp0_sg_list[1].addr = (uint64_t)mr1->addr;
-    recv_wr_qp0_sg_list[1].length = mr1->length;
-    recv_wr_qp0_sg_list[1].lkey = mr1->lkey;
-    recv_wr_qp0.sg_list = recv_wr_qp0_sg_list;
-    recv_wr_qp0.num_sge = 2;
-
-    memset(&recv_wr_qp0_next, 0, sizeof(recv_wr_qp0_next));
-    recv_wr_qp0_next.wr_id = 1;
-
-    memset(&recv_wr_qp0_next_sg_list[0], 0, sizeof(recv_wr_qp0_next_sg_list[0]));
-    recv_wr_qp0_next_sg_list[0].addr = (uint64_t)mr0->addr;
-    recv_wr_qp0_next_sg_list[0].length = mr0->length;
-    recv_wr_qp0_next_sg_list[0].lkey = mr0->lkey;
-
-    memset(&recv_wr_qp0_next_sg_list[1], 0, sizeof(recv_wr_qp0_next_sg_list[1]));
-    recv_wr_qp0_next_sg_list[1].addr = (uint64_t)mr1->addr;
-    recv_wr_qp0_next_sg_list[1].length = mr1->length;
-    recv_wr_qp0_next_sg_list[1].lkey = mr1->lkey;
-    recv_wr_qp0_next.sg_list = recv_wr_qp0_next_sg_list;
-    recv_wr_qp0_next.num_sge = 2;
-    recv_wr_qp0_next.next = NULL;
-    recv_wr_qp0.next = &recv_wr_qp0_next;
-    if (ibv_post_recv(qp0, &recv_wr_qp0, &bad_recv_wr_qp0) != 0) {
-        fprintf(stderr, "[warn] ibv_post_recv failed qp0\n");
-    }
-    });
-    });
-    });
-
-    printf("[23] done.\n");
-
-    printf("[24] PostSRQRecv(srq=srq0, wr_obj=IbvRecvWR{num_sge=1, sg_list=[IbvSge x1: IbvSge{addr=(uint64_t)mr0->addr, length=mr0->length, lkey=mr0->lkey}], wr_id=1}, wr_var=recv_wr_srq0, bad_wr_var=bad_recv_wr_srq0) start.\n");
-
-    /* ibv_post_srq_recv (fuzz-friendly guarded) */
-    IF_OK_PTR(srq0, {
-    IF_OK_PTR(mr0, {
-
-    memset(&recv_wr_srq0, 0, sizeof(recv_wr_srq0));
-    recv_wr_srq0.wr_id = 1;
-
-    memset(&recv_wr_srq0_sg_list[0], 0, sizeof(recv_wr_srq0_sg_list[0]));
-    recv_wr_srq0_sg_list[0].addr = (uint64_t)mr0->addr;
-    recv_wr_srq0_sg_list[0].length = mr0->length;
-    recv_wr_srq0_sg_list[0].lkey = mr0->lkey;
-    recv_wr_srq0.sg_list = recv_wr_srq0_sg_list;
-    recv_wr_srq0.num_sge = 1;
-    recv_wr_srq0.next = NULL;
-    if (ibv_post_srq_recv(srq0, &recv_wr_srq0, &bad_recv_wr_srq0) != 0) {
-        fprintf(stderr, "[warn] ibv_post_srq_recv failed srq0\n");
-    }
-    });
-    });
-
-    printf("[24] done.\n");
-
-    printf("[25] PollCQ(cq=cq0) start.\n");
+    printf("[23] PollCQ(cq=cq0) start.\n");
 
         /* ibv_poll_cq — self-contained minimal polling */
         IF_OK_PTR(cq0, {
@@ -535,14 +456,16 @@ int main(int argc, char** argv){
                 while (attempts-- > 0) {
                     n = ibv_poll_cq(cq0, 1, &wc);
                     if (n < 0) {
-                        fprintf(stderr, "ibv_poll_cq failed\n");
+                        fprintf(stderr, "ibv_poll_cq failed cq0\n");
                     }
                     if (n == 1) {
                         if (wc.status != IBV_WC_SUCCESS) {
-                            fprintf(stderr, "bad completion: status=0x%x vendor=0x%x\n",
+                            fprintf(stderr, "**bad** completion: status=0x%x vendor=0x%x cq=cq0\n",
                                     wc.status, wc.vendor_err);
                         }
                         /* success – got one completion */
+                        printf("got one completion: wr_id=%lu opcode=%u byte_len=%u\n",
+                               wc.wr_id, wc.opcode, wc.byte_len);
                         break;
                     }
                     /* n == 0: no CQE yet, back off briefly */
@@ -554,9 +477,9 @@ int main(int argc, char** argv){
             }
         });
 
-        printf("[25] done.\n");
+        printf("[23] done.\n");
 
-    printf("[26] DestroyQP(qp=qp0) start.\n");
+    printf("[24] DestroyQP(qp=qp0) start.\n");
 
     /* ibv_destroy_qp */
     IF_OK_PTR(qp0, {
@@ -564,9 +487,9 @@ int main(int argc, char** argv){
             fprintf(stderr, "Failed to destroy QP qp0\n");
         }
     });
-    printf("[26] done.\n");
+    printf("[24] done.\n");
 
-    printf("[27] DestroyCQ(cq=cq0) start.\n");
+    printf("[25] DestroyCQ(cq=cq0) start.\n");
 
     /* ibv_destroy_cq */
     IF_OK_PTR(cq0, {
@@ -574,9 +497,9 @@ int main(int argc, char** argv){
             fprintf(stderr, "Failed to destroy CQ cq0\n");
         }
     });
-    printf("[27] done.\n");
+    printf("[25] done.\n");
 
-    printf("[28] DestroySRQ(srq=srq0) start.\n");
+    printf("[26] DestroySRQ(srq=srq0) start.\n");
 
     /* ibv_destroy_srq */
     IF_OK_PTR(srq0, {
@@ -584,9 +507,9 @@ int main(int argc, char** argv){
             fprintf(stderr, "Failed to destroy SRQ srq0\n");
         }
     });
-    printf("[28] done.\n");
+    printf("[26] done.\n");
 
-    printf("[29] DeregMR(mr=mr0) start.\n");
+    printf("[27] DeregMR(mr=mr0) start.\n");
 
     /* ibv_dereg_mr */
     IF_OK_PTR(mr0, {
@@ -594,9 +517,9 @@ int main(int argc, char** argv){
             fprintf(stderr, "Failed to deregister MR mr0\n");
         }
     });
-    printf("[29] done.\n");
+    printf("[27] done.\n");
 
-    printf("[30] DeallocPD(pd=pd0) start.\n");
+    printf("[28] DeallocPD(pd=pd0) start.\n");
 
     /* ibv_dealloc_pd */
     IF_OK_PTR(pd0, {
@@ -604,9 +527,9 @@ int main(int argc, char** argv){
             fprintf(stderr, "Failed to deallocate PD pd0\n");
         }
     });
-    printf("[30] done.\n");
+    printf("[28] done.\n");
 
-    printf("[31] FreeDM(dm=dm0) start.\n");
+    printf("[29] FreeDM(dm=dm0) start.\n");
 
     /* ibv_free_dm */
     IF_OK_PTR(dm0, {
@@ -614,7 +537,7 @@ int main(int argc, char** argv){
             fprintf(stderr, "Failed to free device memory (DM) dm0\n");
         }
     });
-    printf("[31] done.\n");
+    printf("[29] done.\n");
 
 
 
