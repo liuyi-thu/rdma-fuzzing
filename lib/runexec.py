@@ -10,16 +10,16 @@ from typing import Any, Dict, Optional
 from lib import utils
 from lib.auto_run import run_once
 from lib.fingerprint import FingerprintManager
-
 from lib.gcov_llm_callback import get_random_uncovered_function, get_uncovered_function_count
 from lib.llm_utils import gen_scaffold, generate_mvs_scaffold, mutate_scaffold
 from lib.sqlite3_llm_callback import get_call_chain
 
 FP_MANAGER = FingerprintManager()
 
-
 last_user_coverage = None
 last_kernel_coverage = None
+
+user_no_change_streak = 0
 kernel_no_change_streak = 0
 
 
@@ -36,7 +36,7 @@ def feed_back():
         else:
             print("[-] /home/user_coverage.json not found, retrying...")
 
-    kernel_cmd = "python3 /home/fastcov/fastcov.py -f /sys/kernel/debug/gcov/usr/src/linux-source-6.8.0/linux-source-6.8.0/drivers/infiniband/core/*.gcda /sys/kernel/debug/gcov/usr/src/linux-source-6.8.0/linux-source-6.8.0/drivers/infiniband/sw/rxe/*.gcda /sys/kernel/debug/gcov/usr/src/linux-source-6.8.0/linux-source-6.8.0/drivers/infiniband/hw/mlx5/*.gcda -i /usr/src/linux-source-6.8.0/linux-source-6.8.0/drivers/infiniband/ -o /home/kernel_coverage.json -X"
+    kernel_cmd = "python3 /home/fastcov/fastcov.py -f /sys/kernel/debug/gcov/home/lbz/qemu/noble/drivers/infiniband/core/*.gcda /sys/kernel/debug/gcov/home/lbz/qemu/noble/drivers/infiniband/sw/rxe/*.gcda -i /home/lbz/qemu/noble/drivers/infiniband/ -o /home/kernel_coverage.json -X"
     for i in range(5):
         utils.run_cmd(kernel_cmd)
         if utils.retry_until_file_exist("/home/kernel_coverage.json"):
@@ -139,9 +139,6 @@ def parse_crash_site(log_path: str) -> Optional[str]:
     return None
 
 
-
-
-
 # ========== 需要你接到现有实现的钩子 ==========
 
 
@@ -150,6 +147,39 @@ def collect_latest_dmesg() -> str:
     from pathlib import Path
 
     repo_dir = Path("./repo")
+
+    # 查找最新的dmesg文件
+    dmesg_files = list(repo_dir.glob("*_dmesg.log"))
+    if not dmesg_files:
+        return ""
+
+    # 获取最新的文件
+    latest_dmesg_file = max(dmesg_files, key=lambda x: x.stat().st_mtime)
+
+    try:
+        with open(latest_dmesg_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        print(f"[+] Loaded dmesg from {latest_dmesg_file}, {len(content)} characters")
+        return content
+    except Exception as e:
+        print(f"[-] Failed to read dmesg file {latest_dmesg_file}: {e}")
+        return ""
+
+
+def build_and_run() -> Dict[str, Any]:
+    """编译 & 执行 verbs 序列，并返回一次性原始指标。
+    期望返回：
+    {
+      'outcome': 'ok' | 'crash' | 'asan' | 'error',
+      'runtime_ms': 123,
+      'coverage_edges': set([...]) 或 可哈希摘要（bytes/str），
+      'sem_signature': set([...]) 或 可哈希摘要（bytes/str），
+      'crash_site': 'bt#lib+offset' | None,
+    }
+    """
+    # TODO: 接你现有执行流程（你已有的 codegen/runner/trace 收集）
+    t0 = time.time()
+
     run_once()
     print("[+] run_once finished")
 
@@ -201,6 +231,8 @@ def compute_score(cov_new: int, sem_new: int, outcome: str, runtime_ms: int, fla
 
 
 def execute_and_collect() -> Dict[str, Any]:
+    global user_no_change_streak, kernel_no_change_streak
+    global last_user_coverage, last_kernel_coverage
 
     print("[+] Collecting fuzz execution metrics")
     raw = build_and_run()
