@@ -63,7 +63,7 @@ def base_connect(
             qp=qp,
             attr_obj=IbvQPAttr(
                 qp_state="IBV_QPS_RTR",
-                path_mtu="IBV_MTU_1024",
+                path_mtu="IBV_MTU_256",
                 dest_qp_num=0,  # Deferred/filled by your runtime
                 rq_psn=0,
                 max_dest_rd_atomic=1,
@@ -71,7 +71,7 @@ def base_connect(
                 ah_attr=IbvAHAttr(
                     is_global=1,
                     port_num=port,
-                    grh=IbvGlobalRoute(sgid_index=1, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
+                    grh=IbvGlobalRoute(sgid_index=3, hop_limit=1, traffic_class=0, flow_label=0, dgid=""),
                 ),
             ),
             attr_mask=(

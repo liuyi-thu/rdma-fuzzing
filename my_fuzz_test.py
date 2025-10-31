@@ -65,8 +65,8 @@ INITIAL_VERBS = [
     # QueryGID(),
     AllocPD(pd="pd0"),
     AllocPD(pd="pd1"),
-    AllocDM(dm="dm0", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
-    AllocDM(dm="dm1", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=12)),  # --- IGNORE ---
+    AllocDM(dm="dm0", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=0)),  # --- IGNORE ---
+    AllocDM(dm="dm1", attr_obj=IbvAllocDmAttr(length=4096, log_align_req=0)),  # --- IGNORE ---
     CreateSRQ(pd="pd0", srq="srq0", srq_init_obj=IbvSrqInitAttr(attr=IbvSrqAttr())),  # --- IGNORE ---
     CreateCQ(cq="cq0"),
     CreateCQ(cq="cq1"),
