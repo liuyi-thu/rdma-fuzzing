@@ -98,7 +98,7 @@ class ClientCapture:
         self.lock = threading.Lock()
         self.proc = None
         self.thread = None
-        self.dmesg_collector = DmesgCollector(REPO_DIR)  # 收集内核崩溃信息
+        self.dmesg_collector = DmesgCollector(REPO_DIR)  # 添加journalctl收集器
 
     def start(self, env: dict):
         # 在client启动前设置时间基线
@@ -176,7 +176,7 @@ class ClientCapture:
             logger.exception("Failed to update client binary cache")
 
     def collect_dmesg_after_exit(self) -> str:
-        """收集client退出后的新增journalctl/内核崩溃信息"""
+        """收集client退出后的新增journalctl信息"""
         return self.dmesg_collector.collect_new_messages(self.index)
 
 
@@ -271,7 +271,7 @@ def run_once():
             exit_code = client_proc.wait()
             logger.info("client exited, exit code=%s", exit_code)
 
-            # 收集client退出后的新增journalctl信息（检测内核崩溃）
+            # 收集client退出后的新增journalctl信息
             new_dmesg = cc.collect_dmesg_after_exit()
             if new_dmesg:
                 logger.info("Collected new journalctl: %d characters", len(new_dmesg))
