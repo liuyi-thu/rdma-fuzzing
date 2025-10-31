@@ -244,7 +244,7 @@ def run_once():
         logger.exception("Failed to start coordinator.py")
         coord_proc = None
 
-    time.sleep(0.6)
+    time.sleep(1)
 
     server_proc = None
     try:
@@ -256,7 +256,7 @@ def run_once():
         logger.exception("Failed to start server")
         server_proc = None
 
-    time.sleep(0.4)
+    time.sleep(1)
 
     logger.info("Starting client...")
     cc = ClientCapture(idx)  # 使用已经生成的idx
