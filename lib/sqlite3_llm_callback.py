@@ -107,9 +107,11 @@ def get_call_chains(
     Returns:
         List[Tuple[source_function, call_chain, depth]]
     """
-    if space.lower() == "user":
+    # 规范化space参数，确保一致性
+    space_normalized = space.lower()
+    if space_normalized == "user":
         table_name = "ibv"
-    elif space.lower() == "kernel":
+    elif space_normalized == "kernel":
         table_name = "uverbs"
     else:
         print(f"[-] 错误: space 参数必须是 'user' 或 'kernel'，当前值为 '{space}'")
@@ -118,8 +120,9 @@ def get_call_chains(
     if not table_name:
         return []
 
+    # 日志显示时使用规范化后的值，确保与实际查询一致
     print(
-        f"[+] 查询函数(批量): {function_name}, 空间: {space}, 表: {table_name}, mode={mode}, min_depth={min_depth}, distinct_source={distinct_source}"
+        f"[+] 查询函数(批量): {function_name}, 空间: {space_normalized}, 表: {table_name}, mode={mode}, min_depth={min_depth}, distinct_source={distinct_source}"
     )
 
     conn = None
