@@ -27,7 +27,7 @@ def feed_back():
     utils.run_cmd("rm -f /home/user_coverage.json")
     utils.run_cmd("rm -f /home/kernel_coverage.json")
 
-    user_cmd = "python3 /home/fastcov/fastcov.py -f /home/rdma-core-master/build/librdmacm/CMakeFiles/rspreload.dir/*.gcda /home/rdma-core-master/build/libibverbs/CMakeFiles/ibverbs.dir/*.gcda /home/rdma-core-master/build/librdmacm/CMakeFiles/rdmacm.dir/*.gcda -e /home/rdma-core-master/build/include -o /home/user_coverage.json -X"
+    user_cmd = "python3 /home/fastcov/fastcov.py -f /home/rdma-core-master/build/librdmacm/CMakeFiles/rspreload.dir/*.gcda /home/rdma-core-master/build/libibverbs/CMakeFiles/ibverbs.dir/*.gcda /home/rdma-core-master/build/librdmacm/CMakeFiles/rdmacm.dir/*.gcda /home/rdma-core-master/build/providers/mlx5/CMakeFiles/mlx5.dir/*.gcda -e /home/rdma-core-master/build/include -o /home/user_coverage.json -X"
     for i in range(5):
         utils.run_cmd(user_cmd)
         if utils.retry_until_file_exist("/home/user_coverage.json"):
