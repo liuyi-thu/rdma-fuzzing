@@ -146,6 +146,9 @@ class Value(ABC):
     def __add__(self, other):
         return self.value + other if self.value is not None else other
 
+    def to_dict(self):
+        raise NotImplementedError("to_dict method not implemented for Value class")
+
 
 class IntValue(Value):
     def __init__(
@@ -182,6 +185,15 @@ class IntValue(Value):
             v = (self.value or 0) + rng.choice([-1, 1])
             self.value = max(0, v)
 
+    def to_dict(self):
+        return {
+            "type": "IntValue",
+            "value": self.value,
+            # "range": (self.range.min_value, self.range.max_value) if isinstance(self.range, Range) else self.range,
+            # "step": self.step,
+            # "mutable": self.mutable,
+        }
+
 
 class BoolValue(Value):
     def __init__(self, value: bool = None, mutable: bool = True):
@@ -195,6 +207,13 @@ class BoolValue(Value):
         self.value = not self.value
         debug_print(f"BoolValue mutated to {self.value}")
 
+    def to_dict(self):
+        return {
+            "type": "BoolValue",
+            "value": self.value,
+            # "mutable": self.mutable,
+        }
+
 
 class ConstantValue(Value):
     def __init__(self, value: str = None):
@@ -204,6 +223,12 @@ class ConstantValue(Value):
         # Constants do not change, so this method does nothing
         debug_print("ConstantValue does not mutate.")
         pass
+
+    def to_dict(self):
+        return {
+            "type": "ConstantValue",
+            "value": self.value,
+        }
 
 
 class EnumValue(Value):
@@ -339,6 +364,14 @@ class EnumValue(Value):
         # （可选）按“邻近枚举”权重优先；这里给个简单实现
         self.value = rng.choice(pool)
 
+    def to_dict(self):
+        return {
+            "type": "EnumValue",
+            "value": self.value,
+            # "enum_type": self.enum_type,
+            # "mutable": self.mutable,
+        }
+
 
 class FlagValue(Value):
     IBV_QP_ATTR_MASK_ENUM = {
@@ -468,6 +501,14 @@ class FlagValue(Value):
         names = [n for n, v in self.map.items() if (self.value & v)]
         return " | ".join(names) if names else "0"
 
+    def to_dict(self):
+        return {
+            "type": "FlagValue",
+            "value": self.value,
+            # "flag_type": self.flag_type,
+            # "mutable": self.mutable,
+        }
+
 
 class ResourceValue(Value):
     def __init__(self, value: str = None, resource_type: str = None, mutable: bool = True):
@@ -529,6 +570,14 @@ class ResourceValue(Value):
         # 尽量换个名字
         choices = [x for x in cands if x != self.value] or cands
         self.value = rng.choice(choices)
+
+    def to_dict(self):
+        return {
+            "type": "ResourceValue",
+            "value": self.value,
+            # "resource_type": self.resource_type,
+            # "mutable": self.mutable,
+        }
 
 
 class ListValue(Value):  # 能不能限定：列表的元素都一样；传入时知道元素类型，比如IbvSge
@@ -664,6 +713,13 @@ class ListValue(Value):  # 能不能限定：列表的元素都一样；传入�
         """Get the length of the list."""
         return len(self.value)
 
+    def to_dict(self):
+        return {
+            "type": "ListValue",
+            "value": [item.to_dict() for item in self.value],
+            # "mutable": self.mutable,
+        }
+
 
 class OptionalValue(Value):
     """
@@ -787,6 +843,14 @@ class OptionalValue(Value):
     #     #     raise TypeError("Can only add OptionalValue or Value to OptionalValue")
     #     pass
 
+    def to_dict(self):
+        # return {
+        #     "type": "OptionalValue",
+        #     "value": self.value.to_dict() if self.value is not None else None,
+        #     # "mutable": self.mutable,
+        # }
+        return self.value.to_dict() if self.value is not None else {"type": "None", "value": None}
+
 
 class DeferredValue(Value):
     __slots__ = ("key", "c_type", "source", "default", "by_id")
@@ -835,6 +899,17 @@ class DeferredValue(Value):
     def is_none(self) -> bool:
         return False
 
+    def to_dict(self):
+        return {
+            "type": "DeferredValue",
+            "value": "UNAVAILABLE",
+            # "key": self.key,
+            # "c_type": self.c_type,
+            # "source": self.source,
+            # "default": self.default,
+            # "by_id": self.by_id,
+        }
+
 
 class LocalResourceValue(Value):  # buf
     def __init__(self, value: str = None, resource_type: str = None, mutable: bool = True):
@@ -859,6 +934,14 @@ class LocalResourceValue(Value):  # buf
         rng = rng or random
         self.value = rng.choice(cands)
         # do not need contract, for simplicity
+    
+    def to_dict(self):
+        return {
+            "type": "LocalResourceValue",
+            "value": self.value,
+            # "resource_type": self.resource_type,
+            # "mutable": self.mutable,
+        }
 
 
 # --- 帮助函数：识别/解包延迟值（供 emit_assign / contracts 使用） ---
