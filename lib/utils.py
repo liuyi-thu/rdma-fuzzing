@@ -1,14 +1,16 @@
-import subprocess
 import os
+import subprocess
 import time
 
-def emit_assign(varname, field, value, enums=None):
+
+def emit_assign(varname, field, value, enums=None, add_address_symbol=False):
     # enums: dict(field->enum_map)
     if enums and field in enums:
         enum_map = enums[field]
         if value in enum_map:
             value = enum_map[value]
-    return f"    {varname}.{field} = {value};\n"
+    return f"    {varname}.{field} = {f'&{value}' if add_address_symbol else value};\n"
+
 
 def run_cmd(cmd):
     try:
@@ -22,9 +24,10 @@ def run_cmd(cmd):
             print(f"[STDERR] {e.stderr.strip()}")
         return False
 
+
 def retry_until_file_exist(filename):
     for i in range(3):
-        if (os.path.exists(filename)):
+        if os.path.exists(filename):
             print(f"[+] {filename} exists !!!")
             return True
         else:

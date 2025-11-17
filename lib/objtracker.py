@@ -1,6 +1,7 @@
 import collections
 import random
 import string
+
 # from .value import Value
 
 
@@ -10,7 +11,24 @@ class ObjectTracker:
     支持PD、CQ、QP、MR、SRQ、MW、AH、DM、TD、XRC等资源。
     """
 
-    SUPPORTED_TYPES = ["context", "pd", "cq", "qp", "mr", "srq", "mw", "ah", "dm", "td", "xrcd", "parent_pd", "wq"]
+    SUPPORTED_TYPES = [
+        "context",
+        "pd",
+        "cq",
+        "qp",
+        "mr",
+        "srq",
+        "mw",
+        "ah",
+        "dm",
+        "td",
+        "xrcd",
+        "parent_pd",
+        "wq",
+        "channel",
+        "cq_ex",
+        "flow",
+    ]
 
     def __init__(self):
         # 各类对象池，字典：类型->名字->属性字典

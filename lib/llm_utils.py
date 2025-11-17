@@ -506,3 +506,164 @@ def generate_mvs_scaffold(
     with open(fpath, "w", encoding="utf-8") as f:
         f.write(resp)
     return fpath
+
+
+def generate_mvs_scaffold_v2(
+    *,
+    target_symbol: str,
+    callchain: List[str],
+    entry_verb: str,
+    example_scaffold_path: str = "lib/scaffolds/base_connect.py",
+    class_defs_path: str = "CLASSES_IN_LIB.md",
+    output_dir: str = "lib/scaffolds",
+    model: str = "openai/gpt-5",
+    family_hint: Optional[str] = None,  # "srq" | "atomic" | "memory" | "multi_qp" | ...
+    hard_require_verbs: Optional[List[str]] = None,
+    hard_forbid_verbs: Optional[List[str]] = None,
+    forbid_device_verbs: bool = True,  # 关键开关：禁止设备生命周期 verbs
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    proxy_url: Optional[str] = None,
+    temperature: float = 0.2,
+) -> str:
+    """
+    生成“最小可行（MVS）”的新 scaffold，且假定已有活动 ibv_context 变量名为 `ctx`，
+    明确禁止重复进行设备枚举/打开/关闭（可通过 forbid_device_verbs 控制）。
+    产出单文件：1 个 scaffold 函数 + 1 个 build() 入口；严格遵守 CLASSES_IN_LIB.md 的构造签名。
+    返回保存路径。
+    """
+
+    def _default_load_config():
+        BU = base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        AK = api_key or os.getenv("OPENAI_API_KEY", "")
+        PX = proxy_url or os.getenv("HTTPS_PROXY", "") or os.getenv("HTTP_PROXY", "")
+        if not AK:
+            raise RuntimeError("Missing OpenAI API key")
+        return BU, AK, PX
+
+    base_url, api_key, proxy_url = _default_load_config()
+
+    with open(example_scaffold_path, "r", encoding="utf-8") as f:
+        example_scaffold = f.read()
+    with open(class_defs_path, "r", encoding="utf-8") as f:
+        class_defs = f.read()
+
+    family_hint = (family_hint or "").strip().lower()
+    hard_require_verbs = list(hard_require_verbs or [])
+    hard_forbid_verbs = list(hard_forbid_verbs or [])
+
+    # 1) 设备生命周期禁区（你的诉求）
+    device_forbids = ["GetDeviceList", "OpenDevice", "FreeDeviceList", "CloseDevice"]
+    if forbid_device_verbs:
+        for v in device_forbids:
+            if v not in hard_forbid_verbs:
+                hard_forbid_verbs.append(v)
+
+    # 2) 可选：若你也想默认屏蔽 CQ 通知流，这里打开即可
+    # if family_hint in {"srq", "atomic", "memory", "multi_qp"}:
+    #     for v in ["ReqNotifyCQ", "AckCQEvents", "PollCQ"]:
+    #         if v not in hard_forbid_verbs:
+    #             hard_forbid_verbs.append(v)
+
+    callchain_str = " -> ".join(callchain)
+    context = f"""
+[Target]
+- Uncovered symbol (kernel/user): {target_symbol}
+- Callchain (user entry at the left): {callchain_str}
+- Required user-space entry verb: {entry_verb}
+
+[Assumptions / Environment Contract]
+- There is already an active ibv_context named **ctx** (single HCA).
+- Device discovery/open/close MUST NOT be emitted in this scaffold.
+- If any Verb constructor requires a context, use ctx='ctx' (only if signature demands it).
+
+[Family hint]
+- {family_hint or "N/A"}
+
+[Hard constraints]
+- REQUIRED verbs (must include if reasonable): {json.dumps(hard_require_verbs, ensure_ascii=False)}
+- FORBIDDEN verbs (must avoid): {json.dumps(hard_forbid_verbs, ensure_ascii=False)}
+    """.strip()
+
+    user_prompt = f"""
+{context}
+
+以下是已有类定义（仅可使用这些，严格对齐构造签名，不得自定义新类型/字段）：
+{class_defs}
+
+—
+请“新写一个最小可行（MVS）”的 Python scaffold 插件文件，以命中上述调用链的**用户态入口 verb**：{entry_verb}
+要求：
+
+1) 使用约束
+- 只能使用我库里已有类（见上面的类定义）；所有 verbs 调用必须严格对齐已有类构造函数签名。
+- 若需要建链，请调用 base_connect()（不要复制实现）。
+- 环境已提供 ibv_context 变量 **ctx**；严禁输出任何设备枚举/打开/关闭相关的 verbs：
+  {"，".join(device_forbids) if forbid_device_verbs else "（无设备禁令）"}
+- 禁止使用（除设备禁令外）：{", ".join([v for v in hard_forbid_verbs if v not in device_forbids]) or "无"}。
+- 必须包含（若合理）：{", ".join(hard_require_verbs) or "无"}。
+
+2) 结构要求
+- 文件仅包含一个 scaffold 函数（函数名需简短明确，反映该 MVS 语义）。
+- scaffold 函数返回: (verbs: List[VerbCall], hotspots: List[int])。
+- 另提供一个入口函数：def build(local_snapshot, global_snapshot, rng) -> Tuple[List[VerbCall], List[int]] | None
+  自动生成资源名，调用该 scaffold。
+- 不得出现任何 I/O、sleep、threading 调用；不得定义新的结构类型。
+
+3) 语义要求
+- 围绕 {entry_verb} 的**必要前置资源与状态**，构造最小可行序列（如 PD/CQ/QP/SRQ/MR 等依赖/绑定）。
+- 如果 {entry_verb} 属于控制面/创建类 API，需合理补齐上下文（如在 CreateQP 的 init_attr 中设置 srq=... 等），
+  以确保能触达较深的内核路径（更接近 {target_symbol}）。
+- hotspots 标注在关键点（如 Create*/Modify*/Post* 这类容易触发内核分支的节点）。
+
+4) 输出格式
+- 直接输出完整 .py 文件源代码（含 imports 与模块级 docstring，简述该 MVS 的语义、用途，并说明
+  为什么这个 MVS 可能会触发 uncovered symbol {target_symbol}）。
+- 文件能直接放入 lib/scaffolds/ 并通过 importlib 加载。
+
+——
+给你一个 scaffold 文件作为风格参考（仅供结构/风格参考；请“新写 MVS”，不是 mutate）：
+{example_scaffold}
+
+——
+你生成的 Python scaffold 插件文件代码为：
+""".strip()
+
+    http_client = None if not proxy_url else httpx.Client(proxy=proxy_url)
+    client = OpenAI(base_url=base_url, api_key=api_key, http_client=http_client)
+
+    completion = client.chat.completions.create(
+        model=model,
+        temperature=temperature,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a programming assistant for an RDMA verbs fuzzing framework. "
+                    "Generate a brand new, minimal viable scaffold (MVS) targeting the specified user-space entry verb, "
+                    "strictly conforming to the provided Verb class signatures. "
+                    "Assume an already active ibv_context variable named 'ctx' is available. "
+                    "Do NOT output any device discovery/open/close verbs. "
+                    "No I/O, no threads, no sleeps. Output a single .py module with one scaffold function and a build() entry."
+                ),
+            },
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+
+    resp = (completion.choices[0].message.content or "").strip()
+
+    # 生成后护栏：静态扫描禁词
+    forbidden_hits = [v for v in device_forbids if v in resp] if forbid_device_verbs else []
+    other_forbidden_hits = [v for v in hard_forbid_verbs if (v not in device_forbids) and (v in resp)]
+    if forbidden_hits or other_forbidden_hits:
+        raise RuntimeError(
+            "Generated scaffold violates forbidden verbs: " + ", ".join(forbidden_hits + other_forbidden_hits)
+        )
+
+    os.makedirs(output_dir, exist_ok=True)
+    fname = f"mvs_{entry_verb}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
+    fpath = os.path.join(output_dir, fname)
+    with open(fpath, "w", encoding="utf-8") as f:
+        f.write(resp)
+    return fpath
