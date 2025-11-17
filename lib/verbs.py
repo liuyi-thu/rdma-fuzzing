@@ -277,6 +277,7 @@ class AckCQEvents(VerbCall):
     """
 
     MUTABLE_FIELDS = ["cq", "nevents"]
+    EXPORT_FIELDS = ["cq", "nevents"]
     CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str | None = None, nevents: int | None = None):
@@ -328,6 +329,7 @@ class AdviseMR(VerbCall):  # TODO: 暂时用不上，没改return -1
     """
 
     MUTABLE_FIELDS = ["pd", "advice", "flags", "sg_list", "num_sge", "sg_var"]
+    EXPORT_FIELDS = ["pd", "advice", "flags", "sg_list", "num_sge"]
     CONTRACT = Contract(requires=[RequireSpec("pd", State.ALLOCATED, "pd")], produces=[], transitions=[])
 
     # 这些参数都是必须的
@@ -410,6 +412,7 @@ class AdviseMR(VerbCall):  # TODO: 暂时用不上，没改return -1
 
 class AllocDM(VerbCall):
     MUTABLE_FIELDS = ["dm", "attr_obj", "attr_var"]
+    EXPORT_FIELDS = ["dm", "attr_obj"]
     CONTRACT = Contract(
         requires=[],  # 也可把 device ctx 建模为资源
         produces=[ProduceSpec("dm", State.ALLOCATED, "dm")],
@@ -470,6 +473,7 @@ class AllocDM(VerbCall):
 
 class AllocMW(VerbCall):
     MUTABLE_FIELDS = ["pd", "mw", "mw_type"]
+    EXPORT_FIELDS = ["pd", "mw", "mw_type"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("mw", State.ALLOCATED, "mw")],
@@ -536,6 +540,7 @@ class AllocNullMR(VerbCall):
     """Allocate a null memory region (MR) associated with a protection domain."""
 
     MUTABLE_FIELDS = ["pd", "mr"]
+    EXPORT_FIELDS = ["pd", "mr"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
@@ -600,6 +605,7 @@ class AllocParentDomain(VerbCall):
     """
 
     MUTABLE_FIELDS = ["context", "pd", "parent_pd", "attr_var", "attr_obj"]
+    EXPORT_FIELDS = ["context", "pd", "parent_pd", "attr_obj"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("parent_pd", State.ALLOCATED, "parent_pd")],
@@ -674,6 +680,7 @@ class AllocPD(VerbCall):
     """Allocate a protection domain (PD) for the RDMA device context."""
 
     MUTABLE_FIELDS = ["pd"]
+    EXPORT_FIELDS = ["pd"]
     CONTRACT = Contract(
         requires=[], produces=[ProduceSpec(rtype="pd", state=State.ALLOCATED, name_attr="pd")], transitions=[]
     )
@@ -729,6 +736,7 @@ class AllocTD(VerbCall):
     """
 
     MUTABLE_FIELDS = ["td", "attr_var", "attr_obj"]
+    EXPORT_FIELDS = ["td", "attr_obj"]
     CONTRACT = Contract(  # TODO: 改为动态
         requires=[],  # 也可把 device ctx 建模为资源
         produces=[ProduceSpec("td", State.ALLOCATED, "td")],
@@ -959,6 +967,7 @@ class CloseDevice(VerbCall):
     Make sure to release all associated resources before closing."""
 
     MUTABLE_FIELDS = []
+    EXPORT_FIELDS = []
 
     def __init__(self):
         pass
@@ -985,6 +994,7 @@ class CloseXRCD(VerbCall):
     """Close an XRC domain."""
 
     MUTABLE_FIELDS = ["xrcd"]
+    EXPORT_FIELDS = ["xrcd"]
     CONTRACT = Contract(
         requires=[RequireSpec("xrcd", State.ALLOCATED, "xrcd")],
         produces=[],
@@ -1038,6 +1048,7 @@ class CreateAH(VerbCall):
     """
 
     MUTABLE_FIELDS = ["pd", "attr_var", "ah", "attr_obj"]
+    EXPORT_FIELDS = ["pd", "ah", "attr_obj"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("ah", State.ALLOCATED, "ah")],
@@ -1106,6 +1117,7 @@ class CreateAH(VerbCall):
 
 class CreateAHFromWC(VerbCall):
     MUTABLE_FIELDS = ["pd", "wc", "grh", "port_num", "ah"]
+    EXPORT_FIELDS = ["pd", "wc", "grh", "port_num", "ah"]
     CONTRACT = Contract(
         requires=[
             RequireSpec("pd", State.ALLOCATED, "pd"),
@@ -1182,6 +1194,7 @@ class CreateAHFromWC(VerbCall):
 
 class CreateCompChannel(VerbCall):
     MUTABLE_FIELDS = ["channel"]
+    EXPORT_FIELDS = ["channel"]
     CONTRACT = Contract(requires=[], produces=[ProduceSpec("channel", State.ALLOCATED, "channel")], transitions=[])
 
     def __init__(self, channel: str = None):
@@ -1226,6 +1239,7 @@ class CreateCompChannel(VerbCall):
 
 class CreateCQ(VerbCall):
     MUTABLE_FIELDS = ["cqe", "cq_context", "channel", "comp_vector", "cq"]
+    EXPORT_FIELDS = ["cqe", "cq_context", "channel", "comp_vector", "cq"]
     CONTRACT = Contract(requires=[], produces=[ProduceSpec("cq", State.ALLOCATED, "cq")], transitions=[])
 
     def __init__(
@@ -1314,6 +1328,7 @@ class CreateCQEx(VerbCall):
     """
 
     MUTABLE_FIELDS = ["cq_ex", "cq_attr_var", "cq_attr_obj"]
+    EXPORT_FIELDS = ["cq_ex", "cq_attr_obj"]
     CONTRACT = Contract(
         requires=[],  # 也可以把 ctx（device context）建模为资源；先省略
         produces=[ProduceSpec("cq", State.ALLOCATED, "cq_ex")],  # 归一到 'cq' 类型
@@ -1411,6 +1426,7 @@ class CreateFlow(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "flow", "flow_attr_var", "flow_attr_obj"]
+    EXPORT_FIELDS = ["qp", "flow", "flow_attr_obj"]
     CONTRACT = Contract(
         requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
         produces=[ProduceSpec("flow", State.ALLOCATED, "flow")],
@@ -1485,6 +1501,7 @@ class CreateFlow(VerbCall):
 
 class CreateQP(VerbCall):
     MUTABLE_FIELDS = ["pd", "qp", "init_attr_obj", "remote_qp"]
+    EXPORT_FIELDS = ["pd", "qp", "init_attr_obj", "remote_qp"]
     CONTRACT = Contract(
         requires=[
             RequireSpec(rtype="pd", state=State.ALLOCATED, name_attr="pd"),
@@ -1637,6 +1654,7 @@ class CreateQPEx(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "qp_attr_var", "qp_attr_obj"]
+    EXPORT_FIELDS = ["qp", "qp_attr_obj"]
     CONTRACT = Contract(
         requires=[
             RequireSpec("pd", State.ALLOCATED, "qp_attr_obj.pd"),
@@ -1811,6 +1829,7 @@ class CreateSRQ(VerbCall):
     """Create a shared receive queue (SRQ)"""
 
     MUTABLE_FIELDS = ["pd", "srq", "srq_init_obj"]
+    EXPORT_FIELDS = ["pd", "srq", "srq_init_obj"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("srq", State.ALLOCATED, "srq")],
@@ -1885,6 +1904,7 @@ class CreateSRQEx(VerbCall):  # TODO: 暂时不用，没改return -1
     """
 
     MUTABLE_FIELDS = ["srq", "srq_attr_var", "srq_attr_obj"]
+    EXPORT_FIELDS = ["srq", "srq_attr_obj"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "srq_attr_obj.pd")],
         produces=[ProduceSpec("srq", State.ALLOCATED, "srq")],
@@ -1975,6 +1995,7 @@ class CreateWQ(VerbCall):  # TODO: 暂时不用，没改return -1
     """
 
     MUTABLE_FIELDS = ["wq", "wq_attr_var", "wq_attr_obj"]
+    EXPORT_FIELDS = ["wq", "wq_attr_obj"]
     # CONTRACT = Contract(
     #     requires=[],
     #     produces=[ProduceSpec("wq", state=State.ALLOCATED, name_attr="wq")],
@@ -2064,6 +2085,7 @@ class DeallocMW(VerbCall):
     """Deallocate a Memory Window (MW)."""
 
     MUTABLE_FIELDS = ["mw"]
+    EXPORT_FIELDS = ["mw"]
     CONTRACT = Contract(
         requires=[RequireSpec("mw", State.ALLOCATED, "mw")],
         produces=[],
@@ -2107,6 +2129,7 @@ class DeallocPD(VerbCall):
     """Deallocate a protection domain (PD)."""
 
     MUTABLE_FIELDS = ["pd"]
+    EXPORT_FIELDS = ["pd"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", state=State.ALLOCATED, name_attr="pd")],
         produces=[],
@@ -2153,6 +2176,7 @@ class DeallocTD(VerbCall):
     """Deallocate an RDMA thread domain (TD) object."""
 
     MUTABLE_FIELDS = ["td"]
+    EXPORT_FIELDS = ["td"]
     CONTRACT = Contract(
         requires=[RequireSpec("td", State.ALLOCATED, "td")],
         produces=[],
@@ -2199,6 +2223,7 @@ class DeregMR(VerbCall):
     """Deregister a Memory Region."""
 
     MUTABLE_FIELDS = ["mr"]
+    EXPORT_FIELDS = ["mr"]
     CONTRACT = Contract(
         requires=[RequireSpec("mr", State.ALLOCATED, "mr")],
         produces=[],
@@ -2245,6 +2270,7 @@ class DestroyAH(VerbCall):
     """Destroy an Address Handle (AH)."""
 
     MUTABLE_FIELDS = ["ah"]
+    EXPORT_FIELDS = ["ah"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[],
@@ -2291,6 +2317,7 @@ class DestroyCompChannel(VerbCall):
     """Destroy a completion event channel."""
 
     MUTABLE_FIELDS = ["channel"]
+    EXPORT_FIELDS = ["channel"]
     CONTRACT = Contract(
         requires=[RequireSpec("channel", State.ALLOCATED, "channel")],
         produces=[],
@@ -2345,6 +2372,7 @@ class DestroyCQ(VerbCall):
     """Destroy a Completion Queue."""
 
     MUTABLE_FIELDS = ["cq"]
+    EXPORT_FIELDS = ["cq"]
     CONTRACT = Contract(
         requires=[RequireSpec("cq", State.ALLOCATED, "cq")],
         produces=[],
@@ -2391,6 +2419,7 @@ class DestroyFlow(VerbCall):
     """Destroy a flow steering rule."""
 
     MUTABLE_FIELDS = ["flow"]
+    EXPORT_FIELDS = ["flow"]
     CONTRACT = Contract(
         requires=[RequireSpec("flow", State.ALLOCATED, "flow")],
         produces=[],
@@ -2441,6 +2470,7 @@ class DestroyQP(VerbCall):
     """Destroy a Queue Pair (QP)."""
 
     MUTABLE_FIELDS = ["qp"]
+    EXPORT_FIELDS = ["qp"]
     CONTRACT = Contract(
         requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
         produces=[],
@@ -2512,6 +2542,7 @@ class DestroySRQ(VerbCall):
     """Destroy a Shared Receive Queue (SRQ)."""
 
     MUTABLE_FIELDS = ["srq"]
+    EXPORT_FIELDS = ["srq"]
     CONTRACT = Contract(
         requires=[RequireSpec("srq", State.ALLOCATED, "srq")],
         produces=[],
@@ -2558,6 +2589,7 @@ class DestroyWQ(VerbCall):
     """Destroy a Work Queue (WQ)."""
 
     MUTABLE_FIELDS = ["wq"]
+    EXPORT_FIELDS = ["wq"]
     CONTRACT = Contract(
         requires=[RequireSpec("wq", State.ALLOCATED, "wq")],
         produces=[],
@@ -2604,6 +2636,7 @@ class DetachMcast(VerbCall):  # TODO: gid 需要是变量名
     """Detach a QP from a multicast group."""
 
     MUTABLE_FIELDS = ["qp", "gid", "lid"]
+    EXPORT_FIELDS = ["qp", "gid", "lid"]
     CONTRACT = Contract(
         requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])], produces=[], transitions=[]
     )
@@ -2715,6 +2748,7 @@ class DetachMcast(VerbCall):  # TODO: gid 需要是变量名
 
 class ForkInit(VerbCall):
     MUTABLE_FIELDS = []
+    EXPORT_FIELDS = []
 
     def __init__(self):
         pass
@@ -2737,6 +2771,7 @@ class FreeDeviceList(VerbCall):
     """Release the array of RDMA devices obtained from ibv_get_device_list."""
 
     MUTABLE_FIELDS = []
+    EXPORT_FIELDS = []
 
     def __init__(self, dev_list: str = None):
         self.dev_list = ConstantValue(dev_list or "dev_list")
@@ -2763,6 +2798,7 @@ class FreeDM(VerbCall):
     """Release a device memory buffer (DM)."""
 
     MUTABLE_FIELDS = ["dm"]
+    EXPORT_FIELDS = ["dm"]
     CONTRACT = Contract(
         requires=[RequireSpec("dm", State.ALLOCATED, "dm")],
         produces=[],
@@ -2932,6 +2968,7 @@ class GetDeviceGUID(VerbCall):
     """Get the Global Unique Identifier (GUID) of the RDMA device."""
 
     MUTABLE_FIELDS = ["device", "output"]
+    EXPORT_FIELDS = ["device", "output"]
 
     def __init__(self, device: str = None, output: str = None):
         # Default device is the first in the list
@@ -2968,6 +3005,7 @@ class GetDeviceIndex(VerbCall):
     """Retrieve the device index for the specified IB device."""
 
     MUTABLE_FIELDS = ["device_name", "output"]
+    EXPORT_FIELDS = ["device_name", "output"]
 
     def __init__(self, device_name: str = None, output: str = None):
         # Default device is the first in the list
@@ -3022,6 +3060,7 @@ class GetDeviceList(VerbCall):
     """
 
     MUTABLE_FIELDS = []
+    EXPORT_FIELDS = []
 
     def __init__(self, dev_list: str = "dev_list"):
         self.dev_list = ConstantValue(dev_list or "dev_list")
@@ -3052,6 +3091,8 @@ class GetDeviceList(VerbCall):
 
 
 class GetDeviceName(VerbCall):
+    EXPORT_FIELDS = ["device", "output"]
+
     def __init__(self, device: str = "dev_list[0]", output: str = None):
         self.device = ConstantValue(device or "dev_list[0]")
         if output:
@@ -3085,6 +3126,7 @@ class GetDeviceName(VerbCall):
 
 class GetPKeyIndex(VerbCall):
     MUTABLE_FIELDS = ["port_num", "pkey", "output"]
+    EXPORT_FIELDS = ["port_num", "pkey", "output"]
 
     def __init__(self, port_num: int = None, pkey: int = None, output: str = None):
         self.port_num = IntValue(port_num or 1)  # Default port number is 1
@@ -3126,6 +3168,7 @@ class GetPKeyIndex(VerbCall):
 
 class GetSRQNum(VerbCall):
     MUTABLE_FIELDS = ["srq", "srq_num_var"]
+    EXPORT_FIELDS = ["srq"]
     CONTRACT = Contract(
         requires=[RequireSpec("srq", State.ALLOCATED, "srq")],
         produces=[],
@@ -3209,6 +3252,7 @@ class GetSRQNum(VerbCall):
 
 class ImportDM(VerbCall):
     MUTABLE_FIELDS = ["dm_handle", "dm"]
+    EXPORT_FIELDS = ["dm_handle", "dm"]
     CONTRACT = Contract(
         requires=[RequireSpec("dm", State.ALLOCATED, "dm")],
         produces=[],
@@ -3259,6 +3303,7 @@ class ImportDM(VerbCall):
 
 class ImportMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr_handle", "mr"]
+    EXPORT_FIELDS = ["pd", "mr_handle", "mr"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
@@ -3314,6 +3359,7 @@ class ImportMR(VerbCall):
 
 class ImportPD(VerbCall):
     MUTABLE_FIELDS = ["pd", "pd_handle"]
+    EXPORT_FIELDS = ["pd", "pd_handle"]
     CONTRACT = Contract(
         requires=[],
         produces=[ProduceSpec("pd", State.ALLOCATED, "pd")],
@@ -3452,6 +3498,7 @@ class ImportPD(VerbCall):
 
 class MemcpyFromDM(VerbCall):
     MUTABLE_FIELDS = ["host", "dm", "dm_offset", "length"]
+    EXPORT_FIELDS = ["host", "dm", "dm_offset", "length"]
     CONTRACT = Contract(
         requires=[RequireSpec("dm", State.ALLOCATED, "dm")],
         produces=[],
@@ -3509,6 +3556,7 @@ class MemcpyFromDM(VerbCall):
 
 class MemcpyToDM(VerbCall):
     MUTABLE_FIELDS = ["dm", "dm_offset", "host", "length"]
+    EXPORT_FIELDS = ["dm", "dm_offset", "host", "length"]
     CONTRACT = Contract(
         requires=[RequireSpec("dm", State.ALLOCATED, "dm")],
         produces=[],
@@ -3576,6 +3624,7 @@ class ModifyCQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["cq", "attr_obj", "attr_var"]
+    EXPORT_FIELDS = ["cq", "attr_obj"]
     CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None, attr_obj: IbvModifyCQAttr = None, attr_var: str = None):
@@ -3645,6 +3694,7 @@ _PREV_STATE = {
 
 class ModifyQP(VerbCall):
     MUTABLE_FIELDS = ["qp", "attr_obj", "attr_mask"]
+    EXPORT_FIELDS = ["qp", "attr_obj", "attr_mask"]
     # CONTRACT = Contract(
     #     requires=[RequireSpec("qp", None, "qp")],
     #     produces=[],  # 不新建资源
@@ -3787,6 +3837,7 @@ class ModifyQPRateLimit(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "attr_var", "attr_obj"]
+    EXPORT_FIELDS = ["qp", "attr_obj"]
     CONTRACT = Contract(requires=[RequireSpec("qp", State.ALLOCATED, "qp")], produces=[], transitions=[])
 
     def __init__(
@@ -3855,6 +3906,7 @@ class ModifySRQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["srq", "attr_var", "attr_obj", "attr_mask"]
+    EXPORT_FIELDS = ["srq", "attr_obj", "attr_mask"]
     CONTRACT = Contract(requires=[RequireSpec("srq", State.ALLOCATED, "srq")], produces=[], transitions=[])
 
     def __init__(
@@ -3924,6 +3976,7 @@ class ModifyWQ(VerbCall):
     """
 
     MUTABLE_FIELDS = ["wq", "attr_var", "attr_obj"]
+    EXPORT_FIELDS = ["wq", "attr_obj"]
     CONTRACT = Contract(
         requires=[RequireSpec("wq", State.ALLOCATED, "wq")],
         produces=[],
@@ -3983,6 +4036,7 @@ class OpenDevice(VerbCall):
     """Open an RDMA device and create a context for use."""
 
     MUTABLE_FIELDS = ["device"]
+    EXPORT_FIELDS = ["device"]
 
     def __init__(self, device: str = None, ctx_name: str = None):
         # Device name or variable, e.g., "dev_list[
@@ -4023,6 +4077,7 @@ class OpenQP(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_var", "qp", "attr_var", "attr_obj"]
+    EXPORT_FIELDS = ["ctx_var", "qp", "attr_var", "attr_obj"]
     CONTRACT = Contract(requires=[RequireSpec("qp", State.ALLOCATED, "qp")], produces=[], transitions=[])
 
     def __init__(
@@ -4103,6 +4158,7 @@ class OpenXRCD(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_var", "xrcd", "attr_var", "attr_obj"]
+    EXPORT_FIELDS = ["ctx_var", "xrcd", "attr_var", "attr_obj"]
     CONTRACT = Contract(requires=[RequireSpec("xrcd", State.ALLOCATED, "xrcd")], produces=[], transitions=[])
 
     def __init__(
@@ -4169,6 +4225,7 @@ class OpenXRCD(VerbCall):
 
 class PollCQ(VerbCall):  # TODO: 这个非常特殊，是一个compound的函数，待改
     MUTABLE_FIELDS = ["cq"]
+    EXPORT_FIELDS = ["cq"]
     CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None):
@@ -4243,6 +4300,7 @@ class PostRecv(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "wr_obj", "wr_var", "bad_wr_var"]
+    EXPORT_FIELDS = ["qp", "wr_obj", "wr_var", "bad_wr_var"]
 
     CONTRACT = Contract(
         requires=[
@@ -4384,6 +4442,7 @@ class PostRecv(VerbCall):
 
 class PostSend(VerbCall):
     MUTABLE_FIELDS = ["qp", "wr_obj"]
+    EXPORT_FIELDS = ["qp", "wr_obj"]
 
     # 要求 RTS 的 QP + 全链路 SGE 所用的 MR 已分配
     CONTRACT = Contract(
@@ -4512,6 +4571,7 @@ class PostSRQRecv(VerbCall):
     """
 
     MUTABLE_FIELDS = ["srq", "wr_obj", "wr_var", "bad_wr_var"]
+    EXPORT_FIELDS = ["srq", "wr_obj", "wr_var", "bad_wr_var"]
     CONTRACT = Contract(
         requires=[
             RequireSpec("srq", State.ALLOCATED, "srq"),
@@ -4649,6 +4709,7 @@ class QueryDeviceAttr(VerbCall):
     """Query the attributes of an RDMA device using its context."""
 
     MUTABLE_FIELDS = ["output"]
+    EXPORT_FIELDS = ["output"]
 
     def __init__(self, output: str = None):
         # Default output variable name
@@ -4690,6 +4751,7 @@ class QueryDeviceEx(VerbCall):
     """
 
     MUTABLE_FIELDS = ["ctx_var", "attr_var", "comp_mask", "input_var"]
+    EXPORT_FIELDS = ["ctx_var", "attr_var", "comp_mask", "input_var"]
     # CONTRACT = Contract(
     #     requires=[RequireSpec("ctx", None, "ctx")],
     #     produces=[RequireSpec("attr", None, "attr")],
@@ -4744,6 +4806,7 @@ class QueryDeviceEx(VerbCall):
 
 class QueryECE(VerbCall):
     MUTABLE_FIELDS = ["qp", "output"]
+    EXPORT_FIELDS = ["qp", "output"]
     CONTRACT = Contract(
         requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
         produces=[RequireSpec("ece_options", None, "ece_options")],
@@ -4827,6 +4890,7 @@ class QueryGID(VerbCall):
 
 class QueryGIDEx(VerbCall):
     MUTATBLE_FIELDS = ["port_num", "gid_index", "flags", "output"]
+    EXPORT_FIELDS = ["port_num", "gid_index", "flags", "output"]
     """Query a specific GID entry on a given port of an RDMA device."""
 
     def __init__(
@@ -4866,6 +4930,7 @@ class QueryGIDTable(VerbCall):
     """Query GID table of a given RDMA device context."""
 
     MUTABLE_FIELDS = ["max_entries", "output"]
+    EXPORT_FIELDS = ["max_entries", "output"]
 
     def __init__(self, max_entries: int = None, output: str = None):
         self.max_entries = IntValue(max_entries or 10)  # Default max entries
@@ -4893,6 +4958,7 @@ class QueryPKey(VerbCall):
     """Query an InfiniBand port's P_Key table entry."""
 
     MUTATBLE_FIELDS = ["port_num", "index", "pkey"]
+    EXPORT_FIELDS = ["port_num", "index", "pkey"]
 
     def __init__(self, port_num: int = None, index: int = None, pkey: str = None):
         self.port_num = IntValue(port_num or 1)  # Default port number
@@ -4923,6 +4989,7 @@ class QueryPortAttr(VerbCall):
     """Query the attributes of a specified RDMA port on a given device context."""
 
     MUTABLE_FIELDS = ["port_num"]
+    EXPORT_FIELDS = ["port_num", "port_attr"]
 
     def __init__(self, port_num: int = None, port_attr: str = None):
         self.port_num = IntValue(port_num or 1)  # Default port number
@@ -4954,6 +5021,7 @@ class QueryQP(VerbCall):
     """Query the attributes of a specified Queue Pair (QP) in an RDMA context."""
 
     MUTABLE_FIELDS = ["qp", "attr_mask"]
+    EXPORT_FIELDS = ["qp", "attr_mask"]
     CONTRACT = Contract(
         requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
         produces=[],
@@ -5060,6 +5128,7 @@ class QuerySRQ(VerbCall):
     """Query a Shared Receive Queue (SRQ) for its attributes."""
 
     MUTABLE_FIELDS = ["srq"]
+    EXPORT_FIELDS = ["srq"]
     CONTRACT = Contract(
         requires=[RequireSpec("srq", State.ALLOCATED, "srq")],
         produces=[],
@@ -5157,6 +5226,7 @@ class QuerySRQ(VerbCall):
 
 class RegDmaBufMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr", "offset", "length", "iova", "fd", "access"]
+    EXPORT_FIELDS = ["pd", "mr", "offset", "length", "iova", "fd", "access"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
@@ -5250,6 +5320,7 @@ class RegDmaBufMR(VerbCall):
 
 class RegMR(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr", "addr", "length", "access"]
+    EXPORT_FIELDS = ["pd", "mr", "addr", "length", "access"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd"), RequireSpec("buf", State.ALLOCATED, "addr")],
         produces=[ProduceSpec("mr", State.ALLOCATED, "mr", metadata_fields=["pd"])],
@@ -5337,6 +5408,7 @@ class RegMR(VerbCall):
 
 class RegMRIova(VerbCall):
     MUTABLE_FIELDS = ["pd", "mr", "buf", "length", "iova", "access"]
+    EXPORT_FIELDS = ["pd", "mr", "buf", "length", "iova", "access"]
     CONTRACT = Contract(
         requires=[RequireSpec("pd", State.ALLOCATED, "pd")],
         produces=[ProduceSpec("mr", State.ALLOCATED, "mr")],
@@ -5418,6 +5490,7 @@ class ReqNotifyCQ(VerbCall):
     """Request completion notification on a completion queue (CQ)."""
 
     MUTABLE_FIELDS = ["cq", "solicited_only"]
+    EXPORT_FIELDS = ["cq", "solicited_only"]
     CONTRACT = Contract(requires=[RequireSpec("cq", State.ALLOCATED, "cq")], produces=[], transitions=[])
 
     def __init__(self, cq: str = None, solicited_only: int = None):
@@ -5552,6 +5625,7 @@ class ReRegMR(VerbCall):
 
 class ResizeCQ(VerbCall):
     MUTABLE_FIELDS = ["cq", "cqe"]
+    EXPORT_FIELDS = ["cq", "cqe"]
     CONTRACT = Contract(
         requires=[RequireSpec("cq", State.ALLOCATED, "cq")],
         produces=[],
@@ -5609,6 +5683,7 @@ class SetECE(VerbCall):
     """
 
     MUTABLE_FIELDS = ["qp", "ece_obj", "ece_var"]
+    EXPORT_FIELDS = ["qp", "ece_obj", "ece_var"]
     CONTRACT = Contract(
         requires=[RequireSpec("qp", State.ALLOCATED, "qp")],
         produces=[],
@@ -5668,6 +5743,7 @@ class AbortWR(VerbCall):
     """Abort all prepared work requests since wr_start."""
 
     MUTABLE_FIELDS = ["qp_ex"]
+    EXPORT_FIELDS = ["qp_ex"]
     CONTRACT = Contract(
         requires=[RequireSpec("qp_ex", State.ALLOCATED, "qp_ex")],
         produces=[],
@@ -5714,6 +5790,7 @@ class AbortWR(VerbCall):
 
 class WRComplete(VerbCall):
     MUTABLE_FIELDS = ["qp_ex"]
+    EXPORT_FIELDS = ["qp_ex"]
     CONTRACT = Contract(
         requires=[RequireSpec("qp_ex", State.ALLOCATED, "qp_ex")],
         produces=[],
