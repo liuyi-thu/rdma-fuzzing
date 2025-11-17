@@ -124,7 +124,7 @@ INITIAL_VERBS = [
                 src_path_bits=0,
                 port_num=1,
                 grh=IbvGlobalRoute(
-                    sgid_index=1,
+                    sgid_index=3,
                     hop_limit=1,
                     traffic_class=0,
                     flow_label=0,
@@ -262,6 +262,7 @@ def run(args):
 
             # try to compile
             import subprocess
+
             cwd = os.getcwd()
             compile_cmd = f"g++ -g -O0 -std=c++11 -o /tmp/{seed}_{_round} /tmp/{seed}_{_round}.cpp {cwd}/pair_runtime.cpp {cwd}/runtime_resolver.c -I {cwd} -lcjson -libverbs -lpthread"
             logging.info("Compiling with command: %s", compile_cmd)
