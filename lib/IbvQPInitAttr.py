@@ -41,6 +41,7 @@ IBV_QP_TYPE_ENUM = {
 class IbvQPInitAttr(Attr):
     FIELD_LIST = ["qp_context", "send_cq", "recv_cq", "srq", "cap", "qp_type", "sq_sig_all"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["qp_context", "send_cq", "recv_cq", "srq", "cap", "qp_type", "sq_sig_all"]
     CONTRACT = Contract(
         requires=[
             # RequireSpec(rtype="cq", state=State.ALLOCATED, name_attr="send_cq"),

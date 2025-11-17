@@ -24,6 +24,7 @@ except ImportError:
 class IbvTdInitAttr(Attr):
     FIELD_LIST = ["comp_mask"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["comp_mask"]
 
     def __init__(self, comp_mask=None):
         self.comp_mask = OptionalValue(

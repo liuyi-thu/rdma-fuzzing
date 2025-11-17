@@ -79,6 +79,7 @@ IBV_WR_OPCODE_ENUM = {
 class IbvRdmaInfo(Attr):
     FIELD_LIST = ["remote_addr", "rkey"]
     MUTABLE_FIELDS = ["remote_addr", "rkey"]
+    EXPORT_FIELDS = ["remote_addr", "rkey"]
 
     def __init__(self, remote_mr=None):
         # self.remote_addr = IntValue(remote_addr, 2**64 - 1) if remote_addr is not None else None
@@ -115,6 +116,7 @@ class IbvRdmaInfo(Attr):
 class IbvAtomicInfo(Attr):
     FIELD_LIST = ["remote_addr", "compare_add", "swap", "rkey"]
     MUTABLE_FIELDS = ["remote_addr", "compare_add", "swap", "rkey"]
+    EXPORT_FIELDS = ["remote_addr", "compare_add", "swap", "rkey"]
 
     def __init__(self, compare_add=None, swap=None, remote_mr=None):
         if not remote_mr:
@@ -157,6 +159,7 @@ class IbvAtomicInfo(Attr):
 class IbvUdInfo(Attr):
     FIELD_LIST = ["ah", "remote_qpn", "remote_qkey"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["ah", "remote_qpn", "remote_qkey"]
 
     def __init__(self, ah=None, remote_qpn=None, remote_qkey=None):
         # self.ah = ResourceValue(ah, "ah") if ah is not None else None  # 可适配为现有ah变量
@@ -186,6 +189,7 @@ class IbvUdInfo(Attr):
 class IbvBindMwInfo(Attr):
     FIELD_LIST = ["mw", "rkey", "bind_info"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["mw", "rkey", "bind_info"]
 
     def __init__(self, mw=None, rkey=None, bind_info=None):
         # self.mw = ResourceValue(mw, "struct ibv_mw") if mw is not None else None  # 可适配为现有mw变量
@@ -253,6 +257,7 @@ class IbvBindMwInfo(Attr):
 class IbvTsoInfo(Attr):
     FIELD_LIST = ["hdr", "hdr_sz", "mss"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["hdr", "hdr_sz", "mss"]
 
     def __init__(self, hdr=None, hdr_sz=None, mss=None):
         self.hdr = ResourceValue(hdr, "void*") if hdr is not None else None
@@ -318,6 +323,22 @@ class IbvSendWR(Attr):
         "tso",
     ]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = [
+        "wr_id",
+        "next",
+        "sg_list",
+        "num_sge",
+        "opcode",
+        "send_flags",
+        "imm_data",
+        "invalidate_rkey",
+        "rdma",
+        "atomic",
+        "ud",
+        "xrc",
+        "bind_mw",
+        "tso",
+    ]
 
     def __init__(
         self,

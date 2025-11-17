@@ -89,6 +89,35 @@ class IbvQPAttr(Attr):
         "rate_limit",
     ]
 
+    EXPORT_FIELDS = [
+        "qp_state",
+        "cur_qp_state",
+        "path_mtu",
+        "path_mig_state",
+        "qkey",
+        "rq_psn",
+        "sq_psn",
+        "dest_qp_num",
+        "qp_access_flags",
+        "cap",
+        "ah_attr",
+        "alt_ah_attr",
+        "pkey_index",
+        "alt_pkey_index",
+        "en_sqd_async_notify",
+        "sq_draining",
+        "max_rd_atomic",
+        "max_dest_rd_atomic",
+        "min_rnr_timer",
+        "port_num",
+        "timeout",
+        "retry_cnt",
+        "rnr_retry",
+        "alt_port_num",
+        "alt_timeout",
+        "rate_limit",
+    ]
+
     def __init__(
         self,
         qp_state=None,

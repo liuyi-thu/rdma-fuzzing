@@ -24,6 +24,7 @@ except ImportError:
 class IbvQPRateLimitAttr(Attr):
     FIELD_LIST = ["rate_limit", "max_burst_sz", "typical_pkt_sz", "comp_mask"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["rate_limit", "max_burst_sz", "typical_pkt_sz", "comp_mask"]
 
     def __init__(self, rate_limit=None, max_burst_sz=None, typical_pkt_sz=None, comp_mask=None):
         self.rate_limit = OptionalValue(

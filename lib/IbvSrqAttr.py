@@ -24,6 +24,7 @@ except ImportError:
 class IbvSrqAttr(Attr):
     FIELD_LIST = ["max_wr", "max_sge", "srq_limit"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["max_wr", "max_sge", "srq_limit"]
 
     def __init__(self, max_wr=None, max_sge=None, srq_limit=None):
         self.max_wr = OptionalValue(IntValue(max_wr) if max_wr is not None else None, factory=lambda: IntValue(0))

@@ -31,6 +31,7 @@ IBV_FLOW_ATTR_TYPE_ENUM = {
 class IbvFlowAttr(Attr):
     FIELD_LIST = ["comp_mask", "type", "size", "priority", "num_of_specs", "port", "flags"]
     MUTABLE_FIELDS = ["comp_mask", "type", "size", "priority", "num_of_specs", "port", "flags"]
+    EXPORT_FIELDS = ["comp_mask", "type", "size", "priority", "num_of_specs", "port", "flags"]
 
     def __init__(self, comp_mask=None, type=None, size=None, priority=None, num_of_specs=None, port=None, flags=None):
         self.comp_mask = OptionalValue(

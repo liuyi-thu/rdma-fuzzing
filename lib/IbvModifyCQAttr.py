@@ -29,6 +29,7 @@ except ImportError:
 class IbvModifyCQAttr(Attr):
     FIELD_LIST = ["attr_mask", "moderate"]
     MUTABLE_FIELDS = ["attr_mask", "moderate"]
+    EXPORT_FIELDS = ["attr_mask", "moderate"]
 
     def __init__(self, attr_mask=None, moderate=None):
         self.attr_mask = OptionalValue(

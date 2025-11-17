@@ -23,6 +23,7 @@ except ImportError:
 class IbvAllocDmAttr(Attr):
     FIELD_LIST = ["length", "log_align_req", "comp_mask"]
     MUTABLE_FIELDS = ["length", "log_align_req", "comp_mask"]
+    EXPORT_FIELDS = ["length", "log_align_req", "comp_mask"]
 
     def __init__(self, length=None, log_align_req=None, comp_mask=None):
         # self.length = length

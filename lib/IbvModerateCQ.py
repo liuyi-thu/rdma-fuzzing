@@ -24,6 +24,7 @@ except ImportError:
 class IbvModerateCQ(Attr):
     FIELD_LIST = ["cq_count", "cq_period"]
     MUTABLE_FIELDS = ["cq_count", "cq_period"]
+    EXPORT_FIELDS = ["cq_count", "cq_period"]
 
     def __init__(self, cq_count=None, cq_period=None):
         self.cq_count = OptionalValue(IntValue(cq_count) if cq_count is not None else None, factory=lambda: IntValue(0))

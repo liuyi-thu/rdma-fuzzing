@@ -24,6 +24,7 @@ except ImportError:
 class IbvParentDomainInitAttr(Attr):
     FIELD_LIST = ["pd", "td", "comp_mask", "alloc", "free", "pd_context"]
     MUTABLE_FIELDS = ["pd", "td", "comp_mask", "alloc", "free", "pd_context"]
+    EXPORT_FIELDS = ["pd", "td", "comp_mask", "alloc", "free", "pd_context"]
 
     def __init__(self, pd=None, td=None, comp_mask=None, alloc=None, free=None, pd_context=None):
         self.pd = OptionalValue(

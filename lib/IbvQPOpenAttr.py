@@ -39,6 +39,7 @@ IBV_QP_TYPE_ENUM = {
 class IbvQPOpenAttr(Attr):
     FIELD_LIST = ["comp_mask", "qp_num", "xrcd", "qp_context", "qp_type"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["comp_mask", "qp_num", "xrcd", "qp_context", "qp_type"]
 
     def __init__(self, comp_mask=None, qp_num=None, xrcd=None, qp_context=None, qp_type=None):
         self.comp_mask = OptionalValue(

@@ -24,6 +24,7 @@ except ImportError:
 class IbvQPCap(Attr):
     FIELD_LIST = ["max_send_wr", "max_recv_wr", "max_send_sge", "max_recv_sge", "max_inline_data"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["max_send_wr", "max_recv_wr", "max_send_sge", "max_recv_sge", "max_inline_data"]
 
     def __init__(self, max_send_wr=None, max_recv_wr=None, max_send_sge=None, max_recv_sge=None, max_inline_data=None):
         self.max_send_wr = OptionalValue(

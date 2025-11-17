@@ -22,6 +22,7 @@ def debug_print(*args, **kwargs):
 
 class Attr:
     MUTABLE_FIELDS = []
+    EXPORT_FIELDS = []
 
     def to_cxx(self, ctx: CodeGenContext) -> str:  # pylint: disable=unused-argument
         raise NotImplementedError

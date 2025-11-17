@@ -39,6 +39,7 @@ IBV_QP_TYPE_ENUM = {
 class IbvRxHashConf(Attr):
     FIELD_LIST = ["rx_hash_function", "rx_hash_key_len", "rx_hash_key", "rx_hash_fields_mask"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["rx_hash_function", "rx_hash_key_len", "rx_hash_key", "rx_hash_fields_mask"]
 
     def __init__(self, rx_hash_function=None, rx_hash_key_len=None, rx_hash_key=None, rx_hash_fields_mask=None):
         self.rx_hash_function = OptionalValue(
@@ -105,6 +106,24 @@ class IbvQPInitAttrEx(Attr):
         "send_ops_flags",
     ]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = [
+        "qp_context",
+        "send_cq",
+        "recv_cq",
+        "srq",
+        "cap",
+        "qp_type",
+        "sq_sig_all",
+        "comp_mask",  # 允许手工覆盖（若不提供则自动计算）
+        "pd",
+        "xrcd",
+        "create_flags",
+        "max_tso_header",
+        "rwq_ind_tbl",
+        "rx_hash_conf",
+        "source_qpn",
+        "send_ops_flags",
+    ]
 
     # ---- comp_mask 映射（由字段名 → 掩码位）----
     _MASK_BY_FIELD = {
@@ -346,6 +365,24 @@ class IbvQPInitAttrEx(Attr):
         "send_ops_flags",
     ]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = [
+        "qp_context",
+        "send_cq",
+        "recv_cq",
+        "srq",
+        "cap",
+        "qp_type",
+        "sq_sig_all",
+        "comp_mask",
+        "pd",
+        "xrcd",
+        "create_flags",
+        "max_tso_header",
+        "rwq_ind_tbl",
+        "rx_hash_conf",
+        "source_qpn",
+        "send_ops_flags",
+    ]
 
     def __init__(
         self,

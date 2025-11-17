@@ -34,6 +34,7 @@ except ImportError:
 class IbvSrqInitAttr(Attr):
     FIELD_LIST = ["srq_context", "attr"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["srq_context", "attr"]
 
     def __init__(self, srq_context=None, attr=None):
         self.srq_context = OptionalValue(

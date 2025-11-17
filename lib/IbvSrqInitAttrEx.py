@@ -35,6 +35,7 @@ IBV_SRQ_TYPE_ENUM = {
 class IbvTMCap(Attr):
     FIELD_LIST = ["max_num_tags", "max_ops"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["max_num_tags", "max_ops"]
 
     def __init__(self, max_num_tags=None, max_ops=None):
         self.max_num_tags = OptionalValue(
@@ -62,6 +63,7 @@ class IbvTMCap(Attr):
 class IbvSrqInitAttrEx(Attr):
     FIELD_LIST = ["srq_context", "attr", "comp_mask", "srq_type", "pd", "xrcd", "cq", "tm_cap"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["srq_context", "attr", "comp_mask", "srq_type", "pd", "xrcd", "cq", "tm_cap"]
 
     def __init__(
         self, srq_context=None, attr=None, comp_mask=None, srq_type=None, pd=None, xrcd=None, cq=None, tm_cap=None

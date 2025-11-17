@@ -59,6 +59,7 @@ IBV_MTU_ENUM = {1: "IBV_MTU_256", 2: "IBV_MTU_512", 3: "IBV_MTU_1024", 4: "IBV_M
 class IbvGID(Attr):
     FIELD_LIST = ["raw", "src_var"]
     MUTABLE_FIELDS = ["raw", "src_var"]
+    EXPORT_FIELDS = ["raw", "src_var"]
 
     def __init__(self, raw=None, src_var=None):
         # raw: list[int] 长度 16, 每项 0..255；src_var: 现有 union ibv_gid 变量名（字符串）
@@ -171,6 +172,7 @@ class IbvGID(Attr):
 class IbvGlobalRoute(Attr):
     FIELD_LIST = ["dgid", "flow_label", "sgid_index", "hop_limit", "traffic_class"]
     MUTABLE_FIELDS = ["dgid", "flow_label", "sgid_index", "hop_limit", "traffic_class"]
+    EXPORT_FIELDS = ["dgid", "flow_label", "sgid_index", "hop_limit", "traffic_class"]
 
     def __init__(self, dgid=None, flow_label=None, sgid_index=None, hop_limit=None, traffic_class=None):
         # self.dgid = OptionalValue(dgid, factory=lambda: IbvGID())  # IbvGID instance, can be mutated
@@ -224,6 +226,7 @@ class IbvGlobalRoute(Attr):
 class IbvAHAttr(Attr):
     FIELD_LIST = ["grh", "dlid", "sl", "src_path_bits", "static_rate", "is_global", "port_num"]
     MUTABLE_FIELDS = ["grh", "dlid", "sl", "src_path_bits", "static_rate", "is_global", "port_num"]
+    EXPORT_FIELDS = ["grh", "dlid", "sl", "src_path_bits", "static_rate", "is_global", "port_num"]
 
     def __init__(
         self, grh=None, dlid=None, sl=None, src_path_bits=None, static_rate=None, is_global=None, port_num=None

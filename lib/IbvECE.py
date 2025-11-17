@@ -24,6 +24,7 @@ except ImportError:
 class IbvECE(Attr):
     FIELD_LIST = ["vendor_id", "options", "comp_mask"]
     MUTABLE_FIELDS = ["vendor_id", "options", "comp_mask"]
+    EXPORT_FIELDS = ["vendor_id", "options", "comp_mask"]
 
     def __init__(self, vendor_id=None, options=None, comp_mask=None):
         self.vendor_id = OptionalValue(

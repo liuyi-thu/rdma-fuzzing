@@ -24,6 +24,7 @@ except ImportError:
 class IbvXRCDInitAttr(Attr):
     FIELD_LIST = ["comp_mask", "fd", "oflags"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["comp_mask", "fd", "oflags"]
 
     def __init__(self, comp_mask=None, fd=None, oflags=None):
         self.comp_mask = OptionalValue(

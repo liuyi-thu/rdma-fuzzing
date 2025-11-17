@@ -24,6 +24,7 @@ except ImportError:
 class IbvMwBindInfo(Attr):
     FIELD_LIST = ["mr", "addr", "length", "mw_access_flags"]
     MUTABLE_FIELDS = ["mr", "addr", "length", "mw_access_flags"]
+    EXPORT_FIELDS = ["mr", "addr", "length", "mw_access_flags"]
 
     def __init__(self, mr=None, addr=None, length=None, mw_access_flags=None):
         self.mr = OptionalValue(
@@ -91,6 +92,7 @@ class IbvMwBindInfo(Attr):
 class IbvMwBind(Attr):
     FIELD_LIST = ["wr_id", "send_flags", "bind_info"]
     MUTABLE_FIELDS = ["wr_id", "send_flags", "bind_info"]
+    EXPORT_FIELDS = ["wr_id", "send_flags", "bind_info"]
 
     def __init__(self, wr_id=None, send_flags=None, bind_info=None):
         self.wr_id = OptionalValue(

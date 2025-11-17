@@ -1,6 +1,5 @@
 import random
 import sys
-
 from typing import Optional
 
 try:
@@ -41,6 +40,7 @@ except ImportError:
 class IbvRecvWR(Attr):
     FIELD_LIST = ["wr_id", "next", "sg_list", "num_sge"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["wr_id", "next", "sg_list", "num_sge"]
 
     def __init__(self, wr_id=None, next_wr=None, sg_list=None, num_sge=None):
         self.wr_id = OptionalValue(IntValue(wr_id, 0xFFFFFFFF) if wr_id is not None else None)  # 可选的wr_id

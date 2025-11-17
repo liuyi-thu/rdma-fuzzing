@@ -24,6 +24,7 @@ except ImportError:
 class IbvCQInitAttrEx(Attr):
     FIELD_LIST = ["cqe", "cq_context", "channel", "comp_vector", "wc_flags", "comp_mask", "flags", "parent_domain"]
     MUTABLE_FIELDS = ["cqe", "cq_context", "channel", "comp_vector", "wc_flags", "comp_mask", "flags", "parent_domain"]
+    EXPORT_FIELDS = ["cqe", "cq_context", "channel", "comp_vector", "wc_flags", "comp_mask", "flags", "parent_domain"]
 
     def __init__(
         self,

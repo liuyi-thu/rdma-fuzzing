@@ -30,6 +30,7 @@ IBV_WQ_STATE_ENUM = {0: "IBV_WQS_RESET", 1: "IBV_WQS_RDY", 2: "IBV_WQS_ERR", 3: 
 class IbvWQAttr(Attr):
     FIELD_LIST = ["attr_mask", "wq_state", "curr_wq_state", "flags", "flags_mask"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["attr_mask", "wq_state", "curr_wq_state", "flags", "flags_mask"]
 
     def __init__(self, attr_mask=None, wq_state=None, curr_wq_state=None, flags=None, flags_mask=None):
         self.attr_mask = OptionalValue(

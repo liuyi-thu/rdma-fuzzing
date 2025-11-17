@@ -31,6 +31,7 @@ IBV_WQ_TYPE_ENUM = {
 class IbvWQInitAttr(Attr):
     FIELD_LIST = ["wq_context", "wq_type", "max_wr", "max_sge", "pd", "cq", "comp_mask", "create_flags"]
     MUTABLE_FIELDS = FIELD_LIST
+    EXPORT_FIELDS = ["wq_context", "wq_type", "max_wr", "max_sge", "pd", "cq", "comp_mask", "create_flags"]
 
     def __init__(
         self,
