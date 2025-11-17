@@ -16,9 +16,9 @@ except ImportError:
     from utils import emit_assign  # for direct script debugging
 
 try:
-    from .value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+    from .value import ConstantValue, EnumValue, FlagValue, IntValue, LocalResourceValue, OptionalValue, ResourceValue
 except ImportError:
-    from value import ConstantValue, EnumValue, FlagValue, IntValue, OptionalValue, ResourceValue
+    from value import ConstantValue, EnumValue, FlagValue, IntValue, LocalResourceValue, OptionalValue, ResourceValue
 
 
 class IbvMwBindInfo(Attr):
@@ -30,9 +30,14 @@ class IbvMwBindInfo(Attr):
             # ConstantValue(mr) if mr is not None else None, factory=lambda: ConstantValue("NULL")
             ResourceValue(mr, resource_type="mr") if mr is not None else None,
         )  # C++已有变量名或NULL
-        self.addr = OptionalValue(
-            IntValue(addr) if addr is not None else None, factory=lambda: IntValue(random.randint(0x1000, 0xFFFFF000))
-        )
+        # self.addr = OptionalValue(
+        #     IntValue(addr) if addr is not None else None, factory=lambda: IntValue(random.randint(0x1000, 0xFFFFF000))
+        # )
+        if not addr:
+            raise ValueError("IbvMwBindInfo requires a valid addr")
+        # 应该不能为 NULL，否则会直接挂掉
+        # self.addr = LocalResourceValue(value=addr or "buf", resource_type="buf")
+        self.addr = f"(uint64_t){self.mr}->addr"  # 直接用 mr 的 addr
         self.length = OptionalValue(
             IntValue(length) if length is not None else None,
             factory=lambda: IntValue(random.choice([0x1000, 0x2000, 0x8000])),
@@ -72,9 +77,13 @@ class IbvMwBindInfo(Attr):
         s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
         for f in ["addr", "length", "mw_access_flags", "mr"]:
             v = getattr(self, f)
+            # print(f"DEBUG: IbvMwBindInfo.to_cxx field={f} value={v}")
             if not v:
                 continue
             else:
+                # if f == "addr":
+                #     # addr 需要取地址符
+                #     s += emit_assign(varname, f, v, add_address_symbol=True)
                 s += emit_assign(varname, f, v)
         return s
 

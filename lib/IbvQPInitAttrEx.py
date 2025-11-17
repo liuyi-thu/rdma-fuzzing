@@ -94,6 +94,247 @@ class IbvQPInitAttrEx(Attr):
         "cap",
         "qp_type",
         "sq_sig_all",
+        "comp_mask",  # 允许手工覆盖（若不提供则自动计算）
+        "pd",
+        "xrcd",
+        "create_flags",
+        "max_tso_header",
+        "rwq_ind_tbl",
+        "rx_hash_conf",
+        "source_qpn",
+        "send_ops_flags",
+    ]
+    MUTABLE_FIELDS = FIELD_LIST
+
+    # ---- comp_mask 映射（由字段名 → 掩码位）----
+    _MASK_BY_FIELD = {
+        "pd": "IBV_QP_INIT_ATTR_PD",
+        "xrcd": "IBV_QP_INIT_ATTR_XRCD",
+        "create_flags": "IBV_QP_INIT_ATTR_CREATE_FLAGS",
+        "max_tso_header": "IBV_QP_INIT_ATTR_MAX_TSO_HEADER",
+        "rwq_ind_tbl": "IBV_QP_INIT_ATTR_IND_TABLE",
+        "rx_hash_conf": "IBV_QP_INIT_ATTR_RX_HASH",
+        "send_ops_flags": "IBV_QP_INIT_ATTR_SEND_OPS_FLAGS",
+        # 其余基础字段（send_cq/recv_cq/cap/qp_type/sq_sig_all）不需要 comp_mask 位
+    }
+
+    def __init__(
+        self,
+        qp_context=None,
+        send_cq=None,
+        recv_cq=None,
+        srq=None,
+        cap=None,
+        qp_type=None,
+        sq_sig_all=None,
+        comp_mask=None,  # 若 None 则自动计算
+        pd=None,
+        xrcd=None,
+        create_flags=None,
+        max_tso_header=None,
+        rwq_ind_tbl=None,
+        rx_hash_conf=None,
+        source_qpn=None,
+        send_ops_flags=None,
+    ):
+        self.qp_context = qp_context
+
+        self.send_cq = OptionalValue(
+            ResourceValue(send_cq, resource_type="cq") if send_cq else None,
+            factory=lambda: ResourceValue("cq_send", resource_type="cq"),
+        )
+        self.recv_cq = OptionalValue(
+            ResourceValue(recv_cq, resource_type="cq") if recv_cq else None,
+            factory=lambda: ResourceValue("cq_recv", resource_type="cq"),
+        )
+        self.srq = OptionalValue(
+            ResourceValue(srq, resource_type="srq") if srq else None,
+            factory=lambda: None,  # SRQ 非必需
+        )
+
+        # cap 是 struct，保持你工程的对象生成方式
+        self.cap = OptionalValue(cap if cap else None, factory=lambda: IbvQPCap.random_mutation())
+
+        self.qp_type = OptionalValue(
+            EnumValue(qp_type, IBV_QP_TYPE_ENUM) if qp_type is not None else None,
+            factory=lambda: EnumValue(2, IBV_QP_TYPE_ENUM),  # 默认 RC
+        )
+
+        self.sq_sig_all = OptionalValue(
+            IntValue(sq_sig_all, range=[0, 1]) if sq_sig_all is not None else None,
+            factory=lambda: IntValue(0),
+        )
+
+        # comp_mask：支持手工值；否则自动计算
+        self._comp_mask_user = comp_mask is not None
+        self.comp_mask = OptionalValue(
+            IntValue(comp_mask) if comp_mask is not None else None,
+            factory=lambda: IntValue(0),
+        )
+
+        # 扩展字段（触发 comp_mask 位）
+        self.pd = OptionalValue(
+            ResourceValue(pd, resource_type="pd") if pd else None,
+            factory=lambda: ResourceValue("pd1", resource_type="pd"),
+        )
+        self.xrcd = OptionalValue(
+            ResourceValue(xrcd, resource_type="xrcd") if xrcd else None,
+            factory=lambda: None,  # XRC 可选
+        )
+        self.create_flags = OptionalValue(
+            FlagValue(create_flags or 0, flag_type="IBV_QP_CREATE_FLAGS_ENUM"),
+            factory=lambda: FlagValue(0, flag_type="IBV_QP_CREATE_FLAGS_ENUM"),
+        )
+        self.max_tso_header = OptionalValue(
+            IntValue(max_tso_header) if max_tso_header is not None else None,
+            factory=lambda: IntValue(0),
+        )
+
+        # RWQ indirection table（RAW_PACKET/RSS 场景）
+        self.rwq_ind_tbl = OptionalValue(
+            ResourceValue(rwq_ind_tbl, resource_type="rwq_ind_tbl") if rwq_ind_tbl else None,
+            factory=lambda: None,
+        )
+
+        self.rx_hash_conf = OptionalValue(
+            rx_hash_conf if rx_hash_conf else None,
+            factory=lambda: None,  # 仅当用户显式需要 RSS hash config 时生成
+        )
+
+        self.source_qpn = OptionalValue(
+            IntValue(source_qpn, range=[0, 0xFFFFFF]) if source_qpn is not None else None,
+            factory=lambda: IntValue(0),
+        )
+
+        self.send_ops_flags = OptionalValue(
+            FlagValue(send_ops_flags or 0, flag_type="IBV_QP_CREATE_SEND_OPS_FLAGS_ENUM"),
+            factory=lambda: FlagValue(0, flag_type="IBV_QP_CREATE_SEND_OPS_FLAGS_ENUM"),
+        )
+
+        self.tracker = None
+        self.required_resources = []
+
+    # # ---------- 依赖收集：只有用到的字段才声明资源需求 ----------
+    # def get_required_resources(self) -> list[dict[str, str]]:
+    #     req = []
+    #     # CQ 基本必需
+    #     if self.send_cq.value:
+    #         req.append({"type": "cq", "name": self.send_cq.value.value})
+    #     if self.recv_cq.value:
+    #         req.append({"type": "cq", "name": self.recv_cq.value.value})
+
+    #     # PD / XRCD 二选一（大多数设备 PD）
+    #     if self.pd.value:
+    #         req.append({"type": "pd", "name": self.pd.value.value})
+    #     if self.xrcd.value:
+    #         req.append({"type": "xrcd", "name": self.xrcd.value.value})
+
+    #     if self.srq.value:
+    #         req.append({"type": "srq", "name": self.srq.value.value})
+    #     if self.rwq_ind_tbl.value:
+    #         req.append({"type": "rwq_ind_tbl", "name": self.rwq_ind_tbl.value.value})
+    #     return req
+
+    # def get_required_resources_recursively(self) -> list[dict[str, str]]:
+    #     res = self.get_required_resources()
+    #     if self.cap and self.cap.value and hasattr(self.cap.value, "get_required_resources"):
+    #         res.extend(self.cap.value.get_required_resources())
+    #     if self.rx_hash_conf and self.rx_hash_conf.value and hasattr(self.rx_hash_conf.value, "get_required_resources"):
+    #         res.extend(self.rx_hash_conf.value.get_required_resources())
+    #     return res
+
+    # def set_resource_recursively(self, res_type: str, old_res_name: str, new_res_name: str):
+    #     for field in ["send_cq", "recv_cq", "srq", "pd", "xrcd", "rwq_ind_tbl"]:
+    #         opt = getattr(self, field)
+    #         if opt and opt.value and isinstance(opt.value, ResourceValue):
+    #             if opt.value.resource_type == res_type and opt.value.value == old_res_name:
+    #                 opt.value = ResourceValue(new_res_name, resource_type=res_type)
+
+    # ---------- 自动 comp_mask 计算 ----------
+    def _auto_comp_mask_value(self) -> int:
+        # 若用户手工提供，则尊重
+        if self._comp_mask_user and self.comp_mask and self.comp_mask.value:
+            return int(self.comp_mask.value.value)
+
+        bit = 0
+
+        def set_bit(mask_name):
+            nonlocal bit
+            bit |= globals()[mask_name] if mask_name in globals() else 0
+
+        # 只要字段有效，就置相应位
+        for field, mask_name in self._MASK_BY_FIELD.items():
+            opt = getattr(self, field)
+            # 注意：像 create_flags / send_ops_flags 这些 OptionalValue 一定有对象
+            if opt and opt.value:
+                # 非零才算启用（对 flags/int）
+                val = opt.value.value if hasattr(opt.value, "value") else opt.value
+                if isinstance(val, (int,)) and val == 0:
+                    continue
+                set_bit(mask_name)
+
+        return bit
+
+    # ---------- 代码生成 ----------
+    def to_cxx(self, varname, ctx=None):
+        if ctx:
+            ctx.alloc_variable(varname, "struct ibv_qp_init_attr_ex")
+        s = f"\n    memset(&{varname}, 0, sizeof({varname}));\n"
+
+        enum_fields = {"qp_type": IBV_QP_TYPE_ENUM}
+
+        # cap：单独生成一个本地变量再整体赋值（struct 赋值合法）
+        if self.cap and self.cap.value:
+            cap_var = varname + "_cap"
+            s += self.cap.value.to_cxx(cap_var, ctx)
+            s += f"    {varname}.cap = {cap_var};\n"
+
+        # rx_hash_conf：如存在，生成临时变量并赋值
+        if self.rx_hash_conf and self.rx_hash_conf.value:
+            rxh_var = varname + "_rxh"
+            s += self.rx_hash_conf.value.to_cxx(rxh_var, ctx)
+            s += f"    {varname}.rx_hash_conf = {rxh_var};\n"
+
+        # 基础/指针类字段统一赋值
+        for field in [
+            "qp_context",
+            "send_cq",
+            "recv_cq",
+            "srq",
+            "qp_type",
+            "sq_sig_all",
+            "pd",
+            "xrcd",
+            "create_flags",
+            "max_tso_header",
+            "rwq_ind_tbl",
+            "source_qpn",
+            "send_ops_flags",
+        ]:
+            val = getattr(self, field)
+            if not val:
+                continue
+            s += emit_assign(varname, field, val, enums=enum_fields)
+
+        # 最后处理 comp_mask：若用户未显式设置，则自动计算
+        auto_mask = self._auto_comp_mask_value()
+        if self._comp_mask_user:
+            s += emit_assign(varname, "comp_mask", self.comp_mask)
+        else:
+            s += f"    {varname}.comp_mask = 0x{auto_mask:x};\n"
+
+        return s
+
+
+class IbvQPInitAttrEx(Attr):
+    FIELD_LIST = [
+        "qp_context",
+        "send_cq",
+        "recv_cq",
+        "srq",
+        "cap",
+        "qp_type",
+        "sq_sig_all",
         "comp_mask",
         "pd",
         "xrcd",
