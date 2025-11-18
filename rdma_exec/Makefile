@@ -8,6 +8,7 @@
 # 编译器和基本选项
 CC      ?= gcc
 CFLAGS  ?= -Wall -Wextra -O2 -g
+# CFLAGS  ?= -Wall -Wextra -O2 -g -fsanitize=address
 LDFLAGS ?=
 LIBS    ?= -libverbs -lcjson
 
@@ -18,6 +19,7 @@ SRCS = \
     verb_pd.c \
     verb_dm.c \
     verb_qp.c \
+    verb_mw.c \
     json_utils.c \
     resource_env.c
 

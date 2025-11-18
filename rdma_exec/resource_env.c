@@ -20,6 +20,11 @@ PdResource *env_alloc_pd(ResourceEnv *env, const char *name)
     PdResource *pd = &env->pd[env->pd_count++];
     snprintf(pd->name, sizeof(pd->name), "%s", name);
     // TODO: 替换成真实的 ibv_alloc_pd 调用，并保存 ibv_pd* 句柄
+    if (!(pd->pd = ibv_alloc_pd(g_ctx)))
+    {
+        fprintf(stderr, "[EXEC] ibv_alloc_pd failed for %s\n", name);
+        return NULL;
+    }
     fprintf(stderr, "[EXEC] AllocPD -> %s\n", pd->name);
     return pd;
 }
@@ -41,10 +46,201 @@ DmResource *env_alloc_dm(ResourceEnv *env,
     dm->log_align_req = log_align_req;
     dm->comp_mask = comp_mask;
     // TODO: 替换成真实的 ibv_alloc_dm 调用，并保存 ibv_dm* 句柄
+    struct ibv_alloc_dm_attr attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.length = length;
+    attr.log_align_req = log_align_req;
+    attr.comp_mask = comp_mask;
+    if (!(dm->dm = ibv_alloc_dm(g_ctx, &attr)))
+    {
+        fprintf(stderr, "[EXEC] ibv_alloc_dm failed for %s\n", name);
+        return NULL;
+    }
     fprintf(stderr,
             "[EXEC] AllocDM -> %s, length=%d, log_align_req=%d, comp_mask=%d\n",
             dm->name, dm->length, dm->log_align_req, dm->comp_mask);
     return dm;
+}
+
+MwResource *env_alloc_mw(ResourceEnv *env,
+                         const char *mw_name,
+                         const char *pd_name,
+                         enum ibv_mw_type type)
+{
+    if (!env || !mw_name || !pd_name)
+    {
+        fprintf(stderr, "[EXEC] env_alloc_mw: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_alloc_mw: RDMA context is NULL\n");
+        return NULL;
+    }
+    if (env->mw_count >= (int)(sizeof(env->mw) / sizeof(env->mw[0])))
+    {
+        fprintf(stderr, "[EXEC] env_alloc_mw: too many MW resources, ignore %s\n",
+                mw_name);
+        return NULL;
+    }
+
+    // 1. 先在资源表中找到 PD
+    PdResource *pd_res = env_find_pd(env, pd_name);
+    if (!pd_res || !pd_res->pd)
+    {
+        fprintf(stderr,
+                "[EXEC] env_alloc_mw: PD '%s' not found or invalid\n",
+                pd_name);
+        return NULL;
+    }
+
+    struct ibv_mw *mw = ibv_alloc_mw(pd_res->pd, type);
+    if (!mw)
+    {
+        fprintf(stderr,
+                "[EXEC] env_alloc_mw: ibv_alloc_mw failed for mw=%s (pd=%s)\n",
+                mw_name, pd_name);
+        return NULL;
+    }
+
+    MwResource *slot = &env->mw[env->mw_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", mw_name);
+    slot->mw = mw;
+    slot->type = type;
+    slot->pd = pd_res->pd;
+
+    fprintf(stderr,
+            "[EXEC] AllocMW OK -> %s (mw=%p, pd=%s, type=%d)\n",
+            slot->name, (void *)mw, pd_name, (int)type);
+    return slot;
+}
+
+// 真正做 dealloc + 从数组中移除
+int env_dealloc_pd(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+    {
+        fprintf(stderr, "[EXEC] env_dealloc_pd: null argument\n");
+        return -1;
+    }
+
+    int idx = env_find_pd_index(env, name);
+    if (idx < 0)
+    {
+        fprintf(stderr, "[EXEC] env_dealloc_pd: PD '%s' not found\n", name);
+        return -1;
+    }
+
+    PdResource *pd_res = &env->pd[idx];
+    if (!pd_res->pd)
+    {
+        fprintf(stderr, "[EXEC] env_dealloc_pd: PD '%s' has null pointer\n", name);
+        return -1;
+    }
+
+    // 简单资源占用检查（避免先释放 PD 再释放 QP/MW）
+    if (env_pd_in_use(env, pd_res->pd))
+    {
+        fprintf(stderr,
+                "[EXEC] env_dealloc_pd: PD '%s' still in use, skip dealloc\n",
+                name);
+        return -1;
+    }
+
+    if (ibv_dealloc_pd(pd_res->pd) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_dealloc_pd: ibv_dealloc_pd failed for '%s'\n",
+                name);
+        return -1;
+    }
+
+    fprintf(stderr, "[EXEC] DeallocPD OK -> %s\n", name);
+
+    // 从数组中移除：用最后一个元素覆盖当前，再减计数，保持数组紧凑
+    int last = env->pd_count - 1;
+    if (idx != last)
+    {
+        env->pd[idx] = env->pd[last];
+    }
+    env->pd_count--;
+
+    return 0;
+}
+
+// 简单线性扫描查找 PD
+PdResource *env_find_pd(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return NULL;
+    for (int i = 0; i < env->pd_count; i++)
+    {
+        if (strcmp(env->pd[i].name, name) == 0)
+        {
+            return &env->pd[i];
+        }
+    }
+    return NULL;
+}
+
+// 查找 MW（可能后面会用到）
+MwResource *env_find_mw(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return NULL;
+    for (int i = 0; i < env->mw_count; i++)
+    {
+        if (strcmp(env->mw[i].name, name) == 0)
+        {
+            return &env->mw[i];
+        }
+    }
+    return NULL;
+}
+
+// 找到 PD 在 env->pd[] 里的下标，找不到返回 -1
+int env_find_pd_index(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return -1;
+    for (int i = 0; i < env->pd_count; i++)
+    {
+        if (strcmp(env->pd[i].name, name) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// 简单检查：是否有资源还在使用这个 pd（可按需增强）
+static int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd)
+{
+    if (!env || !pd)
+        return 0;
+
+    // 1) QP 是否引用这个 PD
+    for (int i = 0; i < env->qp_count; i++)
+    {
+        if (env->qp[i].pd == pd)
+        {
+            return 1;
+        }
+    }
+
+    // 2) MW 是否引用这个 PD
+    for (int i = 0; i < env->mw_count; i++)
+    {
+        if (env->mw[i].pd == pd)
+        {
+            return 1;
+        }
+    }
+
+    // 3) DM/MR 如果你有 pd 关联，也可以在这里检查
+
+    return 0;
 }
 
 int rdma_init_context(const char *preferred_name)
@@ -146,4 +342,10 @@ void rdma_teardown_context(void)
         ibv_free_device_list(g_dev_list);
         g_dev_list = NULL;
     }
+    fprintf(stderr, "[RDMA] Teardown complete\n");
+}
+
+struct ibv_context *rdma_get_context(void)
+{
+    return g_ctx;
 }

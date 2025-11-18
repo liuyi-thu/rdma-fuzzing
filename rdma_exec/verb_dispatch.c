@@ -2,6 +2,7 @@
 #include "verb_pd.h"
 #include "verb_dm.h"
 #include "verb_qp.h"
+#include "verb_mw.h"
 // 如果有其他模块，比如 verb_cq.h，也在这里 include
 
 #include <stdio.h>
@@ -15,6 +16,8 @@ static VerbEntry g_verb_table[] = {
     {"DestroyQP", handle_DestroyQP},
     {"PostSend", handle_PostSend},
     {"PostRecv", handle_PostRecv},
+    {"AllocMW", handle_AllocMW},
+    {"DeallocPD", handle_DeallocPD},
     // ... 后面慢慢加
 };
 
