@@ -98,6 +98,7 @@ def _parse_kv(info: str) -> dict[str, str]:
 
 class VerbCall:
     FIELD_LIST = []
+    EXPORT_FIELDS = []
 
     def __init__(self):
         self.tracker = None
@@ -209,6 +210,19 @@ class VerbCall:
         #                 {'type': res_type, 'name': res_name.value, 'position': res_type})
         #             self.allocated_resources.append((res_type, res_name.value))
         return
+
+    def to_dict(self):
+        """Convert the verb call to a dictionary representation."""
+        d = {"verb": self.__class__.__name__}
+        # for field in self.FIELD_LIST:
+        for field in self.EXPORT_FIELDS:
+            if hasattr(self, field):
+                value = getattr(self, field)
+                if hasattr(value, "to_dict"):
+                    d[field] = value.to_dict()
+                else:
+                    d[field] = value
+        return d
 
 
 class UtilityCall:  # 生成verbs之外的函数

@@ -116,3 +116,16 @@ class Attr:
         """Check if this attribute is None."""
         # return all(getattr(self, field) is None for field in self.FIELD_LIST if hasattr(self, field))
         return False
+
+    def to_dict(self):
+        """Convert the verb call to a dictionary representation."""
+        d = {"verb": self.__class__.__name__}
+        # for field in self.FIELD_LIST:
+        for field in self.EXPORT_FIELDS:
+            if hasattr(self, field):
+                value = getattr(self, field)
+                if hasattr(value, "to_dict"):
+                    d[field] = value.to_dict()
+                else:
+                    d[field] = value
+        return d
