@@ -49,3 +49,51 @@ int handle_AllocMW(cJSON *verb_obj, ResourceEnv *env)
     }
     return 0;
 }
+
+int handle_DeallocMW(cJSON *verb_obj, ResourceEnv *env)
+{
+    const char *name = json_get_res_name(verb_obj, "mw");
+    if (!name)
+    {
+        return -1;
+    }
+
+    MwResource *mw_res = env_find_mw(env, name);
+    if (!mw_res)
+    {
+        fprintf(stderr, "[EXEC] DeallocMW: MW '%s' not found\n", name);
+        return -1;
+    }
+
+    if (ibv_dealloc_mw(mw_res->mw) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] DeallocMW: ibv_dealloc_mw failed for '%s'\n",
+                name);
+        return -1;
+    }
+
+    fprintf(stderr, "[EXEC] DeallocMW OK -> %s\n", name);
+
+    // 从数组中移除：用最后一个元素覆盖当前，再减计数，保持数组紧凑
+    int idx = -1;
+    for (int i = 0; i < env->mw_count; i++)
+    {
+        if (strcmp(env->mw[i].name, name) == 0)
+        {
+            idx = i;
+            break;
+        }
+    }
+    if (idx >= 0)
+    {
+        int last = env->mw_count - 1;
+        if (idx != last)
+        {
+            env->mw[idx] = env->mw[last];
+        }
+        env->mw_count--;
+    }
+
+    return 0;
+}

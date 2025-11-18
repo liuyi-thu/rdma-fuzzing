@@ -23,7 +23,6 @@ typedef struct
     struct ibv_pd *pd;
     // 将来可以加 qp_state、关联的 pd/cq 等元数据
 } QpResource;
-
 typedef struct
 {
     char name[64];
@@ -31,6 +30,16 @@ typedef struct
     enum ibv_mw_type type;
     struct ibv_pd *pd; // 持有指向 PD 的指针（可选，但挺有用）
 } MwResource;
+
+typedef struct
+{
+    char name[64];
+    struct ibv_mr *mr;
+    struct ibv_pd *pd;
+    size_t length;
+    int access;
+    // 将来可以加更多 MR 相关的元数据
+} MrResource;
 
 typedef struct
 {
@@ -45,6 +54,9 @@ typedef struct
 
     MwResource mw[128];
     int mw_count;
+
+    MrResource mr[128];
+    int mr_count;
 
     char trace_id[128]; // 从 meta 里读出来的可选信息
 } ResourceEnv;
@@ -65,13 +77,18 @@ MwResource *env_alloc_mw(ResourceEnv *env,
                          const char *mw_name,
                          const char *pd_name,
                          enum ibv_mw_type type);
+MrResource *env_alloc_null_mr(ResourceEnv *env,
+                              const char *mr_name,
+                              const char *pd_name);
+
+int env_dealloc_pd(ResourceEnv *env, const char *name);
 
 PdResource *env_find_pd(ResourceEnv *env, const char *name);
 DmResource *env_find_dm(ResourceEnv *env, const char *name);
 QpResource *env_find_qp(ResourceEnv *env, const char *name);
 MwResource *env_find_mw(ResourceEnv *env, const char *name);
 int env_find_pd_index(ResourceEnv *env, const char *name);
-static int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd);
+// int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd); // should not be made public
 
 int rdma_init_context(const char *preferred_name);
 void rdma_teardown_context(void);

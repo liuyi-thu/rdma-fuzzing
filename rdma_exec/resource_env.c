@@ -5,6 +5,8 @@ static struct ibv_context *g_ctx = NULL;
 static struct ibv_device *g_dev = NULL;
 static struct ibv_device **g_dev_list = NULL;
 
+static int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd);
+
 void env_init(ResourceEnv *env)
 {
     memset(env, 0, sizeof(*env));
@@ -116,6 +118,53 @@ MwResource *env_alloc_mw(ResourceEnv *env,
     return slot;
 }
 
+MrResource *env_alloc_null_mr(ResourceEnv *env, // struct ibv_mr * ibv_alloc_null_mr(struct ibv_pd * pd);
+                              const char *mr_name,
+                              const char *pd_name)
+{
+    if (!env || !mr_name || !pd_name)
+    {
+        fprintf(stderr, "[EXEC] env_alloc_null_mr: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_alloc_null_mr: RDMA context is NULL\n");
+    }
+    if (env->mr_count >= (int)(sizeof(env->mr) / sizeof(env->mr[0])))
+    {
+        fprintf(stderr,
+                "[EXEC] env_alloc_null_mr: too many MR resources, ignore %s\n",
+                mr_name);
+        return NULL;
+    }
+    // 1. 先在资源表中找到 PD
+    PdResource *pd_res = env_find_pd(env, pd_name);
+    if (!pd_res || !pd_res->pd)
+    {
+        fprintf(stderr,
+                "[EXEC] env_alloc_null_mr: PD '%s' not found or invalid\n",
+                pd_name);
+        return NULL;
+    }
+    struct ibv_mr *mr = ibv_alloc_null_mr(pd_res->pd);
+    if (!mr)
+    {
+        fprintf(stderr,
+                "[EXEC] env_alloc_null_mr: ibv_alloc_null_mr failed for mr=%s (pd=%s)\n",
+                mr_name, pd_name);
+        return NULL;
+    }
+    MrResource *slot = &env->mr[env->mr_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", mr_name);
+    slot->mr = mr;
+    slot->pd = pd_res->pd;
+    fprintf(stderr,
+            "[EXEC] AllocNullMR OK -> %s (mr=%p, pd=%s)\n",
+            slot->name, (void *)mr, pd_name);
+    return slot;
+}
 // 真正做 dealloc + 从数组中移除
 int env_dealloc_pd(ResourceEnv *env, const char *name)
 {
