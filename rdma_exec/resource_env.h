@@ -60,6 +60,16 @@ typedef struct
 
 typedef struct
 {
+    char name[64];
+    struct ibv_cq *cq;
+    int cqe;
+    void *cq_context;
+    struct ibv_comp_channel *channel;
+    int comp_vector;
+} CqResource;
+
+typedef struct
+{
     PdResource pd[128];
     int pd_count;
 
@@ -80,6 +90,9 @@ typedef struct
 
     SrqResource srq[64];
     int srq_count;
+
+    CqResource cq[128];
+    int cq_count;
 
     char trace_id[128]; // 从 meta 里读出来的可选信息
 } ResourceEnv;
@@ -112,6 +125,12 @@ SrqResource *env_create_srq(ResourceEnv *env,
                             int max_wr,
                             int max_sge,
                             int srq_limit);
+CqResource *env_create_cq(ResourceEnv *env,
+                          const char *cq_name,
+                          int cqe,
+                          void *cq_context,
+                          struct ibv_comp_channel *channel,
+                          int comp_vector);
 
 int env_dealloc_pd(ResourceEnv *env, const char *name);
 int env_destroy_srq(ResourceEnv *env, const char *name);

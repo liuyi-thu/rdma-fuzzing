@@ -265,6 +265,50 @@ SrqResource *env_create_srq(ResourceEnv *env,
             slot->name, (void *)srq, pd_name, max_wr, max_sge, srq_limit);
     return slot;
 }
+
+CqResource *env_create_cq(ResourceEnv *env,
+                          const char *cq_name,
+                          int cqe,
+                          void *cq_context,
+                          struct ibv_comp_channel *channel,
+                          int comp_vector)
+{
+    if (!env || !cq_name)
+    {
+        fprintf(stderr, "[EXEC] env_create_cq: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_create_cq: RDMA context is NULL\n");
+    }
+    if (env->cq_count >= (int)(sizeof(env->cq) / sizeof(env->cq[0])))
+    {
+        fprintf(stderr, "[EXEC] env_create_cq: too many CQ resources, ignore %s\n",
+                cq_name);
+        return NULL;
+    }
+    struct ibv_cq *cq = ibv_create_cq(g_ctx, cqe, cq_context, channel, comp_vector);
+    if (!cq)
+    {
+        fprintf(stderr, "[EXEC] env_create_cq: ibv_create_cq failed for '%s'\n",
+
+                cq_name);
+        return NULL;
+    }
+    CqResource *slot = &env->cq[env->cq_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", cq_name);
+    slot->cq = cq;
+    slot->cqe = cqe;
+    slot->cq_context = cq_context;
+    slot->channel = channel;
+    slot->comp_vector = comp_vector;
+    fprintf(stderr,
+            "[EXEC] CreateCQ OK -> %s (cq=%p, cqe=%d, cq_context=%p, channel=%p, comp_vector=%d)\n",
+            slot->name, (void *)cq, cqe, cq_context, (void *)channel, comp_vector);
+    return slot;
+}
 // 真正做 dealloc + 从数组中移除
 int env_dealloc_pd(ResourceEnv *env, const char *name)
 {
