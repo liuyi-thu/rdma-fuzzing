@@ -38,6 +38,7 @@ typedef struct
     struct ibv_pd *pd;
     size_t length;
     int access;
+    char *local_addr;
     // 将来可以加更多 MR 相关的元数据
 } MrResource;
 
@@ -70,6 +71,27 @@ typedef struct
 
 typedef struct
 {
+    char name[64];
+    struct ibv_cq_ex *cq_ex;
+    int cqe;
+    void *cq_context;
+    struct ibv_comp_channel *channel;
+    int comp_vector;
+    int wc_flags;
+    int comp_mask;
+    int flags;
+    struct ibv_pd *parent_domain;
+} CqExResource;
+
+typedef struct
+{
+    char name[64];
+    char *addr;
+    size_t length;
+} LocalBufferResource;
+
+typedef struct
+{
     PdResource pd[128];
     int pd_count;
 
@@ -93,6 +115,12 @@ typedef struct
 
     CqResource cq[128];
     int cq_count;
+
+    CqExResource cq_ex[128];
+    int cq_ex_count;
+
+    LocalBufferResource local_buf[256];
+    int local_buf_count;
 
     char trace_id[128]; // 从 meta 里读出来的可选信息
 } ResourceEnv;
@@ -131,14 +159,40 @@ CqResource *env_create_cq(ResourceEnv *env,
                           void *cq_context,
                           struct ibv_comp_channel *channel,
                           int comp_vector);
+CqExResource *env_create_cq_ex(ResourceEnv *env,
+                               const char *cq_name,
+                               int cqe,
+                               void *cq_context,
+                               struct ibv_comp_channel *channel,
+                               int comp_vector,
+                               int wc_flags,
+                               int comp_mask,
+                               int flags,
+                               struct ibv_pd *parent_domain);
+MrResource *env_reg_mr(ResourceEnv *env,
+                       const char *mr_name,
+                       const char *pd_name,
+                       const char *addr_name,
+                       size_t length,
+                       int access);
 
+int env_modify_cq(ResourceEnv *env,
+                  const char *cq_name,
+                  int attr_mask,
+                  int cq_count,
+                  int cq_period);
 int env_dealloc_pd(ResourceEnv *env, const char *name);
 int env_destroy_srq(ResourceEnv *env, const char *name);
+
+LocalBufferResource* env_alloc_local_buffer(ResourceEnv *env,
+                           const char *name,
+                           size_t length);
 
 PdResource *env_find_pd(ResourceEnv *env, const char *name);
 DmResource *env_find_dm(ResourceEnv *env, const char *name);
 QpResource *env_find_qp(ResourceEnv *env, const char *name);
 MwResource *env_find_mw(ResourceEnv *env, const char *name);
+CqResource *env_find_cq(ResourceEnv *env, const char *name);
 int env_find_pd_index(ResourceEnv *env, const char *name);
 // int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd); // should not be made public
 int env_find_srq_index(ResourceEnv *env, const char *name);

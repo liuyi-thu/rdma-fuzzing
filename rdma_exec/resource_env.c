@@ -1,6 +1,8 @@
 #include "resource_env.h"
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
+
 static struct ibv_context *g_ctx = NULL;
 static struct ibv_device *g_dev = NULL;
 static struct ibv_device **g_dev_list = NULL;
@@ -309,6 +311,180 @@ CqResource *env_create_cq(ResourceEnv *env,
             slot->name, (void *)cq, cqe, cq_context, (void *)channel, comp_vector);
     return slot;
 }
+
+CqExResource *env_create_cq_ex(ResourceEnv *env,
+                               const char *cq_ex_name,
+                               int cqe,
+                               void *cq_context,
+                               struct ibv_comp_channel *channel,
+                               int comp_vector,
+                               int wc_flags,
+                               int comp_mask,
+                               int flags,
+                               struct ibv_pd *parent_domain)
+{
+    if (!env || !cq_ex_name)
+    {
+        fprintf(stderr, "[EXEC] env_create_cq_ex: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_create_cq_ex: RDMA context is NULL\n");
+    }
+    if (env->cq_ex_count >= (int)(sizeof(env->cq_ex) / sizeof(env->cq_ex[0])))
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_cq_ex: too many CQEx resources, ignore %s\n",
+                cq_ex_name);
+        return NULL;
+    }
+    struct ibv_cq_init_attr_ex attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.cqe = cqe;
+    attr.cq_context = cq_context;
+    attr.channel = channel;
+    attr.comp_vector = comp_vector;
+    attr.wc_flags = wc_flags;
+    attr.comp_mask = comp_mask;
+    attr.flags = flags;
+    attr.parent_domain = parent_domain;
+    struct ibv_cq_ex *cq_ex = ibv_create_cq_ex(g_ctx, &attr);
+    if (!cq_ex)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_cq_ex: ibv_create_cq_ex failed for '%s'\n",
+                cq_ex_name);
+        return NULL;
+    }
+    CqExResource *slot = &env->cq_ex[env->cq_ex_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", cq_ex_name);
+    slot->cq_ex = cq_ex;
+    slot->cqe = cqe;
+    slot->cq_context = cq_context;
+    slot->channel = channel;
+    slot->comp_vector = comp_vector;
+    slot->wc_flags = wc_flags;
+    slot->comp_mask = comp_mask;
+    slot->flags = flags;
+    slot->parent_domain = parent_domain;
+    fprintf(stderr,
+            "[EXEC] CreateCQEx OK -> %s (cq=%p, cqe=%d, cq_context=%p, channel=%p, comp_vector=%d, wc_flags=%d, comp_mask=%d, flags=%d, parent_domain=%p)\n",
+            slot->name, (void *)cq_ex, cqe, cq_context, (void *)channel,
+            comp_vector, wc_flags, comp_mask, flags,
+            (void *)parent_domain);
+    return slot;
+}
+
+MrResource *env_reg_mr(ResourceEnv *env,
+                       const char *mr_name,
+                       const char *pd_name,
+                       const char *addr_name,
+                       size_t length,
+                       int access)
+{
+
+    if (!env || !mr_name || !pd_name || !addr_name)
+    {
+        fprintf(stderr, "[EXEC] env_reg_mr: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_reg_mr: RDMA context is NULL\n");
+        return NULL;
+    }
+    if (env->mr_count >= (int)(sizeof(env->mr) / sizeof(env->mr[0])))
+    {
+        fprintf(stderr,
+                "[EXEC] env_reg_mr: too many MR resources, ignore %s\n",
+                mr_name);
+        return NULL;
+    }
+    struct ibv_pd *pd = NULL;
+    // 1. 先在资源表中找到 PD
+    PdResource *pd_res = env_find_pd(env, pd_name);
+    if (!pd_res || !pd_res->pd)
+    {
+        fprintf(stderr,
+                "[EXEC] env_reg_mr: PD '%s' not found or invalid\n",
+                pd_name);
+        return NULL;
+    }
+    pd = pd_res->pd;
+
+    LocalBufferResource *local_buf_res = NULL;
+    // 2. 先在本地缓冲区资源表中分配 addr_name
+    local_buf_res = env_alloc_local_buffer(env, addr_name, length);
+    if (!local_buf_res || !local_buf_res->addr)
+    {
+        fprintf(stderr,
+                "[EXEC] env_reg_mr: LocalBuffer '%s' allocation failed\n",
+                addr_name);
+        return NULL;
+    }
+
+    struct ibv_mr *mr = ibv_reg_mr(pd, local_buf_res->addr, length, access);
+    if (!mr)
+    {
+        fprintf(stderr,
+                "[EXEC] env_reg_mr: ibv_reg_mr failed for '%s'\n",
+                mr_name);
+        return NULL;
+    }
+    MrResource *slot = &env->mr[env->mr_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", mr_name);
+    slot->mr = mr;
+    slot->pd = pd;
+    slot->local_addr = local_buf_res->addr;
+    slot->length = length;
+    slot->access = access;
+    fprintf(stderr,
+            "[EXEC] RegMR OK -> %s (mr=%p, pd=%p, length=%zu, access=%d)\n",
+            slot->name, (void *)mr, (void *)slot->pd, length, access);
+    return slot;
+}
+int env_modify_cq(ResourceEnv *env,
+                  const char *cq_name,
+                  int attr_mask,
+                  int cq_count,
+                  int cq_period)
+{
+    if (!env || !cq_name)
+    {
+        fprintf(stderr, "[EXEC] env_modify_cq: null argument\n");
+        return -1;
+    }
+    CqResource *cq_res = env_find_cq(env, cq_name);
+    if (!cq_res || !cq_res->cq)
+    {
+        fprintf(stderr,
+                "[EXEC] env_modify_cq: CQ '%s' not found or invalid\n",
+                cq_name);
+        return -1;
+    }
+    struct ibv_modify_cq_attr attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.attr_mask = attr_mask;
+    struct ibv_moderate_cq moderate;
+    moderate.cq_count = cq_count;
+    moderate.cq_period = cq_period;
+    attr.moderate = moderate;
+    if (ibv_modify_cq(cq_res->cq, &attr) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_modify_cq: ibv_modify_cq failed for '%s'\n",
+                cq_name);
+        return -1;
+    }
+    fprintf(stderr,
+            "[EXEC] ModifyCQ OK -> %s (attr_mask=%d, cq_count=%d, cq_period=%d)\n",
+            cq_name, attr_mask, cq_count, cq_period);
+    return 0;
+}
+
 // 真正做 dealloc + 从数组中移除
 int env_dealloc_pd(ResourceEnv *env, const char *name)
 {
@@ -405,6 +581,36 @@ int env_destroy_srq(ResourceEnv *env, const char *name)
     return 0;
 }
 
+LocalBufferResource *env_alloc_local_buffer(ResourceEnv *env,
+                                            const char *name,
+                                            size_t length)
+{
+    if (!env || !name)
+    {
+        fprintf(stderr, "[EXEC] env_alloc_local_buffer: null argument\n");
+        return NULL;
+    }
+    if (env->local_buf_count >= (int)(sizeof(env->local_buf) / sizeof(env->local_buf[0])))
+    {
+        fprintf(stderr,
+                "[EXEC] env_alloc_local_buffer: too many local buffer resources, ignore %s\n",
+                name);
+        return NULL;
+    }
+    LocalBufferResource *slot = &env->local_buf[env->local_buf_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", name);
+    slot->length = length;
+    slot->addr = (char *)malloc(length * sizeof(char));
+    if (!slot->addr)
+    {
+        fprintf(stderr,
+                "[EXEC] env_alloc_local_buffer: malloc failed for %s\n",
+                name);
+        return NULL;
+    }
+    return slot;
+}
 // 简单线性扫描查找 PD
 PdResource *env_find_pd(ResourceEnv *env, const char *name)
 {
@@ -430,6 +636,20 @@ MwResource *env_find_mw(ResourceEnv *env, const char *name)
         if (strcmp(env->mw[i].name, name) == 0)
         {
             return &env->mw[i];
+        }
+    }
+    return NULL;
+}
+
+CqResource *env_find_cq(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return NULL;
+    for (int i = 0; i < env->cq_count; i++)
+    {
+        if (strcmp(env->cq[i].name, name) == 0)
+        {
+            return &env->cq[i];
         }
     }
     return NULL;
