@@ -43,6 +43,23 @@ typedef struct
 
 typedef struct
 {
+    char name[64];
+    struct ibv_td *td;
+    int comp_mask;
+} TdResource;
+
+typedef struct
+{
+    char name[64];
+    struct ibv_srq *srq;
+    struct ibv_pd *pd;
+    int max_wr;
+    int max_sge;
+    int srq_limit;
+} SrqResource;
+
+typedef struct
+{
     PdResource pd[128];
     int pd_count;
 
@@ -57,6 +74,12 @@ typedef struct
 
     MrResource mr[128];
     int mr_count;
+
+    TdResource td[64];
+    int td_count;
+
+    SrqResource srq[64];
+    int srq_count;
 
     char trace_id[128]; // 从 meta 里读出来的可选信息
 } ResourceEnv;
@@ -80,8 +103,18 @@ MwResource *env_alloc_mw(ResourceEnv *env,
 MrResource *env_alloc_null_mr(ResourceEnv *env,
                               const char *mr_name,
                               const char *pd_name);
+TdResource *env_alloc_td(ResourceEnv *env,
+                         const char *td_name,
+                         int comp_mask);
+SrqResource *env_create_srq(ResourceEnv *env,
+                            const char *srq_name,
+                            const char *pd_name,
+                            int max_wr,
+                            int max_sge,
+                            int srq_limit);
 
 int env_dealloc_pd(ResourceEnv *env, const char *name);
+int env_destroy_srq(ResourceEnv *env, const char *name);
 
 PdResource *env_find_pd(ResourceEnv *env, const char *name);
 DmResource *env_find_dm(ResourceEnv *env, const char *name);
@@ -89,6 +122,7 @@ QpResource *env_find_qp(ResourceEnv *env, const char *name);
 MwResource *env_find_mw(ResourceEnv *env, const char *name);
 int env_find_pd_index(ResourceEnv *env, const char *name);
 // int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd); // should not be made public
+int env_find_srq_index(ResourceEnv *env, const char *name);
 
 int rdma_init_context(const char *preferred_name);
 void rdma_teardown_context(void);

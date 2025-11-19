@@ -165,6 +165,106 @@ MrResource *env_alloc_null_mr(ResourceEnv *env, // struct ibv_mr * ibv_alloc_nul
             slot->name, (void *)mr, pd_name);
     return slot;
 }
+
+TdResource *env_alloc_td(ResourceEnv *env,
+                         const char *td_name,
+                         int comp_mask)
+{
+    if (!env || !td_name)
+    {
+        fprintf(stderr, "[EXEC] env_alloc_td: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_alloc_td: RDMA context is NULL\n");
+    }
+    if (env->td_count >= (int)(sizeof(env->td) / sizeof(env->td[0])))
+    {
+        fprintf(stderr, "[EXEC] env_alloc_td: too many TD resources, ignore %s\n",
+                td_name);
+        return NULL;
+    }
+    struct ibv_td_init_attr attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.comp_mask = comp_mask;
+    struct ibv_td *td = ibv_alloc_td(g_ctx, &attr);
+    if (!td)
+    {
+        fprintf(stderr,
+                "[EXEC] env_alloc_td: ibv_alloc_td failed for td=%s\n",
+                td_name);
+        return NULL;
+    }
+    TdResource *slot = &env->td[env->td_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", td_name);
+    slot->td = td;
+    slot->comp_mask = comp_mask;
+    fprintf(stderr,
+            "[EXEC] AllocTD OK -> %s (td=%p, comp_mask=%d)\n",
+            slot->name, (void *)td, comp_mask);
+    return slot;
+}
+
+SrqResource *env_create_srq(ResourceEnv *env,
+                            const char *srq_name,
+                            const char *pd_name,
+                            int max_wr,
+                            int max_sge,
+                            int srq_limit)
+{
+    if (!env || !srq_name || !pd_name)
+    {
+        fprintf(stderr, "[EXEC] env_create_srq: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_create_srq: RDMA context is NULL\n");
+    }
+    if (env->srq_count >= (int)(sizeof(env->srq) / sizeof(env->srq[0])))
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_srq: too many SRQ resources, ignore %s\n",
+                srq_name);
+        return NULL;
+    }
+    // 1. 先在资源表中找到 PD
+    PdResource *pd_res = env_find_pd(env, pd_name);
+    if (!pd_res || !pd_res->pd)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_srq: PD '%s' not found or invalid\n",
+                pd_name);
+        return NULL;
+    }
+    struct ibv_srq_init_attr srq_init_attr;
+    memset(&srq_init_attr, 0, sizeof(srq_init_attr));
+    srq_init_attr.attr.max_wr = max_wr;
+    srq_init_attr.attr.max_sge = max_sge;
+    srq_init_attr.attr.srq_limit = srq_limit;
+    struct ibv_srq *srq = ibv_create_srq(pd_res->pd, &srq_init_attr);
+    if (!srq)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_srq: ibv_create_srq failed for srq=%s (pd=%s)\n",
+                srq_name, pd_name);
+        return NULL;
+    }
+    SrqResource *slot = &env->srq[env->srq_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", srq_name);
+    slot->srq = srq;
+    slot->pd = pd_res->pd;
+    slot->max_wr = max_wr;
+    slot->max_sge = max_sge;
+    slot->srq_limit = srq_limit;
+    fprintf(stderr,
+            "[EXEC] CreateSRQ OK -> %s (srq=%p, pd=%s, max_wr=%d, max_sge=%d, srq_limit=%d)\n",
+            slot->name, (void *)srq, pd_name, max_wr, max_sge, srq_limit);
+    return slot;
+}
 // 真正做 dealloc + 从数组中移除
 int env_dealloc_pd(ResourceEnv *env, const char *name)
 {
@@ -214,6 +314,49 @@ int env_dealloc_pd(ResourceEnv *env, const char *name)
         env->pd[idx] = env->pd[last];
     }
     env->pd_count--;
+
+    return 0;
+}
+
+int env_destroy_srq(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_srq: null argument\n");
+        return -1;
+    }
+
+    int idx = env_find_srq_index(env, name);
+    if (idx < 0)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_srq: SRQ '%s' not found\n", name);
+        return -1;
+    }
+
+    SrqResource *srq_res = &env->srq[idx];
+    if (!srq_res->srq)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_srq: SRQ '%s' has null pointer\n", name);
+        return -1;
+    }
+
+    if (ibv_destroy_srq(srq_res->srq) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_destroy_srq: ibv_destroy_srq failed for '%s'\n",
+                name);
+        return -1;
+    }
+
+    fprintf(stderr, "[EXEC] DestroySRQ OK -> %s\n", name);
+
+    // 从数组中移除：用最后一个元素覆盖当前，再减计数，保持数组紧凑
+    int last = env->srq_count - 1;
+    if (idx != last)
+    {
+        env->srq[idx] = env->srq[last];
+    }
+    env->srq_count--;
 
     return 0;
 }
@@ -290,6 +433,20 @@ static int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd)
     // 3) DM/MR 如果你有 pd 关联，也可以在这里检查
 
     return 0;
+}
+
+int env_find_srq_index(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return -1;
+    for (int i = 0; i < env->srq_count; i++)
+    {
+        if (strcmp(env->srq[i].name, name) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
 }
 
 int rdma_init_context(const char *preferred_name)
