@@ -79,3 +79,15 @@ int handle_ModifyCQ(cJSON *verb_obj, ResourceEnv *env)
     env_modify_cq(env, cq_name, attr_mask, cq_count, cq_period);
     return 0;
 }
+
+int handle_DestroyCQ(cJSON *verb_obj, ResourceEnv *env)
+{
+    const char *cq_name = json_get_res_name(verb_obj, "cq");
+    if (!cq_name)
+    {
+        fprintf(stderr, "[EXEC] DestroyCQ: missing 'cq' field\n");
+        return -1;
+    }
+    env_destroy_cq(env, cq_name);
+    return 0;
+}

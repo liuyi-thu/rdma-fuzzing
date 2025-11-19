@@ -67,3 +67,15 @@ int handle_RegMR(cJSON *verb_obj, ResourceEnv *env) // struct ibv_mr * ibv_reg_m
     // fprintf(stderr, "[EXEC] RegMR -> %s\n", mr_name);
     return 0;
 }
+
+int handle_DeregMR(cJSON *verb_obj, ResourceEnv *env)
+{
+    const char *name = json_get_res_name(verb_obj, "mr");
+    if (!name)
+    {
+        fprintf(stderr, "[EXEC] DeregMR: missing 'mr' field\n");
+        return -1;
+    }
+    env_dereg_mr(env, name);
+    return 0;
+}

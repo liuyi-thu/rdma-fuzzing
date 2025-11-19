@@ -4,3 +4,4 @@
 
 int handle_AllocNullMR(cJSON *verb_obj, ResourceEnv *env);
 int handle_RegMR(cJSON *verb_obj, ResourceEnv *env);
+int handle_DeregMR(cJSON *verb_obj, ResourceEnv *env);

@@ -208,6 +208,11 @@ int env_modify_cq(ResourceEnv *env,
                   int cq_period);
 int env_dealloc_pd(ResourceEnv *env, const char *name);
 int env_destroy_srq(ResourceEnv *env, const char *name);
+int env_destroy_qp(ResourceEnv *env, const char *name);
+int env_dealloc_mw(ResourceEnv *env, const char *name);
+int env_dereg_mr(ResourceEnv *env, const char *name);
+int env_free_dm(ResourceEnv *env, const char *name);
+int env_destroy_cq(ResourceEnv *env, const char *name);
 
 LocalBufferResource *env_alloc_local_buffer(ResourceEnv *env,
                                             const char *name,
@@ -222,6 +227,11 @@ SrqResource *env_find_srq(ResourceEnv *env, const char *name);
 int env_find_pd_index(ResourceEnv *env, const char *name);
 // int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd); // should not be made public
 int env_find_srq_index(ResourceEnv *env, const char *name);
+int env_find_qp_index(ResourceEnv *env, const char *name);
+int env_find_mw_index(ResourceEnv *env, const char *name);
+int env_find_cq_index(ResourceEnv *env, const char *name);
+int env_find_mr_index(ResourceEnv *env, const char *name);
+int env_find_dm_index(ResourceEnv *env, const char *name);
 
 int rdma_init_context(const char *preferred_name);
 void rdma_teardown_context(void);

@@ -4,3 +4,4 @@
 
 int handle_AllocDM(cJSON *verb_obj, ResourceEnv *env);
 // 将来可能还有 handle_FreeDM 等
+int handle_FreeDM(cJSON *verb_obj, ResourceEnv *env);

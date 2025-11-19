@@ -22,3 +22,15 @@ int handle_AllocDM(cJSON *verb_obj, ResourceEnv *env)
     env_alloc_dm(env, dm_name, length, log_align_req, comp_mask);
     return 0;
 }
+
+int handle_FreeDM(cJSON *verb_obj, ResourceEnv *env)
+{
+    const char *name = json_get_res_name(verb_obj, "dm");
+    if (!name)
+    {
+        fprintf(stderr, "[EXEC] FreeDM: missing 'dm' field\n");
+        return -1;
+    }
+    env_free_dm(env, name);
+    return 0;
+}

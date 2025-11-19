@@ -709,6 +709,221 @@ int env_destroy_srq(ResourceEnv *env, const char *name)
     return 0;
 }
 
+int env_destroy_qp(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_qp: null argument\n");
+        return -1;
+    }
+
+    int idx = env_find_qp_index(env, name);
+    if (idx < 0)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_qp: QP '%s' not found\n", name);
+        return -1;
+    }
+
+    QpResource *qp_res = &env->qp[idx];
+    if (!qp_res->qp)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_qp: QP '%s' has null pointer\n", name);
+        return -1;
+    }
+
+    if (ibv_destroy_qp(qp_res->qp) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_destroy_qp: ibv_destroy_qp failed for '%s'\n",
+                name);
+        return -1;
+    }
+
+    fprintf(stderr, "[EXEC] DestroyQP OK -> %s\n", name);
+
+    // 从数组中移除：用最后一个元素覆盖当前，再减计数，保持数组紧凑
+    int last = env->qp_count - 1;
+    if (idx != last)
+    {
+        env->qp[idx] = env->qp[last];
+    }
+    env->qp_count--;
+
+    return 0;
+}
+
+int env_dealloc_mw(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+    {
+        fprintf(stderr, "[EXEC] env_dealloc_mw: null argument\n");
+        return -1;
+    }
+
+    int idx = env_find_mw_index(env, name);
+    if (idx < 0)
+    {
+        fprintf(stderr, "[EXEC] env_dealloc_mw: MW '%s' not found\n", name);
+        return -1;
+    }
+
+    MwResource *mw_res = &env->mw[idx];
+    if (!mw_res->mw)
+    {
+        fprintf(stderr, "[EXEC] env_dealloc_mw: MW '%s' has null pointer\n", name);
+        return -1;
+    }
+
+    if (ibv_dealloc_mw(mw_res->mw) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_dealloc_mw: ibv_dealloc_mw failed for '%s'\n",
+                name);
+        return -1;
+    }
+
+    fprintf(stderr, "[EXEC] DeallocMW OK -> %s\n", name);
+
+    // 从数组中移除：用最后一个元素覆盖当前，再减计数，保持数组紧凑
+    int last = env->mw_count - 1;
+    if (idx != last)
+    {
+        env->mw[idx] = env->mw[last];
+    }
+    env->mw_count--;
+
+    return 0;
+}
+
+int env_dereg_mr(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+    {
+        fprintf(stderr, "[EXEC] env_dereg_mr: null argument\n");
+        return -1;
+    }
+
+    int idx = env_find_mr_index(env, name);
+    if (idx < 0)
+    {
+        fprintf(stderr, "[EXEC] env_dereg_mr: MR '%s' not found\n", name);
+        return -1;
+    }
+
+    MrResource *mr_res = &env->mr[idx];
+    if (!mr_res->mr)
+    {
+        fprintf(stderr, "[EXEC] env_dereg_mr: MR '%s' has null pointer\n", name);
+        return -1;
+    }
+
+    if (ibv_dereg_mr(mr_res->mr) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_dereg_mr: ibv_dereg_mr failed for '%s'\n",
+                name);
+        return -1;
+    }
+
+    fprintf(stderr, "[EXEC] DeregMR OK -> %s\n", name);
+
+    // 从数组中移除：用最后一个元素覆盖当前，再减计数，保持数组紧凑
+    int last = env->mr_count - 1;
+    if (idx != last)
+    {
+        env->mr[idx] = env->mr[last];
+    }
+    env->mr_count--;
+
+    return 0;
+}
+
+int env_free_dm(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+    {
+        fprintf(stderr, "[EXEC] env_free_dm: null argument\n");
+        return -1;
+    }
+
+    int idx = env_find_dm_index(env, name);
+    if (idx < 0)
+    {
+        fprintf(stderr, "[EXEC] env_free_dm: DM '%s' not found\n", name);
+        return -1;
+    }
+
+    DmResource *dm_res = &env->dm[idx];
+    if (!dm_res->dm)
+    {
+        fprintf(stderr, "[EXEC] env_free_dm: DM '%s' has null pointer\n", name);
+        return -1;
+    }
+
+    if (ibv_free_dm(dm_res->dm) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_free_dm: ibv_free_dm failed for '%s'\n",
+                name);
+        return -1;
+    }
+
+    fprintf(stderr, "[EXEC] FreeDM OK -> %s\n", name);
+
+    // 从数组中移除：用最后一个元素覆盖当前，再减计数，保持数组紧凑
+    int last = env->dm_count - 1;
+    if (idx != last)
+    {
+        env->dm[idx] = env->dm[last];
+    }
+    env->dm_count--;
+
+    return 0;
+}
+
+int env_destroy_cq(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_cq: null argument\n");
+        return -1;
+    }
+
+    int idx = env_find_cq_index(env, name);
+    if (idx < 0)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_cq: CQ '%s' not found\n", name);
+        return -1;
+    }
+
+    CqResource *cq_res = &env->cq[idx];
+    if (!cq_res->cq)
+    {
+        fprintf(stderr, "[EXEC] env_destroy_cq: CQ '%s' has null pointer\n", name);
+        return -1;
+    }
+
+    if (ibv_destroy_cq(cq_res->cq) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_destroy_cq: ibv_destroy_cq failed for '%s'\n",
+                name);
+        return -1;
+    }
+
+    fprintf(stderr, "[EXEC] DestroyCQ OK -> %s\n", name);
+
+    // 从数组中移除：用最后一个元素覆盖当前，再减计数，保持数组紧凑
+    int last = env->cq_count - 1;
+    if (idx != last)
+    {
+        env->cq[idx] = env->cq[last];
+    }
+    env->cq_count--;
+
+    return 0;
+}
+
 LocalBufferResource *env_alloc_local_buffer(ResourceEnv *env,
                                             const char *name,
                                             size_t length)
@@ -848,6 +1063,76 @@ int env_find_srq_index(ResourceEnv *env, const char *name)
     for (int i = 0; i < env->srq_count; i++)
     {
         if (strcmp(env->srq[i].name, name) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int env_find_qp_index(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return -1;
+    for (int i = 0; i < env->qp_count; i++)
+    {
+        if (strcmp(env->qp[i].name, name) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int env_find_mw_index(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return -1;
+    for (int i = 0; i < env->mw_count; i++)
+    {
+        if (strcmp(env->mw[i].name, name) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int env_find_cq_index(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return -1;
+    for (int i = 0; i < env->cq_count; i++)
+    {
+        if (strcmp(env->cq[i].name, name) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int env_find_mr_index(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return -1;
+    for (int i = 0; i < env->mr_count; i++)
+    {
+        if (strcmp(env->mr[i].name, name) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int env_find_dm_index(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return -1;
+    for (int i = 0; i < env->dm_count; i++)
+    {
+        if (strcmp(env->dm[i].name, name) == 0)
         {
             return i;
         }
