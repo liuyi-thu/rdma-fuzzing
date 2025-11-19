@@ -22,6 +22,17 @@ typedef struct
     struct ibv_qp *qp;
     struct ibv_pd *pd;
     // 将来可以加 qp_state、关联的 pd/cq 等元数据
+    struct ibv_cq *send_cq;
+    struct ibv_cq *recv_cq;
+    struct ibv_srq *srq;
+    void *qp_context;
+    int cap_max_send_wr;
+    int cap_max_recv_wr;
+    int cap_max_send_sge;
+    int cap_max_recv_sge;
+    int cap_max_inline_data;
+    int qp_type;
+    int sq_sig_all;
 } QpResource;
 typedef struct
 {
@@ -175,6 +186,20 @@ MrResource *env_reg_mr(ResourceEnv *env,
                        const char *addr_name,
                        size_t length,
                        int access);
+QpResource *env_create_qp(ResourceEnv *env,
+                          const char *qp_name,
+                          const char *pd_name,
+                          const char *send_cq_name,
+                          const char *recv_cq_name,
+                          const char *srq_name,
+                          void *qp_context,
+                          int cap_max_send_wr,
+                          int cap_max_recv_wr,
+                          int cap_max_send_sge,
+                          int cap_max_recv_sge,
+                          int cap_max_inline_data,
+                          int qp_type,
+                          int sq_sig_all);
 
 int env_modify_cq(ResourceEnv *env,
                   const char *cq_name,
@@ -184,15 +209,16 @@ int env_modify_cq(ResourceEnv *env,
 int env_dealloc_pd(ResourceEnv *env, const char *name);
 int env_destroy_srq(ResourceEnv *env, const char *name);
 
-LocalBufferResource* env_alloc_local_buffer(ResourceEnv *env,
-                           const char *name,
-                           size_t length);
+LocalBufferResource *env_alloc_local_buffer(ResourceEnv *env,
+                                            const char *name,
+                                            size_t length);
 
 PdResource *env_find_pd(ResourceEnv *env, const char *name);
 DmResource *env_find_dm(ResourceEnv *env, const char *name);
 QpResource *env_find_qp(ResourceEnv *env, const char *name);
 MwResource *env_find_mw(ResourceEnv *env, const char *name);
 CqResource *env_find_cq(ResourceEnv *env, const char *name);
+SrqResource *env_find_srq(ResourceEnv *env, const char *name);
 int env_find_pd_index(ResourceEnv *env, const char *name);
 // int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd); // should not be made public
 int env_find_srq_index(ResourceEnv *env, const char *name);

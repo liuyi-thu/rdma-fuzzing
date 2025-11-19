@@ -446,6 +446,134 @@ MrResource *env_reg_mr(ResourceEnv *env,
             slot->name, (void *)mr, (void *)slot->pd, length, access);
     return slot;
 }
+
+QpResource *env_create_qp(ResourceEnv *env,
+                          const char *qp_name,
+                          const char *pd_name,
+                          const char *send_cq_name,
+                          const char *recv_cq_name,
+                          const char *srq_name,
+                          void *qp_context,
+                          int cap_max_send_wr,
+                          int cap_max_recv_wr,
+                          int cap_max_send_sge,
+                          int cap_max_recv_sge,
+                          int cap_max_inline_data,
+                          int qp_type,
+                          int sq_sig_all)
+{
+    if (!env || !qp_name || !pd_name)
+    {
+        fprintf(stderr, "[EXEC] env_create_qp: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_create_qp: RDMA context is NULL\n");
+    }
+    if (env->qp_count >= (int)(sizeof(env->qp) / sizeof(env->qp[0])))
+    {
+        fprintf(stderr, "[EXEC] env_create_qp: too many QP resources, ignore %s\n",
+                qp_name);
+        return NULL;
+    }
+    // 1. 先在资源表中找到 PD
+    PdResource *pd_res = env_find_pd(env, pd_name);
+    if (!pd_res || !pd_res->pd)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_qp: PD '%s' not found or invalid\n",
+                pd_name);
+        return NULL;
+    }
+    // 2. 找 send_cq
+    CqResource *send_cq_res = NULL;
+    if (send_cq_name)
+    {
+        send_cq_res = env_find_cq(env, send_cq_name);
+        if (!send_cq_res || !send_cq_res->cq)
+        {
+            fprintf(stderr,
+                    "[EXEC] env_create_qp: send CQ '%s' not found or invalid\n",
+                    send_cq_name);
+            return NULL;
+        }
+    }
+    // 3. 找 recv_cq
+    CqResource *recv_cq_res = NULL;
+    if (recv_cq_name)
+    {
+        recv_cq_res = env_find_cq(env, recv_cq_name);
+        if (!recv_cq_res || !recv_cq_res->cq)
+        {
+            fprintf(stderr,
+                    "[EXEC] env_create_qp: recv CQ '%s' not found or invalid\n",
+                    recv_cq_name);
+            return NULL;
+        }
+    }
+    // 4. 找 srq
+    SrqResource *srq_res = NULL;
+    if (srq_name)
+    {
+        srq_res = env_find_srq(env, srq_name);
+        if (!srq_res || !srq_res->srq)
+        {
+            fprintf(stderr,
+                    "[EXEC] env_create_qp: SRQ '%s' not found or invalid\n",
+                    srq_name);
+            return NULL;
+        }
+    }
+    struct ibv_qp_init_attr qp_init_attr;
+    memset(&qp_init_attr, 0, sizeof(qp_init_attr));
+    qp_init_attr.send_cq = send_cq_res ? send_cq_res->cq : NULL;
+    qp_init_attr.recv_cq = recv_cq_res ? recv_cq_res->cq : NULL;
+    qp_init_attr.srq = srq_res ? srq_res->srq : NULL;
+    qp_init_attr.cap.max_send_wr = cap_max_send_wr;
+    qp_init_attr.cap.max_recv_wr = cap_max_recv_wr;
+    qp_init_attr.cap.max_send_sge = cap_max_send_sge;
+    qp_init_attr.cap.max_recv_sge = cap_max_recv_sge;
+    qp_init_attr.cap.max_inline_data = cap_max_inline_data;
+    qp_init_attr.qp_type = qp_type;
+    qp_init_attr.sq_sig_all = sq_sig_all;
+    struct ibv_qp *qp = ibv_create_qp(pd_res->pd, &qp_init_attr);
+    if (!qp)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_qp: ibv_create_qp failed for qp=%s (pd=%s)\n",
+                qp_name, pd_name);
+        return NULL;
+    }
+    // env->qp[env->qp_count++] = (QpResource){.qp = qp, .name = strdup(qp_name)};
+    QpResource *slot = &env->qp[env->qp_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", qp_name);
+    slot->qp = qp;
+    slot->pd = pd_res->pd;
+    slot->send_cq = send_cq_res ? send_cq_res->cq : NULL;
+    slot->recv_cq = recv_cq_res ? recv_cq_res->cq : NULL;
+    slot->srq = srq_res ? srq_res->srq : NULL;
+    slot->qp_context = qp_context;
+    slot->cap_max_send_wr = cap_max_send_wr;
+    slot->cap_max_recv_wr = cap_max_recv_wr;
+    slot->cap_max_send_sge = cap_max_send_sge;
+    slot->cap_max_recv_sge = cap_max_recv_sge;
+    slot->cap_max_inline_data = cap_max_inline_data;
+    slot->qp_type = qp_type;
+    slot->sq_sig_all = sq_sig_all;
+    fprintf(stderr,
+            "[EXEC] CreateQP OK -> %s (qp=%p, pd=%s, send_cq=%s, recv_cq=%s, srq=%s, cap_max_send_wr=%d, cap_max_recv_wr=%d, cap_max_send_sge=%d, cap_max_recv_sge=%d, cap_max_inline_data=%d, qp_type=%d, sq_sig_all=%d)\n",
+            slot->name, (void *)qp, pd_name,
+            send_cq_name ? send_cq_name : "NULL",
+            recv_cq_name ? recv_cq_name : "NULL",
+            srq_name ? srq_name : "NULL",
+            cap_max_send_wr, cap_max_recv_wr,
+            cap_max_send_sge, cap_max_recv_sge,
+            cap_max_inline_data, qp_type, sq_sig_all);
+    return slot;
+}
+
 int env_modify_cq(ResourceEnv *env,
                   const char *cq_name,
                   int attr_mask,
@@ -650,6 +778,20 @@ CqResource *env_find_cq(ResourceEnv *env, const char *name)
         if (strcmp(env->cq[i].name, name) == 0)
         {
             return &env->cq[i];
+        }
+    }
+    return NULL;
+}
+
+SrqResource *env_find_srq(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return NULL;
+    for (int i = 0; i < env->srq_count; i++)
+    {
+        if (strcmp(env->srq[i].name, name) == 0)
+        {
+            return &env->srq[i];
         }
     }
     return NULL;

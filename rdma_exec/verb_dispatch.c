@@ -31,6 +31,7 @@ static VerbEntry g_verb_table[] = {
     {"CreateCQEx", handle_CreateCQEx},
     {"ModifyCQ", handle_ModifyCQ},
     {"RegMR", handle_RegMR},
+    {"CreateQP", handle_CreateQP},
     // ... 后面慢慢加
 };
 
