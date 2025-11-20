@@ -7,6 +7,7 @@
 #include "verb_td.h"
 #include "verb_srq.h"
 #include "verb_cq.h"
+#include "verb_flow.h"
 // 如果有其他模块，比如 verb_cq.h，也在这里 include
 
 #include <stdio.h>
@@ -36,6 +37,8 @@ static VerbEntry g_verb_table[] = {
     {"FreeDM", handle_FreeDM},
     {"DestroyQP", handle_DestroyQP},
     {"DestroyCQ", handle_DestroyCQ},
+    {"CreateQPEx", handle_CreateQPEx},
+    {"CreateFlow", handle_CreateFlow},
     // ... 后面慢慢加
 };
 

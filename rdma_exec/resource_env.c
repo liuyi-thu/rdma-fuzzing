@@ -574,6 +574,227 @@ QpResource *env_create_qp(ResourceEnv *env,
     return slot;
 }
 
+QpResource *env_create_qp_ex(ResourceEnv *env,
+                             const char *qp_name,
+                             const char *pd_name,
+                             const char *xrcd_name,
+                             void *qp_context,
+                             const char *send_cq_name,
+                             const char *recv_cq_name,
+                             const char *srq_name,
+                             int cap_max_send_wr,
+                             int cap_max_recv_wr,
+                             int cap_max_send_sge,
+                             int cap_max_recv_sge,
+                             int cap_max_inline_data,
+                             int qp_type,
+                             int sq_sig_all,
+                             int comp_mask,
+                             int create_flags,
+                             int max_tso_header,
+                             void *rwq_ind_tbl,
+                             int rx_hash_function,
+                             int rx_hash_key_len,
+                             uint8_t *rx_hash_key,
+                             int rx_hash_fields_mask,
+                             int source_qpn,
+                             int send_ops_flags)
+{
+    if (!env || !qp_name || !pd_name)
+    {
+        fprintf(stderr, "[EXEC] env_create_qp_ex: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_create_qp_ex: RDMA context is NULL\n");
+    }
+    if (env->qp_count >= (int)(sizeof(env->qp) / sizeof(env->qp[0])))
+    {
+        fprintf(stderr, "[EXEC] env_create_qp_ex: too many QP resources, ignore %s\n",
+                qp_name);
+        return NULL;
+    }
+    // 1. 先在资源表中找到 PD
+    PdResource *pd_res = env_find_pd(env, pd_name);
+    if (!pd_res || !pd_res->pd)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_qp: PD '%s' not found or invalid\n",
+                pd_name);
+        return NULL;
+    }
+    // 2. 找 send_cq
+    CqResource *send_cq_res = NULL;
+    if (send_cq_name)
+    {
+        send_cq_res = env_find_cq(env, send_cq_name);
+        if (!send_cq_res || !send_cq_res->cq)
+        {
+            fprintf(stderr,
+                    "[EXEC] env_create_qp: send CQ '%s' not found or invalid\n",
+                    send_cq_name);
+            return NULL;
+        }
+    }
+    // 3. 找 recv_cq
+    CqResource *recv_cq_res = NULL;
+    if (recv_cq_name)
+    {
+        recv_cq_res = env_find_cq(env, recv_cq_name);
+        if (!recv_cq_res || !recv_cq_res->cq)
+        {
+            fprintf(stderr,
+                    "[EXEC] env_create_qp: recv CQ '%s' not found or invalid\n",
+                    recv_cq_name);
+            return NULL;
+        }
+    }
+    // 4. 找 srq
+    SrqResource *srq_res = NULL;
+    if (srq_name)
+    {
+        srq_res = env_find_srq(env, srq_name);
+        if (!srq_res || !srq_res->srq)
+        {
+            fprintf(stderr,
+                    "[EXEC] env_create_qp: SRQ '%s' not found or invalid\n",
+                    srq_name);
+            return NULL;
+        }
+    }
+    struct ibv_qp_init_attr_ex qp_init_attr;
+    memset(&qp_init_attr, 0, sizeof(qp_init_attr));
+    qp_init_attr.pd = pd_res->pd;
+    qp_init_attr.xrcd = NULL; // TODO: implement xrcd lookup
+    qp_init_attr.qp_context = qp_context;
+    qp_init_attr.send_cq = send_cq_res ? send_cq_res->cq : NULL;
+    qp_init_attr.recv_cq = recv_cq_res ? recv_cq_res->cq : NULL;
+    qp_init_attr.srq = srq_res ? srq_res->srq : NULL;
+    qp_init_attr.cap.max_send_wr = cap_max_send_wr;
+    qp_init_attr.cap.max_recv_wr = cap_max_recv_wr;
+    qp_init_attr.cap.max_send_sge = cap_max_send_sge;
+    qp_init_attr.cap.max_recv_sge = cap_max_recv_sge;
+    qp_init_attr.cap.max_inline_data = cap_max_inline_data;
+    qp_init_attr.qp_type = qp_type;
+    qp_init_attr.sq_sig_all = sq_sig_all;
+    qp_init_attr.comp_mask = comp_mask;
+    qp_init_attr.create_flags = create_flags;
+    qp_init_attr.max_tso_header = max_tso_header;
+    qp_init_attr.rwq_ind_tbl = rwq_ind_tbl;
+    qp_init_attr.rx_hash_conf.rx_hash_function = rx_hash_function;
+    qp_init_attr.rx_hash_conf.rx_hash_key_len = rx_hash_key_len;
+    qp_init_attr.rx_hash_conf.rx_hash_key = rx_hash_key;
+    qp_init_attr.rx_hash_conf.rx_hash_fields_mask = rx_hash_fields_mask;
+    qp_init_attr.source_qpn = source_qpn;
+    qp_init_attr.send_ops_flags = send_ops_flags;
+    struct ibv_qp *qp = ibv_create_qp_ex(g_ctx, &qp_init_attr);
+    if (!qp)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_qp_ex: ibv_create_qp_ex failed for qp=%s (pd=%s)\n",
+                qp_name, pd_name);
+        return NULL;
+    }
+    QpResource *slot = &env->qp[env->qp_count++];
+    memset(slot, 0, sizeof(*slot));
+    snprintf(slot->name, sizeof(slot->name), "%s", qp_name);
+    slot->qp = qp;
+    slot->pd = pd_res->pd;
+    slot->send_cq = send_cq_res ? send_cq_res->cq : NULL;
+    slot->recv_cq = recv_cq_res ? recv_cq_res->cq : NULL;
+    slot->srq = srq_res ? srq_res->srq : NULL;
+    slot->qp_context = qp_context;
+    slot->cap_max_send_wr = cap_max_send_wr;
+    slot->cap_max_recv_wr = cap_max_recv_wr;
+    slot->cap_max_send_sge = cap_max_send_sge;
+    slot->cap_max_recv_sge = cap_max_recv_sge;
+    slot->cap_max_inline_data = cap_max_inline_data;
+    slot->qp_type = qp_type;
+    slot->sq_sig_all = sq_sig_all;
+    fprintf(stderr,
+            "[EXEC] CreateQPEx OK -> %s (qp=%p, pd=%s, send_cq=%s, recv_cq=%s, srq=%s, cap_max_send_wr=%d, cap_max_recv_wr=%d, cap_max_send_sge=%d, cap_max_recv_sge=%d, cap_max_inline_data=%d, qp_type=%d, sq_sig_all=%d, comp_mask=%d, create_flags=%d, max_tso_header=%d, rwd_ind_tbl=%p, rx_hash_function=%d, rx_hash_key_len=%d, rx_hash_key=%p, rx_hash_fields_mask=%d, source_qpn=%d, send_ops_flags=%d)\n",
+            slot->name, (void *)qp, pd_name,
+            send_cq_name ? send_cq_name : "NULL",
+            recv_cq_name ? recv_cq_name : "NULL",
+            srq_name ? srq_name : "NULL",
+            cap_max_send_wr, cap_max_recv_wr,
+            cap_max_send_sge, cap_max_recv_sge,
+            cap_max_inline_data, qp_type, sq_sig_all,
+            comp_mask, create_flags, max_tso_header,
+            rwq_ind_tbl, rx_hash_function, rx_hash_key_len,
+            rx_hash_key, rx_hash_fields_mask, source_qpn, send_ops_flags);
+    return slot;
+}
+
+FlowResource *env_create_flow(ResourceEnv *env,
+                              const char *flow_name,
+                              const char *qp_name,
+                              int comp_mask,
+                              int type,
+                              int size,
+                              int priority,
+                              int num_of_specs,
+                              int port,
+                              int flags)
+{
+    if (!env || !flow_name || !qp_name)
+    {
+        fprintf(stderr, "[EXEC] env_create_flow: null argument\n");
+        return NULL;
+    }
+    if (!rdma_get_context())
+    {
+        fprintf(stderr, "[EXEC] env_create_flow: RDMA context is NULL\n");
+    }
+    if (env->flow_count >= (int)(sizeof(env->flow) / sizeof(env->flow[0])))
+    {
+        fprintf(stderr, "[EXEC] env_create_flow: too many Flow resources, ignore %s\n",
+                flow_name);
+        return NULL;
+    }
+    QpResource *qp_res = env_find_qp(env, qp_name);
+    if (!qp_res || !qp_res->qp)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_flow: QP '%s' not found or invalid\n",
+                qp_name);
+        return NULL;
+    }
+    struct ibv_flow_attr flow_attr;
+    memset(&flow_attr, 0, sizeof(flow_attr));
+    flow_attr.comp_mask = comp_mask;
+    flow_attr.type = type;
+    flow_attr.size = size;
+    flow_attr.priority = priority;
+    flow_attr.num_of_specs = num_of_specs;
+    flow_attr.port = port;
+    flow_attr.flags = flags;
+    struct ibv_flow *flow_handle = ibv_create_flow(qp_res->qp, &flow_attr);
+    if (!flow_handle)
+    {
+        fprintf(stderr,
+                "[EXEC] env_create_flow: ibv_create_flow failed for flow=%s (qp=%s)\n",
+                flow_name, qp_name);
+        return NULL;
+    }
+
+    FlowResource *flow = &env->flow[env->flow_count++];
+    memset(flow, 0, sizeof(*flow));
+    snprintf(flow->name, sizeof(flow->name), "%s", flow_name);
+    flow->flow = flow_handle;
+    flow->qp = qp_res->qp;
+    flow->comp_mask = comp_mask;
+    flow->type = type;
+    flow->size = size;
+    flow->priority = priority;
+    flow->num_of_specs = num_of_specs;
+    flow->port = port;
+    flow->flags = flags;
+
+    return flow;
+}
+
 int env_modify_cq(ResourceEnv *env,
                   const char *cq_name,
                   int attr_mask,
@@ -1007,6 +1228,20 @@ SrqResource *env_find_srq(ResourceEnv *env, const char *name)
         if (strcmp(env->srq[i].name, name) == 0)
         {
             return &env->srq[i];
+        }
+    }
+    return NULL;
+}
+
+QpResource *env_find_qp(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+        return NULL;
+    for (int i = 0; i < env->qp_count; i++)
+    {
+        if (strcmp(env->qp[i].name, name) == 0)
+        {
+            return &env->qp[i];
         }
     }
     return NULL;
