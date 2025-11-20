@@ -441,6 +441,7 @@ MrResource *env_reg_mr(ResourceEnv *env,
     slot->local_addr = local_buf_res->addr;
     slot->length = length;
     slot->access = access;
+    slot->addr = mr->addr; // this should be the same as local_buf_res->addr, for compatibility, we set it here
     fprintf(stderr,
             "[EXEC] RegMR OK -> %s (mr=%p, pd=%p, length=%zu, access=%d)\n",
             slot->name, (void *)mr, (void *)slot->pd, length, access);

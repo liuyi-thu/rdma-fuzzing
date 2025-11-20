@@ -42,6 +42,7 @@ static VerbEntry g_verb_table[] = {
     {"ModifyQP", handle_ModifyQP},
     {"ModifySRQ", handle_ModifySRQ},
     {"BindMW", handle_BindMW},
+    {"PostSend", handle_PostSend},
     // ... 后面慢慢加
 };
 

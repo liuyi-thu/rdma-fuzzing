@@ -50,6 +50,7 @@ typedef struct
     size_t length;
     int access;
     char *local_addr;
+    void *addr;
     // 将来可以加更多 MR 相关的元数据
 } MrResource;
 

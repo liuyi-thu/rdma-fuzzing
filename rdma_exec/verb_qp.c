@@ -128,6 +128,31 @@ static const JsonFlagSpec qp_attr_mask_table[] = {
     {"IBV_QP_RATE_LIMIT", IBV_QP_RATE_LIMIT},
 };
 
+static const JsonEnumSpec wr_opcode_table[] = {
+    {"IBV_WR_RDMA_WRITE", IBV_WR_RDMA_WRITE},
+    {"IBV_WR_RDMA_WRITE_WITH_IMM", IBV_WR_RDMA_WRITE_WITH_IMM},
+    {"IBV_WR_SEND", IBV_WR_SEND},
+    {"IBV_WR_SEND_WITH_IMM", IBV_WR_SEND_WITH_IMM},
+    {"IBV_WR_RDMA_READ", IBV_WR_RDMA_READ},
+    {"IBV_WR_ATOMIC_CMP_AND_SWP", IBV_WR_ATOMIC_CMP_AND_SWP},
+    {"IBV_WR_ATOMIC_FETCH_AND_ADD", IBV_WR_ATOMIC_FETCH_AND_ADD},
+    {"IBV_WR_LOCAL_INV", IBV_WR_LOCAL_INV},
+    {"IBV_WR_BIND_MW", IBV_WR_BIND_MW},
+    {"IBV_WR_SEND_WITH_INV", IBV_WR_SEND_WITH_INV},
+    {"IBV_WR_TSO", IBV_WR_TSO},
+    {"IBV_WR_DRIVER1", IBV_WR_DRIVER1},
+    {"IBV_WR_FLUSH", IBV_WR_FLUSH},
+    {"IBV_WR_ATOMIC_WRITE", IBV_WR_ATOMIC_WRITE},
+};
+
+static const JsonFlagSpec send_flags_table[] = {
+    {"IBV_SEND_SIGNALED", IBV_SEND_SIGNALED},
+    {"IBV_SEND_FENCE", IBV_SEND_FENCE},
+    {"IBV_SEND_SOLICITED", IBV_SEND_SOLICITED},
+    {"IBV_SEND_INLINE", IBV_SEND_INLINE},
+    {"IBV_SEND_IP_CSUM", IBV_SEND_IP_CSUM},
+};
+
 int handle_CreateQP(cJSON *verb_obj, ResourceEnv *env)
 {
     const char *pd_name = json_get_res_name(verb_obj, "pd");
@@ -478,11 +503,213 @@ int handle_DestroyQP(cJSON *verb_obj, ResourceEnv *env)
     env_destroy_qp(env, name);
     return 0;
 }
-int handle_PostSend(cJSON *verb_obj, ResourceEnv *env)
+
+// 从 wr_obj 的 sg_list 构造 sge 数组：返回动态分配的数组和 num_sge
+static int build_sge_array_from_json(cJSON *wr_obj,
+                                     ResourceEnv *env,
+                                     struct ibv_sge **out_sge,
+                                     int *out_num_sge)
 {
-    fprintf(stderr, "[EXEC] PostSend: not implemented yet\n");
+    *out_sge = NULL;
+    *out_num_sge = 0;
+
+    if (!wr_obj || !env)
+        return -1;
+
+    cJSON *sg_spec = obj_get(wr_obj, "sg_list");
+    if (!sg_spec)
+    {
+        // 没有 sg_list，就按 0 sge 处理
+        return 0;
+    }
+
+    cJSON *type_item = cJSON_GetObjectItemCaseSensitive(sg_spec, "type");
+    cJSON *value_item = cJSON_GetObjectItemCaseSensitive(sg_spec, "value");
+    if (!type_item || !cJSON_IsString(type_item) ||
+        !value_item || !cJSON_IsArray(value_item))
+    {
+        fprintf(stderr, "[WARN] build_sge_array_from_json: invalid sg_list\n");
+        return -1;
+    }
+
+    int n = cJSON_GetArraySize(value_item);
+    if (n <= 0)
+    {
+        return 0;
+    }
+
+    struct ibv_sge *sges = calloc((size_t)n, sizeof(struct ibv_sge));
+    if (!sges)
+    {
+        fprintf(stderr, "[ERR] build_sge_array_from_json: calloc failed\n");
+        return -1;
+    }
+
+    for (int i = 0; i < n; i++)
+    {
+        cJSON *sge_obj = cJSON_GetArrayItem(value_item, i);
+        if (!sge_obj || !cJSON_IsObject(sge_obj))
+        {
+            fprintf(stderr, "[WARN] SGE[%d] is not object, skip\n", i);
+            continue;
+        }
+
+        // 只用 "mr" 字段，自动映射 addr/length/lkey
+        const char *mr_name = json_get_res_name(sge_obj, "mr");
+        if (!mr_name)
+        {
+            fprintf(stderr, "[WARN] SGE[%d]: missing 'mr'\n", i);
+            continue;
+        }
+
+        MrResource *mr_res = env_find_mr(env, mr_name);
+        if (!mr_res || !mr_res->mr)
+        {
+            fprintf(stderr, "[WARN] SGE[%d]: MR '%s' not found\n", i, mr_name);
+            continue;
+        }
+
+        sges[i].addr = (uintptr_t)mr_res->addr;
+        sges[i].length = (uint32_t)mr_res->length;
+        sges[i].lkey = mr_res->mr->lkey;
+    }
+
+    *out_sge = sges;
+    *out_num_sge = n;
     return 0;
 }
+
+// 根据 wr_obj 填充一个 ibv_send_wr，返回时：
+//   - *wr_out 填好
+//   - *out_sge_buf 指向动态分配的 sge 数组（需要由调用者 free）
+// TODO: support more fields later, more WRs
+static int build_send_wr_from_json(cJSON *wr_obj,
+                                   ResourceEnv *env,
+                                   struct ibv_send_wr *wr_out,
+                                   struct ibv_sge **out_sge_buf)
+{
+    if (!wr_obj || !env || !wr_out || !out_sge_buf)
+        return -1;
+
+    memset(wr_out, 0, sizeof(*wr_out));
+    *out_sge_buf = NULL;
+
+    // wr_id
+    uint64_t wr_id = (uint64_t)json_get_int_field(wr_obj, "wr_id", 0);
+    wr_out->wr_id = wr_id;
+
+    // opcode
+    enum ibv_wr_opcode opcode = (enum ibv_wr_opcode)json_get_enum_field(
+        wr_obj,
+        "opcode",
+        wr_opcode_table,
+        sizeof(wr_opcode_table) / sizeof(wr_opcode_table[0]),
+        IBV_WR_SEND // 默认用 SEND
+    );
+    wr_out->opcode = opcode;
+
+    // send_flags
+    // int flags = parse_send_flags(wr_obj, 0);
+    int flags = json_get_flag_field(
+        wr_obj,
+        "send_flags",
+        send_flags_table,
+        sizeof(send_flags_table) / sizeof(send_flags_table[0]),
+        0);
+    wr_out->send_flags = flags;
+
+    // sg_list / num_sge
+    struct ibv_sge *sges = NULL;
+    int num_sge = 0;
+    if (build_sge_array_from_json(wr_obj, env, &sges, &num_sge) != 0)
+    {
+        fprintf(stderr, "[WARN] build_send_wr_from_json: failed to build sg_list\n");
+    }
+    else
+    {
+        // num_sge 字段如果存在，就取 min(num_sge, JSON 指定的值)
+        int num_sge_json = json_get_int_field(wr_obj, "num_sge", num_sge);
+        if (num_sge_json < 0)
+            num_sge_json = 0;
+        if (num_sge_json > num_sge)
+            num_sge_json = num_sge;
+
+        wr_out->sg_list = sges;
+        wr_out->num_sge = num_sge_json;
+        *out_sge_buf = sges;
+    }
+
+    // 其他字段先全 0（rdma/atomic/ud/...），后面有需要再慢慢扩
+    wr_out->next = NULL;
+
+    return 0;
+}
+
+int handle_PostSend(cJSON *verb_obj, ResourceEnv *env)
+{
+    if (!verb_obj || !env)
+    {
+        fprintf(stderr, "[WARN] PostSend: null verb_obj or env\n");
+        return -1;
+    }
+
+    const char *qp_name = json_get_res_name(verb_obj, "qp");
+    if (!qp_name)
+    {
+        fprintf(stderr, "[WARN] PostSend: missing 'qp'\n");
+        return -1;
+    }
+
+    QpResource *qp_res = env_find_qp(env, qp_name);
+    if (!qp_res || !qp_res->qp)
+    {
+        fprintf(stderr, "[WARN] PostSend: QP '%s' not found\n", qp_name);
+        return -1;
+    }
+
+    cJSON *wr_obj = obj_get(verb_obj, "wr_obj");
+    if (!wr_obj || !cJSON_IsObject(wr_obj))
+    {
+        fprintf(stderr, "[WARN] PostSend: missing or invalid 'wr_obj'\n");
+        return -1;
+    }
+
+    struct ibv_send_wr wr;
+    struct ibv_sge *sge_buf = NULL;
+    struct ibv_send_wr *bad_wr = NULL;
+
+    if (build_send_wr_from_json(wr_obj, env, &wr, &sge_buf) != 0)
+    {
+        fprintf(stderr, "[WARN] PostSend: build_send_wr_from_json failed\n");
+        return -1;
+    }
+
+    int ret = ibv_post_send(qp_res->qp, &wr, &bad_wr);
+    if (ret)
+    {
+        fprintf(stderr,
+                "[EXEC] PostSend FAILED on qp=%s, ret=%d, bad_wr=%p\n",
+                qp_name, ret, (void *)bad_wr);
+    }
+    else
+    {
+        fprintf(stderr,
+                "[EXEC] PostSend OK on qp=%s, wr_id=%llu, opcode=%d, num_sge=%d\n",
+                qp_name,
+                (unsigned long long)wr.wr_id,
+                wr.opcode,
+                wr.num_sge);
+    }
+
+    // sge_buf 只需要在 ibv_post_send 调用期间有效，用完就 free
+    if (sge_buf)
+    {
+        free(sge_buf);
+    }
+
+    return ret ? -1 : 0;
+}
+
 int handle_PostRecv(cJSON *verb_obj, ResourceEnv *env)
 {
     fprintf(stderr, "[EXEC] PostRecv: not implemented yet\n");
