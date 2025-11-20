@@ -11,6 +11,27 @@ static const JsonEnumSpec mw_type_table[] = {
 #endif
 };
 
+static const JsonFlagSpec send_flags_table[] = {
+    {"IBV_SEND_SIGNALED", IBV_SEND_SIGNALED},
+    {"IBV_SEND_FENCE", IBV_SEND_FENCE},
+    {"IBV_SEND_SOLICITED", IBV_SEND_SOLICITED},
+    {"IBV_SEND_INLINE", IBV_SEND_INLINE},
+    {"IBV_SEND_IP_CSUM", IBV_SEND_IP_CSUM},
+};
+
+static const JsonFlagSpec access_flags_table[] = {
+    {"IBV_ACCESS_LOCAL_WRITE", IBV_ACCESS_LOCAL_WRITE},
+    {"IBV_ACCESS_REMOTE_WRITE", IBV_ACCESS_REMOTE_WRITE},
+    {"IBV_ACCESS_REMOTE_READ", IBV_ACCESS_REMOTE_READ},
+    {"IBV_ACCESS_REMOTE_ATOMIC", IBV_ACCESS_REMOTE_ATOMIC},
+    {"IBV_ACCESS_MW_BIND", IBV_ACCESS_MW_BIND},
+    {"IBV_ACCESS_ZERO_BASED", IBV_ACCESS_ZERO_BASED},
+    {"IBV_ACCESS_ON_DEMAND", IBV_ACCESS_ON_DEMAND},
+    {"IBV_ACCESS_HUGETLB", IBV_ACCESS_HUGETLB},
+    {"IBV_ACCESS_FLUSH_GLOBAL", IBV_ACCESS_FLUSH_GLOBAL},
+    {"IBV_ACCESS_FLUSH_PERSISTENT", IBV_ACCESS_FLUSH_PERSISTENT},
+    {"IBV_ACCESS_RELAXED_ORDERING", IBV_ACCESS_RELAXED_ORDERING}};
+
 int handle_AllocMW(cJSON *verb_obj, ResourceEnv *env)
 {
     const char *pd_name = json_get_res_name(verb_obj, "pd");
@@ -111,5 +132,54 @@ int handle_DeallocMW(cJSON *verb_obj, ResourceEnv *env)
         env->mw_count--;
     }
 
+    return 0;
+}
+
+int handle_BindMW(cJSON *verb_obj, ResourceEnv *env)
+{
+    const char *mw_name = json_get_res_name(verb_obj, "mw");
+    const char *qp_name = json_get_res_name(verb_obj, "qp");
+    if (!mw_name || !qp_name)
+    {
+        fprintf(stderr, "[EXEC] BindMW: missing 'mw' or 'qp' field\n");
+        return -1;
+    }
+    cJSON *mw_bind = obj_get(verb_obj, "mw_bind");
+    if (!mw_bind)
+    {
+        fprintf(stderr, "[EXEC] BindMW: missing 'mw_bind' object\n");
+        return -1;
+    }
+    int wr_id = json_get_int_field(mw_bind, "wr_id", 0);
+    int send_flags = json_get_flag_field(
+        mw_bind,
+        "send_flags",
+        send_flags_table,
+        sizeof(send_flags_table) / sizeof(send_flags_table[0]),
+        0);
+    cJSON *bind_info = obj_get(mw_bind, "bind_info");
+    if (!bind_info)
+    {
+        fprintf(stderr, "[EXEC] BindMW: missing 'bind_info' object\n");
+        return -1;
+    }
+    const char *mr = json_get_res_name(bind_info, "mr");
+    const char *addr = json_get_res_name(bind_info, "addr");
+    int length = json_get_int_field(bind_info, "length", 0);
+    int access = json_get_flag_field(
+        bind_info,
+        "access",
+        access_flags_table,
+        sizeof(access_flags_table) / sizeof(access_flags_table[0]),
+        0);
+    env_bind_mw(env,
+                mw_name,
+                qp_name,
+                wr_id,
+                send_flags,
+                mr,
+                addr,
+                length,
+                access);
     return 0;
 }

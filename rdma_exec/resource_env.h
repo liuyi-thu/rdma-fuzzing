@@ -255,11 +255,30 @@ FlowResource *env_create_flow(ResourceEnv *env,
                               int port,
                               int flags);
 
+int env_bind_mw(ResourceEnv *env,
+                const char *mw_name,
+                const char *qp_name,
+                int wr_id,
+                int send_flags,
+                const char *mr_name,
+                const char *addr_name,
+                int length,
+                int access);
 int env_modify_cq(ResourceEnv *env,
                   const char *cq_name,
                   int attr_mask,
                   int cq_count,
                   int cq_period);
+int env_modify_qp(ResourceEnv *env,
+                  const char *name,
+                  struct ibv_qp_attr *qp_attr,
+                  int attr_mask);
+int env_modify_srq(ResourceEnv *env,
+                   const char *srq_name,
+                   int max_wr,
+                   int max_sge,
+                   int srq_limit,
+                   int attr_mask);
 int env_dealloc_pd(ResourceEnv *env, const char *name);
 int env_destroy_srq(ResourceEnv *env, const char *name);
 int env_destroy_qp(ResourceEnv *env, const char *name);
@@ -279,6 +298,9 @@ MwResource *env_find_mw(ResourceEnv *env, const char *name);
 CqResource *env_find_cq(ResourceEnv *env, const char *name);
 SrqResource *env_find_srq(ResourceEnv *env, const char *name);
 QpResource *env_find_qp(ResourceEnv *env, const char *name);
+LocalBufferResource *env_find_local_buffer(ResourceEnv *env,
+                                           const char *name);
+MrResource *env_find_mr(ResourceEnv *env, const char *name);
 
 int env_find_pd_index(ResourceEnv *env, const char *name);
 // int env_pd_in_use(ResourceEnv *env, struct ibv_pd *pd); // should not be made public

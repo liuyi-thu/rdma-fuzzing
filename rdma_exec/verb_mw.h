@@ -4,3 +4,4 @@
 
 int handle_AllocMW(cJSON *verb_obj, ResourceEnv *env);
 int handle_DeallocMW(cJSON *verb_obj, ResourceEnv *env);
+int handle_BindMW(cJSON *verb_obj, ResourceEnv *env);

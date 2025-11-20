@@ -795,6 +795,108 @@ FlowResource *env_create_flow(ResourceEnv *env,
     return flow;
 }
 
+LocalBufferResource *env_find_local_buffer(ResourceEnv *env,
+                                           const char *name)
+{
+    if (!env || !name)
+    {
+        return NULL;
+    }
+    for (int i = 0; i < env->local_buf_count; i++)
+    {
+        if (strcmp(env->local_buf[i].name, name) == 0)
+        {
+            return &env->local_buf[i];
+        }
+    }
+    return NULL;
+}
+
+MrResource *env_find_mr(ResourceEnv *env, const char *name)
+{
+    if (!env || !name)
+    {
+        return NULL;
+    }
+    for (int i = 0; i < env->mr_count; i++)
+    {
+        if (strcmp(env->mr[i].name, name) == 0)
+        {
+            return &env->mr[i];
+        }
+    }
+    return NULL;
+}
+
+int env_bind_mw(ResourceEnv *env,
+                const char *mw_name,
+                const char *qp_name,
+                int wr_id,
+                int send_flags,
+                const char *mr_name,
+                const char *addr_name,
+                int length,
+                int access)
+{
+
+    if (!env || !mw_name || !qp_name || !mr_name || !addr_name)
+    {
+        fprintf(stderr, "[EXEC] env_bind_mw: null argument\n");
+        return -1;
+    }
+    MwResource *mw_res = env_find_mw(env, mw_name);
+    if (!mw_res || !mw_res->mw)
+    {
+        fprintf(stderr,
+                "[EXEC] env_bind_mw: MW '%s' not found or invalid\n",
+                mw_name);
+        return -1;
+    }
+    QpResource *qp_res = env_find_qp(env, qp_name);
+    if (!qp_res || !qp_res->qp)
+    {
+        fprintf(stderr,
+                "[EXEC] env_bind_mw: QP '%s' not found or invalid\n",
+                qp_name);
+        return -1;
+    }
+    MrResource *mr_res = env_find_mr(env, mr_name);
+    if (!mr_res || !mr_res->mr)
+    {
+        fprintf(stderr,
+                "[EXEC] env_bind_mw: MR '%s' not found or invalid\n",
+                mr_name);
+        return -1;
+    }
+    LocalBufferResource *local_buf_res = env_find_local_buffer(env, addr_name);
+    if (!local_buf_res || !local_buf_res->addr)
+    {
+        fprintf(stderr,
+                "[EXEC] env_bind_mw: LocalBuffer '%s' not found or invalid\n",
+                addr_name);
+        return -1;
+    }
+    struct ibv_mw_bind bind;
+    memset(&bind, 0, sizeof(bind));
+    bind.wr_id = wr_id;
+    bind.send_flags = send_flags;
+    bind.bind_info.mr = mr_res->mr;
+    bind.bind_info.addr = local_buf_res->addr;
+    bind.bind_info.length = length;
+    bind.bind_info.mw_access_flags = access;
+    if (ibv_bind_mw(qp_res->qp, mw_res->mw, &bind) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_bind_mw: ibv_bind_mw failed for MW '%s'\n",
+                mw_name);
+        return -1;
+    }
+    fprintf(stderr,
+            "[EXEC] BindMW OK -> %s (qp=%s, mr=%s, addr=%s, length=%d, access=%d)\n",
+            mw_name, qp_name, mr_name, addr_name, length, access);
+    return 0;
+}
+
 int env_modify_cq(ResourceEnv *env,
                   const char *cq_name,
                   int attr_mask,
@@ -834,6 +936,74 @@ int env_modify_cq(ResourceEnv *env,
     return 0;
 }
 
+int env_modify_qp(ResourceEnv *env,
+                  const char *name,
+                  struct ibv_qp_attr *qp_attr,
+                  int attr_mask)
+{
+    if (!env || !name || !qp_attr)
+    {
+        fprintf(stderr, "[EXEC] env_modify_qp: null argument\n");
+        return -1;
+    }
+    QpResource *qp_res = env_find_qp(env, name);
+    if (!qp_res || !qp_res->qp)
+    {
+        fprintf(stderr,
+                "[EXEC] env_modify_qp: QP '%s' not found or invalid\n",
+                name);
+        return -1;
+    }
+    if (ibv_modify_qp(qp_res->qp, qp_attr, attr_mask) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_modify_qp: ibv_modify_qp failed for '%s'\n",
+                name);
+        return -1;
+    }
+    fprintf(stderr,
+            "[EXEC] ModifyQP OK -> %s (attr_mask=%d)\n",
+            name, attr_mask);
+    return 0;
+}
+
+int env_modify_srq(ResourceEnv *env,
+                   const char *srq_name,
+                   int max_wr,
+                   int max_sge,
+                   int srq_limit,
+                   int attr_mask)
+{
+    if (!env || !srq_name)
+    {
+        fprintf(stderr, "[EXEC] env_modify_srq: null argument\n");
+        return -1;
+    }
+    SrqResource *srq_res = env_find_srq(env, srq_name);
+    if (!srq_res || !srq_res->srq)
+    {
+        fprintf(stderr,
+                "[EXEC] env_modify_srq: SRQ '%s' not found or invalid\n",
+                srq_name);
+        return -1;
+    }
+    struct ibv_srq_attr srq_attr;
+    memset(&srq_attr, 0, sizeof(srq_attr));
+    srq_attr.max_wr = max_wr;
+    srq_attr.max_sge = max_sge;
+    srq_attr.srq_limit = srq_limit;
+    if (ibv_modify_srq(srq_res->srq, &srq_attr, attr_mask) != 0)
+    {
+        fprintf(stderr,
+                "[EXEC] env_modify_srq: ibv_modify_srq failed for '%s'\n",
+                srq_name);
+        return -1;
+    }
+    fprintf(stderr,
+            "[EXEC] ModifySRQ OK -> %s (max_wr=%d, max_sge=%d, srq_limit=%d, attr_mask=%d)\n",
+            srq_name, max_wr, max_sge, srq_limit, attr_mask);
+    return 0;
+}
 // 真正做 dealloc + 从数组中移除
 int env_dealloc_pd(ResourceEnv *env, const char *name)
 {

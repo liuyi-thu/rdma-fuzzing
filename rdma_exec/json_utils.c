@@ -106,6 +106,13 @@ int parse_typed_value(cJSON *val_obj,
                 *out_int = (int)value_item->valuedouble;
             return 0;
         }
+        // FlagValue (数字)
+        if (strcmp(t, "FlagValue") == 0 && cJSON_IsNumber(value_item))
+        {
+            if (out_int)
+                *out_int = (int)value_item->valuedouble;
+            return 0;
+        }
         // None -> 返回 0（或你自定义）
         if (strcmp(t, "None") == 0)
         {
@@ -202,7 +209,7 @@ int json_get_int_field(cJSON *obj, const char *key, int default_val)
 {
     if (!obj || !key)
     {
-        fprintf(stderr, "[WARN] json_get_int_field: null input\n");
+        fprintf(stderr, "[WARN] json_get_int_field: field '%s' null input, using default=%d\n", key, default_val);
         return default_val;
     }
 
