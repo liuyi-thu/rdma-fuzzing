@@ -26,6 +26,11 @@ static int run_program_from_json(const char *json_text)
         const char *tid = obj_get_string(meta, "trace_id");
         if (tid)
             snprintf(env.trace_id, sizeof(env.trace_id), "%s", tid);
+        int port_num = obj_get_int(meta, "port_num", 0);
+        env_set_port_num(&env, port_num);
+        int gid_index = obj_get_int(meta, "gid_index", 0);
+        env_set_gid_index(&env, gid_index);
+        env_set_default_ctx(&env);
     }
 
     // 程序数组
@@ -38,8 +43,8 @@ static int run_program_from_json(const char *json_text)
     }
 
     int prog_len = cJSON_GetArraySize(program);
-    fprintf(stderr, "[INFO] Running program: %d verbs, trace_id=%s\n",
-            prog_len, env.trace_id[0] ? env.trace_id : "(none)");
+    fprintf(stderr, "[INFO] Running program: %d verbs, trace_id=%s, port_num=%d, gid_index=%d\n",
+            prog_len, env.trace_id[0] ? env.trace_id : "(none)", env.port_num, env.gid_index);
 
     for (int i = 0; i < prog_len; i++)
     {

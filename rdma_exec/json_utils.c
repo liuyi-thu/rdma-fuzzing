@@ -232,6 +232,33 @@ int json_get_int_field(cJSON *obj, const char *key, int default_val)
     return v;
 }
 
+const char *json_get_str_field(cJSON *obj, const char *key, const char *default_val)
+{
+    if (!obj || !key)
+    {
+        fprintf(stderr, "[WARN] json_get_str_field: field '%s' null input, using default=%s\n", key, default_val);
+        return default_val;
+    }
+
+    cJSON *spec = obj_get(obj, key);
+    if (!spec)
+    {
+        // silent fallback，符合你的使用场景
+        return default_val;
+    }
+
+    const char *v = default_val;
+    if (parse_typed_value(spec, VAL_KIND_STRING, NULL, &v) != 0 || v)
+    {
+        fprintf(stderr,
+                "[WARN] json_get_str_field: field '%s' invalid, using default=%s\n",
+                key, default_val);
+        return default_val;
+    }
+
+    return v;
+}
+
 // 简单的就地 trim 工具
 static char *trim_spaces(char *s)
 {

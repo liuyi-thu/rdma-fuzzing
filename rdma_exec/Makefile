@@ -25,6 +25,7 @@ SRCS = \
     verb_srq.c \
     verb_cq.c \
     verb_flow.c \
+    server_conn.c \
     json_utils.c \
     resource_env.c
 

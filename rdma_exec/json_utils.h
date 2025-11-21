@@ -76,3 +76,5 @@ int json_get_enum_field(cJSON *obj,
                         const JsonEnumSpec *table,
                         size_t table_len,
                         int default_val);
+
+const char *json_get_str_field(cJSON *obj, const char *key, const char *default_val);

@@ -154,9 +154,15 @@ typedef struct
     int flow_count;
 
     char trace_id[128]; // 从 meta 里读出来的可选信息
+    int port_num;       // RDMA 端口号
+    int gid_index;      // RDMA GID 索引
+    struct ibv_context *ctx;
 } ResourceEnv;
 
 void env_init(ResourceEnv *env);
+void env_set_port_num(ResourceEnv *env, uint8_t port_num);
+void env_set_gid_index(ResourceEnv *env, uint8_t gid_index);
+void env_set_default_ctx(ResourceEnv *env);
 
 PdResource *env_alloc_pd(ResourceEnv *env, const char *name);
 DmResource *env_alloc_dm(ResourceEnv *env,

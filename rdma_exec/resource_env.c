@@ -14,6 +14,32 @@ void env_init(ResourceEnv *env)
     memset(env, 0, sizeof(*env));
 }
 
+void env_set_port_num(ResourceEnv *env, uint8_t port_num)
+{
+    if (!env)
+        return;
+    env->port_num = port_num;
+}
+
+void env_set_gid_index(ResourceEnv *env, uint8_t gid_index)
+{
+    if (!env)
+        return;
+    env->gid_index = gid_index;
+}
+
+void env_set_default_ctx(ResourceEnv *env)
+{
+    if (!env)
+        return;
+    if (!g_ctx)
+    {
+        fprintf(stderr, "[EXEC] env_set_default_ctx: global RDMA context is NULL\n");
+        return;
+    }
+    env->ctx = g_ctx;
+}
+
 PdResource *env_alloc_pd(ResourceEnv *env, const char *name)
 {
     if (env->pd_count >= (int)(sizeof(env->pd) / sizeof(env->pd[0])))

@@ -1,7 +1,9 @@
 #include "verb_qp.h"
 #include "json_utils.h"
+#include "server_conn.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <infiniband/verbs.h>
 
 static const JsonEnumSpec qp_type_table[] = {
@@ -201,6 +203,25 @@ int handle_CreateQP(cJSON *verb_obj, ResourceEnv *env)
                   qp_type,
                   sq_sig_all);
     // TODO: remote_qp
+    // I think now we do not need to deal with remote_qp in CreateQP
+    // ===== 新增：如果 JSON 里要求连接到 server，则做握手 =====
+    int connect_to_server = json_get_int_field(verb_obj, "connect_to_server", 0);
+    if (connect_to_server)
+    {
+        const char *server_ip = json_get_str_field(verb_obj, "server_addr", "127.0.0.1");
+        int server_port = json_get_int_field(verb_obj, "server_port", 18515);
+
+        printf("server_ip=%s, server_port=%d\n", server_ip, server_port);
+
+        if (server_handshake_for_qp(env, qp_name, server_ip, server_port) != 0)
+        {
+            fprintf(stderr,
+                    "[EXEC] CreateQP: server_handshake_for_qp failed for qp=%s\n",
+                    qp_name);
+            // 这里可以选择：要不要直接返回 -1 让整个执行失败？
+            // return -1;
+        }
+    }
     // fprintf(stderr, "[EXEC] CreateQP: not implemented yet\n");
     return 0;
 }
@@ -488,10 +509,16 @@ int handle_ModifyQP(cJSON *verb_obj, ResourceEnv *env)
     qp_attr.alt_timeout = alt_timeout;
     qp_attr.rate_limit = rate_limit;
 
+    // ========= 新增：如果这是一个状态迁移动作，尝试用 server_meta 覆盖 =========
+    // 注意 new_state 就是 qp_state
+    server_fill_qp_attr_from_remote(env, name, &qp_attr, &attr_mask, qp_state);
+
+    // ========= 最后调用 env_modify_qp =========
     // Finally, call env_modify_qp with parsed parameters
     env_modify_qp(env, name, &qp_attr, attr_mask);
     return 0;
 }
+
 int handle_DestroyQP(cJSON *verb_obj, ResourceEnv *env)
 {
     const char *name = json_get_res_name(verb_obj, "qp");
