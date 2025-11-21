@@ -375,7 +375,20 @@ static int handle_client(int conn_fd, struct server_ctx *sctx)
         sctx->gid_index = (uint8_t)gix->valuedouble;
 
     const char *qp_tag_str = cJSON_IsString(qp_tag) ? qp_tag->valuestring : "qp0";
-    fprintf(stderr, "[CTRL] REQ_CONNECT for %s\n", qp_tag_str);
+    // 在栈上留一个本地 buffer
+    char qp_tag_buf[64];
+    if (cJSON_IsString(qp_tag) && qp_tag->valuestring)
+    {
+        // 拷贝一份，保证以 '\0' 结尾
+        strncpy(qp_tag_buf, qp_tag->valuestring, sizeof(qp_tag_buf) - 1);
+        qp_tag_buf[sizeof(qp_tag_buf) - 1] = '\0';
+    }
+    else
+    {
+        strcpy(qp_tag_buf, "qp0");
+    }
+
+    fprintf(stderr, "[CTRL] REQ_CONNECT for %s\n", qp_tag_buf);
     cJSON_Delete(root);
 
     // 2) 创建 server QP 并返回 RESP_CONNECT
@@ -390,7 +403,7 @@ static int handle_client(int conn_fd, struct server_ctx *sctx)
 
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddStringToObject(resp, "type", "RESP_CONNECT");
-    cJSON_AddStringToObject(resp, "qp_tag", qp_tag_str);
+    cJSON_AddStringToObject(resp, "qp_tag", qp_tag_buf);
     cJSON_AddStringToObject(resp, "status", "OK");
     cJSON_AddItemToObject(resp, "server_meta", qp_meta_to_json(&sqp.local_meta));
 
@@ -450,7 +463,7 @@ static int handle_client(int conn_fd, struct server_ctx *sctx)
     // 5) 回 READY
     cJSON *ready = cJSON_CreateObject();
     cJSON_AddStringToObject(ready, "type", "READY");
-    cJSON_AddStringToObject(ready, "qp_tag", qp_tag_str);
+    cJSON_AddStringToObject(ready, "qp_tag", qp_tag_buf);
     cJSON_AddStringToObject(ready, "status", "OK");
     char *ready_str = cJSON_PrintUnformatted(ready);
     cJSON_Delete(ready);
@@ -462,7 +475,7 @@ static int handle_client(int conn_fd, struct server_ctx *sctx)
         free(ready_str);
     }
 
-    fprintf(stderr, "[CTRL] QP %s connected and READY\n", qp_tag_str);
+    fprintf(stderr, "[CTRL] QP %s connected and READY\n", qp_tag_buf);
 
     // 后续你可以在这里：
     // - 为 sqp 关联一个 Worker 线程
