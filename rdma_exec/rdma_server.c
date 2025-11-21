@@ -14,6 +14,19 @@
 #include <infiniband/verbs.h>
 #include <cjson/cJSON.h>
 
+// -------- signal handlers --------
+#include <signal.h>
+
+volatile sig_atomic_t g_stop = 0;
+
+static void handle_signal(int signo)
+{
+    if (signo == SIGINT || signo == SIGTERM)
+    {
+        g_stop = 1;
+    }
+}
+
 // -------- 控制平面配置 --------
 #define CTRL_PORT 18515
 #define CTRL_LISTEN_BACKLOG 16
@@ -621,6 +634,69 @@ static int server_connect_qp(struct server_ctx *sctx,
     return 0;
 }
 
+static void server_cleanup(struct server_ctx *sctx)
+{
+    if (!sctx)
+        return;
+
+    // 1. 清理 QP 表
+    if (sctx->qp_table)
+    {
+        for (int i = 0; i < sctx->qp_table_size; i++)
+        {
+            struct server_qp_entry *e = &sctx->qp_table[i];
+            if (!e->in_use)
+                continue;
+
+            // destroy QP
+            if (e->sqp.qp)
+            {
+                ibv_destroy_qp(e->sqp.qp);
+                e->sqp.qp = NULL;
+            }
+
+            // dereg MR & free buf
+            if (e->recv_mr)
+            {
+                ibv_dereg_mr(e->recv_mr);
+                e->recv_mr = NULL;
+            }
+            if (e->recv_buf)
+            {
+                free(e->recv_buf);
+                e->recv_buf = NULL;
+            }
+
+            e->in_use = 0;
+            e->ready = 0;
+        }
+        free(sctx->qp_table);
+        sctx->qp_table = NULL;
+        sctx->qp_table_size = 0;
+    }
+
+    // 2. CQ / PD / ctx
+    if (sctx->cq)
+    {
+        ibv_destroy_cq(sctx->cq);
+        sctx->cq = NULL;
+    }
+
+    if (sctx->pd)
+    {
+        ibv_dealloc_pd(sctx->pd);
+        sctx->pd = NULL;
+    }
+
+    if (sctx->ctx)
+    {
+        ibv_close_device(sctx->ctx);
+        sctx->ctx = NULL;
+    }
+
+    fprintf(stderr, "[RDMA] server_cleanup done\n");
+}
+
 static void *cq_poll_loop(void *arg)
 {
     struct server_ctx *sctx = (struct server_ctx *)arg;
@@ -628,7 +704,7 @@ static void *cq_poll_loop(void *arg)
 
     fprintf(stderr, "[POLL] CQ poll loop started\n");
 
-    while (1)
+    while (!g_stop)
     {
         int ne = ibv_poll_cq(sctx->cq, MAX_WC, wc);
         if (ne < 0)
@@ -979,6 +1055,13 @@ int main(int argc, char **argv)
     (void)argv;
     srand((unsigned)time(NULL));
 
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handle_signal;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+
     struct server_ctx sctx;
     memset(&sctx, 0, sizeof(sctx));
     if (rdma_server_init(&sctx) != 0)
@@ -1023,13 +1106,18 @@ int main(int argc, char **argv)
 
     fprintf(stderr, "[CTRL] RDMA server listening on port %d\n", CTRL_PORT);
 
-    while (1)
+    while (!g_stop)
     {
         struct sockaddr_in cli;
         socklen_t clilen = sizeof(cli);
         int conn_fd = accept(listen_fd, (struct sockaddr *)&cli, &clilen);
         if (conn_fd < 0)
         {
+            if (errno == EINTR && g_stop)
+            {
+                // 被信号打断，且我们准备退出了
+                break;
+            }
             perror("accept");
             continue;
         }
@@ -1040,6 +1128,18 @@ int main(int argc, char **argv)
         close(conn_fd);
         fprintf(stderr, "[CTRL] client disconnected\n");
     }
+    // 跳出循环后继续做清理
+    fprintf(stderr, "[CTRL] main loop exiting\n");
+
+    // 停止 CQ poll 线程
+    g_stop = 1; // 再保险设置一次
+    pthread_join(poll_tid, NULL);
+
+    // 关闭 listening socket
+    close(listen_fd);
+
+    // 清理 RDMA 资源
+    server_cleanup(&sctx);
 
     return 0;
 }
