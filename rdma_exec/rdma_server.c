@@ -35,6 +35,10 @@ struct server_ctx
     struct ibv_cq *cq;
     uint8_t port_num;
     uint8_t gid_index;
+
+    // QP 表
+    struct server_qp_entry *qp_table;
+    int qp_table_size;
 };
 
 struct server_qp
@@ -42,6 +46,18 @@ struct server_qp
     struct ibv_qp *qp;
     struct qp_meta local_meta;
     struct qp_meta remote_meta;
+};
+
+// 每个 QP 的完整信息
+struct server_qp_entry
+{
+    int in_use;
+    char qp_tag[64];      // "qp0", "qp1", ...
+    struct server_qp sqp; // RDMA QP + local/remote meta
+
+    // 为了简单，把接收 buffer 和 MR 也挂在这里
+    char *recv_buf;
+    struct ibv_mr *recv_mr;
 };
 
 // ========= 一些小工具函数 =========
@@ -329,9 +345,64 @@ static int rdma_server_init(struct server_ctx *sctx)
     sctx->port_num = 1;
     sctx->gid_index = 3; // 你可以根据 REQ_CONNECT 里的 gid_index 来设置
 
+    // 初始化 QP 表，先给个固定上限，比如 128 个 QP
+    sctx->qp_table_size = 128;
+    sctx->qp_table = calloc(sctx->qp_table_size, sizeof(struct server_qp_entry));
+    if (!sctx->qp_table)
+    {
+        fprintf(stderr, "[RDMA] alloc qp_table failed\n");
+        return -1;
+    }
+
     fprintf(stderr, "[RDMA] Server RDMA init OK\n");
     ibv_free_device_list(dev_list);
     return 0;
+}
+
+// 在 qp_table 中查找已有的 QP entry
+static struct server_qp_entry *server_find_qp_entry(struct server_ctx *sctx,
+                                                    const char *qp_tag)
+{
+    for (int i = 0; i < sctx->qp_table_size; i++)
+    {
+        struct server_qp_entry *e = &sctx->qp_table[i];
+        if (e->in_use && strcmp(e->qp_tag, qp_tag) == 0)
+        {
+            return e;
+        }
+    }
+    return NULL;
+}
+
+// 找到一个空 slot，用这个 qp_tag 新建 entry
+static struct server_qp_entry *server_alloc_qp_entry(struct server_ctx *sctx,
+                                                     const char *qp_tag)
+{
+    // 如果已经存在同名，就直接返回（允许 client 重连时复用）
+    struct server_qp_entry *exist = server_find_qp_entry(sctx, qp_tag);
+    if (exist)
+    {
+        return exist;
+    }
+
+    for (int i = 0; i < sctx->qp_table_size; i++)
+    {
+        struct server_qp_entry *e = &sctx->qp_table[i];
+        if (!e->in_use)
+        {
+            e->in_use = 1;
+            strncpy(e->qp_tag, qp_tag, sizeof(e->qp_tag) - 1);
+            e->qp_tag[sizeof(e->qp_tag) - 1] = '\0';
+            // 其他字段先清零
+            memset(&e->sqp, 0, sizeof(e->sqp));
+            e->recv_buf = NULL;
+            e->recv_mr = NULL;
+            return e;
+        }
+    }
+
+    fprintf(stderr, "[RDMA] qp_table full, cannot allocate new QP for tag=%s\n", qp_tag);
+    return NULL;
 }
 
 static int server_create_qp(struct server_ctx *sctx,
@@ -418,11 +489,11 @@ static int server_create_qp(struct server_ctx *sctx,
 
 // 根据 local_meta / remote_meta 把 QP 改到 RTR/RTS
 static int server_connect_qp(struct server_ctx *sctx,
-                             struct server_qp *sqp)
+                             struct server_qp_entry *entry)
 {
-    struct ibv_qp *qp = sqp->qp;
-    struct qp_meta *local = &sqp->local_meta;
-    struct qp_meta *remote = &sqp->remote_meta;
+    struct ibv_qp *qp = entry->sqp.qp;
+    struct qp_meta *local = &entry->sqp.local_meta;
+    struct qp_meta *remote = &entry->sqp.remote_meta;
 
     // RTR
     struct ibv_qp_attr attr = {
@@ -486,26 +557,45 @@ static int server_connect_qp(struct server_ctx *sctx,
         return -1;
     }
 
-    char *buf = calloc(4096, sizeof(char));
-
-    struct ibv_mr *mr = ibv_reg_mr(sctx->pd, buf, 4096, IBV_ACCESS_LOCAL_WRITE);
-    if (!mr)
+    // ====== 为这个 QP 准备一个 Recv buffer ======
+    entry->recv_buf = calloc(4096, sizeof(char));
+    if (!entry->recv_buf)
     {
-        fprintf(stderr, "[RDMA] ibv_reg_mr failed\n");
+        fprintf(stderr, "[RDMA] calloc recv_buf failed\n");
         return -1;
     }
-    ibv_post_recv(qp, &(struct ibv_recv_wr){
-                          .wr_id = 0,
-                          .sg_list = &(struct ibv_sge){
-                              .addr = (uintptr_t)buf,
-                              .length = 4096,
-                              .lkey = mr->lkey,
-                          },
-                          .num_sge = 1,
-                      },
-                  NULL);
 
-    fprintf(stderr, "[RDMA] server QP connected (RTR->RTS)\n");
+    entry->recv_mr = ibv_reg_mr(sctx->pd, entry->recv_buf, 4096,
+                                IBV_ACCESS_LOCAL_WRITE);
+    if (!entry->recv_mr)
+    {
+        fprintf(stderr, "[RDMA] ibv_reg_mr failed\n");
+        free(entry->recv_buf);
+        entry->recv_buf = NULL;
+        return -1;
+    }
+
+    struct ibv_sge sge = {
+        .addr = (uintptr_t)entry->recv_buf,
+        .length = 4096,
+        .lkey = entry->recv_mr->lkey,
+    };
+    struct ibv_recv_wr wr = {
+        .wr_id = 0,
+        .sg_list = &sge,
+        .num_sge = 1,
+    };
+    struct ibv_recv_wr *bad_wr = NULL;
+    if (ibv_post_recv(qp, &wr, &bad_wr))
+    {
+        fprintf(stderr, "[RDMA] ibv_post_recv failed\n");
+        // 根据需要决定是否 free MR / buf
+        return -1;
+    }
+
+    fprintf(stderr, "[RDMA] server QP connected (RTR->RTS), tag=%s, qpn=%u\n",
+            entry->qp_tag, local->qpn);
+
     return 0;
 }
 
@@ -612,10 +702,15 @@ static int handle_client(int conn_fd, struct server_ctx *sctx)
     cJSON_Delete(root);
 
     // 2) 创建 server QP 并返回 RESP_CONNECT
-    struct server_qp sqp;
-    memset(&sqp, 0, sizeof(sqp));
+    // 2) 为这个 qp_tag 分配 / 查找一个 QP entry
+    struct server_qp_entry *entry = server_alloc_qp_entry(sctx, qp_tag_buf);
+    if (!entry)
+    {
+        fprintf(stderr, "[CTRL] server_alloc_qp_entry failed for %s\n", qp_tag_buf);
+        return -1;
+    }
 
-    if (server_create_qp(sctx, &sqp, &sqp.local_meta) != 0)
+    if (server_create_qp(sctx, &entry->sqp, &entry->sqp.local_meta) != 0)
     {
         fprintf(stderr, "[CTRL] server_create_qp failed\n");
         return -1;
@@ -625,7 +720,8 @@ static int handle_client(int conn_fd, struct server_ctx *sctx)
     cJSON_AddStringToObject(resp, "type", "RESP_CONNECT");
     cJSON_AddStringToObject(resp, "qp_tag", qp_tag_buf);
     cJSON_AddStringToObject(resp, "status", "OK");
-    cJSON_AddItemToObject(resp, "server_meta", qp_meta_to_json(&sqp.local_meta));
+    cJSON_AddItemToObject(resp, "server_meta",
+                          qp_meta_to_json(&entry->sqp.local_meta));
 
     char *resp_str = cJSON_PrintUnformatted(resp);
     cJSON_Delete(resp);
@@ -665,7 +761,7 @@ static int handle_client(int conn_fd, struct server_ctx *sctx)
         return -1;
     }
 
-    if (qp_meta_from_json(client_meta_obj, &sqp.remote_meta) != 0)
+    if (qp_meta_from_json(client_meta_obj, &entry->sqp.remote_meta) != 0)
     {
         fprintf(stderr, "[CTRL] failed to parse client_meta\n");
         cJSON_Delete(root2);
@@ -674,7 +770,7 @@ static int handle_client(int conn_fd, struct server_ctx *sctx)
     cJSON_Delete(root2);
 
     // 4) 把 server QP 改到 RTR/RTS
-    if (server_connect_qp(sctx, &sqp) != 0)
+    if (server_connect_qp(sctx, entry) != 0)
     {
         fprintf(stderr, "[CTRL] server_connect_qp failed\n");
         return -1;
