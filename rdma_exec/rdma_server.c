@@ -9,6 +9,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <ctype.h>
+#include <pthread.h>
 
 #include <infiniband/verbs.h>
 #include <cjson/cJSON.h>
@@ -16,6 +17,8 @@
 // -------- 控制平面配置 --------
 #define CTRL_PORT 18515
 #define CTRL_LISTEN_BACKLOG 16
+// 每次 poll 的最大完成数
+#define MAX_WC 16
 
 // -------- QP meta 结构 --------
 struct qp_meta
@@ -52,6 +55,7 @@ struct server_qp
 struct server_qp_entry
 {
     int in_use;
+    int ready;            // QP 是否已经连好 (RTR->RTS 并完成 Recv 注册)
     char qp_tag[64];      // "qp0", "qp1", ...
     struct server_qp sqp; // RDMA QP + local/remote meta
 
@@ -374,6 +378,22 @@ static struct server_qp_entry *server_find_qp_entry(struct server_ctx *sctx,
     return NULL;
 }
 
+static struct server_qp_entry *
+server_find_qp_by_qp_num(struct server_ctx *sctx, uint32_t qp_num)
+{
+    for (int i = 0; i < sctx->qp_table_size; i++)
+    {
+        struct server_qp_entry *e = &sctx->qp_table[i];
+        if (!e->in_use || !e->sqp.qp)
+            continue;
+        if (e->sqp.qp->qp_num == qp_num)
+        {
+            return e;
+        }
+    }
+    return NULL;
+}
+
 // 找到一个空 slot，用这个 qp_tag 新建 entry
 static struct server_qp_entry *server_alloc_qp_entry(struct server_ctx *sctx,
                                                      const char *qp_tag)
@@ -391,6 +411,7 @@ static struct server_qp_entry *server_alloc_qp_entry(struct server_ctx *sctx,
         if (!e->in_use)
         {
             e->in_use = 1;
+            e->ready = 0;
             strncpy(e->qp_tag, qp_tag, sizeof(e->qp_tag) - 1);
             e->qp_tag[sizeof(e->qp_tag) - 1] = '\0';
             // 其他字段先清零
@@ -593,10 +614,163 @@ static int server_connect_qp(struct server_ctx *sctx,
         return -1;
     }
 
+    entry->ready = 1;
     fprintf(stderr, "[RDMA] server QP connected (RTR->RTS), tag=%s, qpn=%u\n",
             entry->qp_tag, local->qpn);
 
     return 0;
+}
+
+static void *cq_poll_loop(void *arg)
+{
+    struct server_ctx *sctx = (struct server_ctx *)arg;
+    struct ibv_wc wc[MAX_WC];
+
+    fprintf(stderr, "[POLL] CQ poll loop started\n");
+
+    while (1)
+    {
+        int ne = ibv_poll_cq(sctx->cq, MAX_WC, wc);
+        if (ne < 0)
+        {
+            fprintf(stderr, "[POLL] ibv_poll_cq error: %d\n", ne);
+            continue;
+        }
+        if (ne == 0)
+        {
+            // 没有完成，稍微 sleep 一下防止空转占用太高
+            usleep(1000);
+            continue;
+        }
+
+        for (int i = 0; i < ne; i++)
+        {
+            struct ibv_wc *w = &wc[i];
+
+            if (w->status != IBV_WC_SUCCESS)
+            {
+                fprintf(stderr,
+                        "[POLL] Completion error: status=%d, opcode=%d, qp_num=%u, wr_id=%llu\n",
+                        w->status, w->opcode, w->qp_num,
+                        (unsigned long long)w->wr_id);
+                continue;
+            }
+
+            // 找到对应的 QP entry
+            struct server_qp_entry *entry =
+                server_find_qp_by_qp_num(sctx, w->qp_num);
+            if (!entry)
+            {
+                fprintf(stderr,
+                        "[POLL] QP entry not found for qp_num=%u\n",
+                        w->qp_num);
+                continue;
+            }
+
+            switch (w->opcode)
+            {
+            case IBV_WC_RECV:
+            case IBV_WC_RECV_RDMA_WITH_IMM:
+            {
+                // 收到数据，打印出来
+                uint32_t len = w->byte_len;
+                fprintf(stderr,
+                        "[POLL] RECV: tag=%s, qp_num=%u, len=%u\n",
+                        entry->qp_tag, w->qp_num, len);
+
+                // 打印前 64 字节（以字符串形式），避免污染终端
+                uint32_t to_print = len < 64 ? len : 64;
+                fprintf(stderr, "[POLL] RECV data (first %u bytes): \"", to_print);
+                for (uint32_t j = 0; j < to_print; j++)
+                {
+                    char c = entry->recv_buf[j];
+                    if (c >= 32 && c < 127)
+                    {
+                        fputc(c, stderr);
+                    }
+                    else
+                    {
+                        fputc('.', stderr);
+                    }
+                }
+                fprintf(stderr, "\"\n");
+
+                // 简单 echo：把同一块 buffer 原样发回去
+                struct ibv_sge sge = {
+                    .addr = (uintptr_t)entry->recv_buf,
+                    .length = len,
+                    .lkey = entry->recv_mr->lkey,
+                };
+                struct ibv_send_wr send_wr = {
+                    .wr_id = 1, // 你也可以用不同 wr_id 做区分
+                    .sg_list = &sge,
+                    .num_sge = 1,
+                    .opcode = IBV_WR_SEND,
+                    .send_flags = IBV_SEND_SIGNALED,
+                };
+                struct ibv_send_wr *bad_wr = NULL;
+                int ret = ibv_post_send(entry->sqp.qp, &send_wr, &bad_wr);
+                if (ret)
+                {
+                    fprintf(stderr,
+                            "[POLL] ibv_post_send (echo) failed, ret=%d\n",
+                            ret);
+                }
+                else
+                {
+                    fprintf(stderr,
+                            "[POLL] Echo SEND posted for tag=%s, len=%u\n",
+                            entry->qp_tag, len);
+                }
+
+                // 再 post 一个新的 Recv，保持 pipeline
+                struct ibv_sge rsge = {
+                    .addr = (uintptr_t)entry->recv_buf,
+                    .length = 4096,
+                    .lkey = entry->recv_mr->lkey,
+                };
+                struct ibv_recv_wr recv_wr = {
+                    .wr_id = 0,
+                    .sg_list = &rsge,
+                    .num_sge = 1,
+                };
+                struct ibv_recv_wr *bad_recv_wr = NULL;
+                ret = ibv_post_recv(entry->sqp.qp, &recv_wr, &bad_recv_wr);
+                if (ret)
+                {
+                    fprintf(stderr,
+                            "[POLL] ibv_post_recv failed, ret=%d\n", ret);
+                }
+                else
+                {
+                    fprintf(stderr,
+                            "[POLL] Re-armed RECV for tag=%s\n",
+                            entry->qp_tag);
+                }
+
+                break;
+            }
+
+            case IBV_WC_SEND:
+            {
+                fprintf(stderr,
+                        "[POLL] SEND completed: tag=%s, qp_num=%u, wr_id=%llu\n",
+                        entry->qp_tag, w->qp_num,
+                        (unsigned long long)w->wr_id);
+                break;
+            }
+
+            default:
+                fprintf(stderr,
+                        "[POLL] Other completion: opcode=%d, qp_num=%u, wr_id=%llu\n",
+                        w->opcode, w->qp_num,
+                        (unsigned long long)w->wr_id);
+                break;
+            }
+        }
+    }
+
+    return NULL;
 }
 
 // ========= JSON 编解码：qp_meta / 消息 =========
@@ -809,6 +983,14 @@ int main(int argc, char **argv)
     memset(&sctx, 0, sizeof(sctx));
     if (rdma_server_init(&sctx) != 0)
     {
+        return 1;
+    }
+
+    // 启动一个独立线程轮询 CQ
+    pthread_t poll_tid;
+    if (pthread_create(&poll_tid, NULL, cq_poll_loop, &sctx) != 0)
+    {
+        perror("pthread_create cq_poll_loop");
         return 1;
     }
 

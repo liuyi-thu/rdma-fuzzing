@@ -181,6 +181,46 @@ int main(int argc, char **argv)
             (unsigned long long)wc.wr_id, wc.opcode, wc.byte_len);
 
     // 资源释放省略，你后面可以按需要补 Dealloc
+    // 注册 recv buffer
+    char *recv_buf = NULL;
+    posix_memalign((void **)&recv_buf, sysconf(_SC_PAGESIZE), 4096);
+    struct ibv_mr *recv_mr = ibv_reg_mr(c.pd, recv_buf, 4096,
+                                        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+
+    // post_recv
+    struct ibv_sge rsge = {
+        .addr = (uintptr_t)recv_buf,
+        .length = 4096,
+        .lkey = recv_mr->lkey,
+    };
+    struct ibv_recv_wr rwr = {
+        .wr_id = 2,
+        .sg_list = &rsge,
+        .num_sge = 1,
+    };
+    struct ibv_recv_wr *bad_rwr = NULL;
+    ibv_post_recv(qp, &rwr, &bad_rwr);
+
+    do
+    {
+        ne = ibv_poll_cq(c.cq, 1, &wc);
+    } while (ne == 0);
+
+    if (ne < 0)
+    {
+        fprintf(stderr, "[CLIENT] ibv_poll_cq error\n");
+        return 1;
+    }
+
+    if (wc.status != IBV_WC_SUCCESS)
+    {
+        fprintf(stderr, "[CLIENT] completion with error, status=%d, opcode=%d\n",
+                wc.status, wc.opcode);
+        return 1;
+    }
+    fprintf(stderr, "[CLIENT] recv completed: wr_id=%llu, opcode=%d, byte_len=%u\n",
+            (unsigned long long)wc.wr_id, wc.opcode, wc.byte_len);
+    fprintf(stderr, "[CLIENT] received message: %s\n", recv_buf);
 
     return 0;
 }
