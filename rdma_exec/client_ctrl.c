@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#include <ctype.h>
 
 #include <cjson/cJSON.h>
 
@@ -31,13 +32,191 @@ static void gid_to_str(union ibv_gid *gid, char *buf, size_t len)
              r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15]);
 }
 
-// 简单版：字符串 gid -> raw 16 字节，这里先偷懒，全 0
-// （你如果要严谨解析，可以自己按冒号拆分）
-static int str_to_gid(const char *s, uint8_t out[16])
+// // 简单版：字符串 gid -> raw 16 字节，这里先偷懒，全 0
+// // （你如果要严谨解析，可以自己按冒号拆分）
+// static int str_to_gid(const char *s, uint8_t out[16])
+// {
+//     (void)s;
+//     memset(out, 0, 16);
+//     return 0;
+// }
+
+static int hex_char_to_val(char c)
 {
-    (void)s;
+    if ('0' <= c && c <= '9')
+        return c - '0';
+    if ('a' <= c && c <= 'f')
+        return c - 'a' + 10;
+    if ('A' <= c && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+static int parse_hex_byte(const char *p)
+{
+    int hi = hex_char_to_val(p[0]);
+    int lo = hex_char_to_val(p[1]);
+    if (hi < 0 || lo < 0)
+        return -1;
+    return (hi << 4) | lo;
+}
+
+/*
+ * 支持格式：
+ *   1. Full hex with colons:
+ *      "00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff"
+ *
+ *   2. IPv6 style GID:
+ *      "fe80::1234:5678:abcd:ef12"
+ *
+ *   3. Plain 32 hex chars:
+ *      "fe8012345678abcd0000000000001234"
+ */
+int str_to_gid(const char *s, uint8_t out[16])
+{
+    if (!s || !out)
+        return -1;
+
     memset(out, 0, 16);
-    return 0;
+
+    size_t len = strlen(s);
+
+    /* ============================================================
+     * Case 1: 32 hex characters (no colon)
+     * ============================================================ */
+    int hex_count = 0;
+    for (size_t i = 0; i < len; i++)
+    {
+        if (isxdigit((unsigned char)s[i]))
+            hex_count++;
+    }
+    if (hex_count == 32 && (len == 32 || (len > 32 && strchr(s, ':') == NULL)))
+    {
+        /* Parse each pair */
+        for (int i = 0; i < 16; i++)
+        {
+            int v = parse_hex_byte(s + i * 2);
+            if (v < 0)
+                return -1;
+            out[i] = (uint8_t)v;
+        }
+        return 0;
+    }
+
+    /* ============================================================
+     * Case 2: Standard colon-separated 16 bytes:
+     *    "aa:bb:cc:dd:ee:ff:..."
+     * ============================================================ */
+    if (strchr(s, ':'))
+    {
+        int byte_index = 0;
+        const char *p = s;
+
+        char buf[3];
+        buf[2] = '\0';
+
+        while (*p && byte_index < 16)
+        {
+            /* Expect 2 hex digits */
+            if (!isxdigit((unsigned char)p[0]) || !isxdigit((unsigned char)p[1]))
+                break;
+
+            buf[0] = p[0];
+            buf[1] = p[1];
+
+            int v = parse_hex_byte(buf);
+            if (v < 0)
+                return -1;
+            out[byte_index++] = (uint8_t)v;
+
+            p += 2;
+            if (*p == ':')
+                p++; // skip colon
+        }
+
+        if (byte_index == 16)
+            return 0;
+        /* If less bytes or IPv6 style? Fall through to IPv6 parser */
+    }
+
+    /* ============================================================
+     * Case 3: IPv6 compressed format (e.g., fe80::1)
+     * We'll expand to 16 bytes manually.
+     * ============================================================ */
+    {
+        /* We do a simple IPv6 parser—sufficient for GID usage */
+        uint16_t groups[8];
+        for (int i = 0; i < 8; i++)
+            groups[i] = 0;
+
+        const char *p = s;
+        int group_index = 0;
+        int double_colon_index = -1;
+
+        while (*p && group_index < 8)
+        {
+            if (*p == ':')
+            {
+                /* "::" compression */
+                if (p[1] == ':')
+                {
+                    double_colon_index = group_index;
+                    p += 2;
+                    if (!*p)
+                        break; // ends with "::"
+                    continue;
+                }
+                else
+                {
+                    p++;
+                    continue;
+                }
+            }
+
+            /* parse group */
+            int val = 0;
+            int digits = 0;
+            while (isxdigit((unsigned char)*p))
+            {
+                int v = hex_char_to_val(*p);
+                if (v < 0)
+                    return -1;
+                val = (val << 4) | v;
+                digits++;
+                p++;
+            }
+            if (digits == 0 || val > 0xffff)
+                return -1;
+
+            groups[group_index++] = (uint16_t)val;
+        }
+
+        /* handle :: compression */
+        if (double_colon_index >= 0)
+        {
+            int fill = 8 - group_index;
+            /* shift tail to the end */
+            for (int i = 7; i >= double_colon_index + fill; i--)
+            {
+                groups[i] = groups[i - fill];
+            }
+            /* fill zeros */
+            for (int i = double_colon_index; i < double_colon_index + fill; i++)
+            {
+                groups[i] = 0;
+            }
+        }
+
+        /* Now convert groups[] to bytes */
+        for (int i = 0; i < 8; i++)
+        {
+            out[i * 2] = (uint8_t)((groups[i] >> 8) & 0xFF);
+            out[i * 2 + 1] = (uint8_t)(groups[i] & 0xFF);
+        }
+        return 0;
+    }
+
+    return -1; /* invalid format */
 }
 
 static int read_line(int fd, char *buf, size_t maxlen)
@@ -111,6 +290,11 @@ static int qp_meta_from_json(cJSON *obj, struct qp_meta *m_out)
     m_out->gid_index = cJSON_IsNumber(gix) ? (uint8_t)gix->valuedouble : 0;
 
     str_to_gid(gid->valuestring, m_out->gid);
+    // printf("original gid: %s\n", gid->valuestring);
+    // printf("gid: ");
+    // for (int i = 0; i < 16; i++)
+    //     printf("%02x", m_out->gid[i]);
+    // printf("\n");
     return 0;
 }
 
@@ -185,6 +369,12 @@ static int client_modify_qp_to_rts(struct ibv_context *ctx,
     attr.ah_attr.grh.hop_limit = 1;
     attr.ah_attr.grh.traffic_class = 0;
     attr.ah_attr.grh.flow_label = 0;
+
+    // printf("remote gid: ");
+    // for (int i = 0; i < 16; i++)
+    //     printf("%02x", remote->gid[i]);
+    // printf("\n");
+    // printf("sgid_index=%u\n", attr.ah_attr.grh.sgid_index);
 
     if (ibv_modify_qp(qp, &attr,
                       IBV_QP_STATE |

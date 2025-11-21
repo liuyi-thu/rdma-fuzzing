@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <ctype.h>
 
 #include <infiniband/verbs.h>
 #include <cjson/cJSON.h>
@@ -54,26 +55,214 @@ static uint32_t gen_psn(void)
 // 把 gid 转为字符串（简单版本）
 static void gid_to_str(union ibv_gid *gid, char *buf, size_t len)
 {
+    // snprintf(buf, len,
+    //          "%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
+    //          ntohs(gid->raw[0] << 8 | gid->raw[1]),
+    //          ntohs(gid->raw[2] << 8 | gid->raw[3]),
+    //          ntohs(gid->raw[4] << 8 | gid->raw[5]),
+    //          ntohs(gid->raw[6] << 8 | gid->raw[7]),
+    //          ntohs(gid->raw[8] << 8 | gid->raw[9]),
+    //          ntohs(gid->raw[10] << 8 | gid->raw[11]),
+    //          ntohs(gid->raw[12] << 8 | gid->raw[13]),
+    //          ntohs(gid->raw[14] << 8 | gid->raw[15]));
+    const uint8_t *r = gid->raw;
+
+    // 形式：fe80:0000:0000:0000:1270:fdff:fe2f:b908
     snprintf(buf, len,
-             "%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
-             ntohs(gid->raw[0] << 8 | gid->raw[1]),
-             ntohs(gid->raw[2] << 8 | gid->raw[3]),
-             ntohs(gid->raw[4] << 8 | gid->raw[5]),
-             ntohs(gid->raw[6] << 8 | gid->raw[7]),
-             ntohs(gid->raw[8] << 8 | gid->raw[9]),
-             ntohs(gid->raw[10] << 8 | gid->raw[11]),
-             ntohs(gid->raw[12] << 8 | gid->raw[13]),
-             ntohs(gid->raw[14] << 8 | gid->raw[15]));
+             "%02x%02x:%02x%02x:%02x%02x:%02x%02x:"
+             "%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+             r[0], r[1], r[2], r[3],
+             r[4], r[5], r[6], r[7],
+             r[8], r[9], r[10], r[11],
+             r[12], r[13], r[14], r[15]);
 }
 
-// 这里简单 parse 成 raw gid（你可以以后换成更严谨的）
-static int str_to_gid(const char *s, uint8_t out[16])
+// // 这里简单 parse 成 raw gid（你可以以后换成更严谨的）
+// static int str_to_gid(const char *s, uint8_t out[16])
+// {
+//     // 为了简单：先 memset 0，不解析也能跑
+//     memset(out, 0, 16);
+//     // TODO: 可以按冒号拆分，每段 16bit
+//     (void)s;
+//     return 0;
+// }
+
+static int hex_char_to_val(char c)
 {
-    // 为了简单：先 memset 0，不解析也能跑
+    if ('0' <= c && c <= '9')
+        return c - '0';
+    if ('a' <= c && c <= 'f')
+        return c - 'a' + 10;
+    if ('A' <= c && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+static int parse_hex_byte(const char *p)
+{
+    int hi = hex_char_to_val(p[0]);
+    int lo = hex_char_to_val(p[1]);
+    if (hi < 0 || lo < 0)
+        return -1;
+    return (hi << 4) | lo;
+}
+
+/*
+ * 支持格式：
+ *   1. Full hex with colons:
+ *      "00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff"
+ *
+ *   2. IPv6 style GID:
+ *      "fe80::1234:5678:abcd:ef12"
+ *
+ *   3. Plain 32 hex chars:
+ *      "fe8012345678abcd0000000000001234"
+ */
+int str_to_gid(const char *s, uint8_t out[16])
+{
+    if (!s || !out)
+        return -1;
+
     memset(out, 0, 16);
-    // TODO: 可以按冒号拆分，每段 16bit
-    (void)s;
-    return 0;
+
+    size_t len = strlen(s);
+
+    /* ============================================================
+     * Case 1: 32 hex characters (no colon)
+     * ============================================================ */
+    int hex_count = 0;
+    for (size_t i = 0; i < len; i++)
+    {
+        if (isxdigit((unsigned char)s[i]))
+            hex_count++;
+    }
+    if (hex_count == 32 && (len == 32 || (len > 32 && strchr(s, ':') == NULL)))
+    {
+        /* Parse each pair */
+        for (int i = 0; i < 16; i++)
+        {
+            int v = parse_hex_byte(s + i * 2);
+            if (v < 0)
+                return -1;
+            out[i] = (uint8_t)v;
+        }
+        return 0;
+    }
+
+    /* ============================================================
+     * Case 2: Standard colon-separated 16 bytes:
+     *    "aa:bb:cc:dd:ee:ff:..."
+     * ============================================================ */
+    if (strchr(s, ':'))
+    {
+        int byte_index = 0;
+        const char *p = s;
+
+        char buf[3];
+        buf[2] = '\0';
+
+        while (*p && byte_index < 16)
+        {
+            /* Expect 2 hex digits */
+            if (!isxdigit((unsigned char)p[0]) || !isxdigit((unsigned char)p[1]))
+                break;
+
+            buf[0] = p[0];
+            buf[1] = p[1];
+
+            int v = parse_hex_byte(buf);
+            if (v < 0)
+                return -1;
+            out[byte_index++] = (uint8_t)v;
+
+            p += 2;
+            if (*p == ':')
+                p++; // skip colon
+        }
+
+        if (byte_index == 16)
+            return 0;
+        /* If less bytes or IPv6 style? Fall through to IPv6 parser */
+    }
+
+    /* ============================================================
+     * Case 3: IPv6 compressed format (e.g., fe80::1)
+     * We'll expand to 16 bytes manually.
+     * ============================================================ */
+    {
+        /* We do a simple IPv6 parser—sufficient for GID usage */
+        uint16_t groups[8];
+        for (int i = 0; i < 8; i++)
+            groups[i] = 0;
+
+        const char *p = s;
+        int group_index = 0;
+        int double_colon_index = -1;
+
+        while (*p && group_index < 8)
+        {
+            if (*p == ':')
+            {
+                /* "::" compression */
+                if (p[1] == ':')
+                {
+                    double_colon_index = group_index;
+                    p += 2;
+                    if (!*p)
+                        break; // ends with "::"
+                    continue;
+                }
+                else
+                {
+                    p++;
+                    continue;
+                }
+            }
+
+            /* parse group */
+            int val = 0;
+            int digits = 0;
+            while (isxdigit((unsigned char)*p))
+            {
+                int v = hex_char_to_val(*p);
+                if (v < 0)
+                    return -1;
+                val = (val << 4) | v;
+                digits++;
+                p++;
+            }
+            if (digits == 0 || val > 0xffff)
+                return -1;
+
+            groups[group_index++] = (uint16_t)val;
+        }
+
+        /* handle :: compression */
+        if (double_colon_index >= 0)
+        {
+            int fill = 8 - group_index;
+            /* shift tail to the end */
+            for (int i = 7; i >= double_colon_index + fill; i--)
+            {
+                groups[i] = groups[i - fill];
+            }
+            /* fill zeros */
+            for (int i = double_colon_index; i < double_colon_index + fill; i++)
+            {
+                groups[i] = 0;
+            }
+        }
+
+        /* Now convert groups[] to bytes */
+        for (int i = 0; i < 8; i++)
+        {
+            out[i * 2] = (uint8_t)((groups[i] >> 8) & 0xFF);
+            out[i * 2 + 1] = (uint8_t)(groups[i] & 0xFF);
+        }
+        return 0;
+    }
+
+    return -1; /* invalid format */
 }
 
 // 读取一行（\n 结尾），简单 blocking 版本
@@ -138,7 +327,7 @@ static int rdma_server_init(struct server_ctx *sctx)
     }
 
     sctx->port_num = 1;
-    sctx->gid_index = 0; // 你可以根据 REQ_CONNECT 里的 gid_index 来设置
+    sctx->gid_index = 3; // 你可以根据 REQ_CONNECT 里的 gid_index 来设置
 
     fprintf(stderr, "[RDMA] Server RDMA init OK\n");
     ibv_free_device_list(dev_list);
@@ -192,6 +381,12 @@ static int server_create_qp(struct server_ctx *sctx,
     {
         memcpy(out_meta->gid, gid.raw, 16);
     }
+    // printf("out_meta->qpn=%u, psn=%u, port_num=%u, gid_index=%u\n",
+    //        out_meta->qpn, out_meta->psn, out_meta->port_num, out_meta->gid_index);
+    // printf("out_meta->gid: ");
+    // for (int i = 0; i < 16; i++)
+    //     printf("%02x", out_meta->gid[i]);
+    // printf("\n");
 
     // 先把 QP 改到 INIT
     struct ibv_qp_attr attr = {
@@ -249,8 +444,13 @@ static int server_connect_qp(struct server_ctx *sctx,
             },
         },
     };
+    // printf("port_num: %u, gid_index=%u\n", attr.ah_attr.port_num, attr.ah_attr.grh.sgid_index);
 
     memcpy(attr.ah_attr.grh.dgid.raw, remote->gid, 16);
+    // printf("remote gid: ");
+    // for (int i = 0; i < 16; i++)
+    //     printf("%02x", attr.ah_attr.grh.dgid.raw[i]);
+    // printf("\n");
 
     if (ibv_modify_qp(qp, &attr,
                       IBV_QP_STATE |
@@ -286,6 +486,25 @@ static int server_connect_qp(struct server_ctx *sctx,
         return -1;
     }
 
+    char *buf = calloc(4096, sizeof(char));
+
+    struct ibv_mr *mr = ibv_reg_mr(sctx->pd, buf, 4096, IBV_ACCESS_LOCAL_WRITE);
+    if (!mr)
+    {
+        fprintf(stderr, "[RDMA] ibv_reg_mr failed\n");
+        return -1;
+    }
+    ibv_post_recv(qp, &(struct ibv_recv_wr){
+                          .wr_id = 0,
+                          .sg_list = &(struct ibv_sge){
+                              .addr = (uintptr_t)buf,
+                              .length = 4096,
+                              .lkey = mr->lkey,
+                          },
+                          .num_sge = 1,
+                      },
+                  NULL);
+
     fprintf(stderr, "[RDMA] server QP connected (RTR->RTS)\n");
     return 0;
 }
@@ -305,6 +524,7 @@ static cJSON *qp_meta_to_json(const struct qp_meta *m)
     memcpy(gid.raw, m->gid, 16);
     gid_to_str(&gid, gid_str, sizeof(gid_str));
     cJSON_AddStringToObject(obj, "gid", gid_str);
+    // printf("gid_str=%s\n", gid_str);
 
     cJSON_AddNumberToObject(obj, "gid_index", m->gid_index);
     return obj;

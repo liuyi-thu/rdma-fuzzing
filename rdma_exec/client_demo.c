@@ -52,7 +52,7 @@ static int client_rdma_init(struct client_ctx *c)
     }
 
     c->port_num = 1;
-    c->gid_index = 0;
+    c->gid_index = 3;
 
     fprintf(stderr, "[CLIENT] RDMA init OK\n");
     return 0;
