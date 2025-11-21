@@ -324,6 +324,39 @@ static int write_str(int fd, const char *s)
     return 0;
 }
 
+static const char *wc_opcode_to_str(enum ibv_wc_opcode op)
+{
+    switch (op)
+    {
+    case IBV_WC_SEND:
+        return "SEND";
+    case IBV_WC_RDMA_WRITE:
+        return "RDMA_WRITE";
+    case IBV_WC_RDMA_READ:
+        return "RDMA_READ";
+    case IBV_WC_COMP_SWAP:
+        return "COMP_SWAP";
+    case IBV_WC_FETCH_ADD:
+        return "FETCH_ADD";
+    case IBV_WC_BIND_MW:
+        return "BIND_MW";
+    case IBV_WC_LOCAL_INV:
+        return "LOCAL_INV";
+    case IBV_WC_RECV:
+        return "RECV";
+    case IBV_WC_RECV_RDMA_WITH_IMM:
+        return "RECV_RDMA_WITH_IMM";
+    case IBV_WC_TSO:
+        return "TSO";
+#ifdef IBV_WC_FLUSH
+    case IBV_WC_FLUSH:
+        return "FLUSH";
+#endif
+    default:
+        return "UNKNOWN";
+    }
+}
+
 // ========= RDMA 初始化 & QP 创建 =========
 
 static int rdma_server_init(struct server_ctx *sctx)
@@ -725,10 +758,61 @@ static void *cq_poll_loop(void *arg)
 
             if (w->status != IBV_WC_SUCCESS)
             {
+                const char *status_str = ibv_wc_status_str(w->status);
+                const char *opcode_str = wc_opcode_to_str(w->opcode);
+
+                // 先尝试找到这个 completion 对应的 QP entry
+                struct server_qp_entry *entry =
+                    server_find_qp_by_qp_num(sctx, w->qp_num);
+
+                const char *tag = entry ? entry->qp_tag : "?";
+
+                // 粗粒度描述这个 WR 是干嘛的（基于 wr_id + opcode）
+                const char *wr_desc = "unknown WR";
+                if (w->opcode == IBV_WC_RECV || w->opcode == IBV_WC_RECV_RDMA_WITH_IMM)
+                {
+                    if (w->wr_id == 0)
+                        wr_desc = "server pre-posted RECV (entry->recv_buf / recv_mr)";
+                    else
+                        wr_desc = "application RECV WR";
+                }
+                else
+                {
+                    if (w->wr_id == 1)
+                        wr_desc = "server echo SEND WR";
+                    else
+                        wr_desc = "application SEND/ATOMIC/WRITE WR";
+                }
+
                 fprintf(stderr,
-                        "[POLL] Completion error: status=%d, opcode=%d, qp_num=%u, wr_id=%llu\n",
-                        w->status, w->opcode, w->qp_num,
-                        (unsigned long long)w->wr_id);
+                        "[POLL] Completion ERROR on tag=%s\n"
+                        "       status=%s(%d), opcode=%s(%d), qp_num=%u, wr_id=%llu\n"
+                        "       wr_desc=%s\n",
+                        tag,
+                        status_str, w->status,
+                        opcode_str, w->opcode,
+                        w->qp_num,
+                        (unsigned long long)w->wr_id,
+                        wr_desc);
+
+                // 如果是 RECV 错误，还可以顺便打印一下当前 Recv buffer 的信息
+                if (entry && (w->opcode == IBV_WC_RECV || w->opcode == IBV_WC_RECV_RDMA_WITH_IMM))
+                {
+                    if (entry->recv_mr)
+                    {
+                        fprintf(stderr,
+                                "       RECV buf addr=%p, length=4096, lkey=0x%x\n",
+                                (void *)entry->recv_buf,
+                                entry->recv_mr->lkey);
+                    }
+                    else
+                    {
+                        fprintf(stderr,
+                                "       WARNING: entry->recv_mr is NULL, Recv MR not registered?\n");
+                    }
+                }
+
+                // 你也可以在这里根据错误类型做一些恢复，比如 RDMA_CM_EVENT / QP reset 等
                 continue;
             }
 
