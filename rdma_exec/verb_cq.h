@@ -10,3 +10,4 @@ int handle_ModifyCQ(cJSON *verb_obj, ResourceEnv *env);
 // int ibv_modify_cq(struct ibv_cq * cq, struct ibv_modify_cq_attr * attr);
 int handle_DestroyCQ(cJSON *verb_obj, ResourceEnv *env);
 // int ibv_destroy_cq(struct ibv_cq * cq);
+int handle_PollCQ(cJSON *verb_obj, ResourceEnv *env);
