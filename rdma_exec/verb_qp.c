@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <infiniband/verbs.h>
+#include <unistd.h>
 
 static const JsonEnumSpec qp_type_table[] = {
     {"IBV_QPT_RC", IBV_QPT_RC},
@@ -672,6 +673,42 @@ static int build_send_wr_from_json(cJSON *wr_obj,
     return 0;
 }
 
+static int build_recv_wr_from_json(cJSON *wr_obj,
+                                   ResourceEnv *env,
+                                   struct ibv_recv_wr *wr_out,
+                                   struct ibv_sge **out_sge_buf)
+{
+    if (!wr_obj || !env || !wr_out || !out_sge_buf)
+        return -1;
+    memset(wr_out, 0, sizeof(*wr_out));
+    *out_sge_buf = NULL;
+    // wr_id
+    uint64_t wr_id = (uint64_t)json_get_int_field(wr_obj, "wr_id", 0);
+    wr_out->wr_id = wr_id;
+    // sg_list / num_sge
+    struct ibv_sge *sges = NULL;
+    int num_sge = 0;
+    if (build_sge_array_from_json(wr_obj, env, &sges, &num_sge) != 0)
+    {
+        fprintf(stderr, "[WARN] build_recv_wr_from_json: failed to build sg_list\n");
+    }
+    else
+    {
+        // num_sge 字段如果存在，就取 min(num_sge, JSON 指定的值)
+        int num_sge_json = json_get_int_field(wr_obj, "num_sge", num_sge);
+        if (num_sge_json < 0)
+            num_sge_json = 0;
+        if (num_sge_json > num_sge)
+            num_sge_json = num_sge;
+        wr_out->sg_list = sges;
+        wr_out->num_sge = num_sge_json;
+        *out_sge_buf = sges;
+    }
+    // 其他字段先全 0，后面有需要再慢慢扩
+    wr_out->next = NULL;
+    return 0;
+}
+
 int handle_PostSend(cJSON *verb_obj, ResourceEnv *env)
 {
     if (!verb_obj || !env)
@@ -739,6 +776,66 @@ int handle_PostSend(cJSON *verb_obj, ResourceEnv *env)
 
 int handle_PostRecv(cJSON *verb_obj, ResourceEnv *env)
 {
-    fprintf(stderr, "[EXEC] PostRecv: not implemented yet\n");
-    return 0;
+    if (!verb_obj || !env)
+    {
+        fprintf(stderr, "[WARN] PostRecv: null verb_obj or env\n");
+        return -1;
+    }
+
+    const char *qp_name = json_get_res_name(verb_obj, "qp");
+    if (!qp_name)
+    {
+        fprintf(stderr, "[WARN] PostRecv: missing 'qp'\n");
+        return -1;
+    }
+
+    QpResource *qp_res = env_find_qp(env, qp_name);
+    if (!qp_res || !qp_res->qp)
+    {
+        fprintf(stderr, "[WARN] PostRecv: QP '%s' not found\n", qp_name);
+        return -1;
+    }
+
+    cJSON *wr_obj = obj_get(verb_obj, "wr_obj");
+    if (!wr_obj || !cJSON_IsObject(wr_obj))
+    {
+        fprintf(stderr, "[WARN] PostRecv: missing or invalid 'wr_obj'\n");
+        return -1;
+    }
+
+    struct ibv_recv_wr wr;
+    struct ibv_sge *sge_buf = NULL;
+    struct ibv_recv_wr *bad_wr = NULL;
+
+    if (build_recv_wr_from_json(wr_obj, env, &wr, &sge_buf) != 0)
+    {
+        fprintf(stderr, "[WARN] PostRecv: build_recv_wr_from_json failed\n");
+        return -1;
+    }
+
+    int ret = ibv_post_recv(qp_res->qp, &wr, &bad_wr);
+    if (ret)
+    {
+        fprintf(stderr,
+                "[EXEC] PostRecv FAILED on qp=%s, ret=%d, bad_wr=%p\n",
+                qp_name, ret, (void *)bad_wr);
+    }
+    else
+    {
+        fprintf(stderr,
+                "[EXEC] PostRecv OK on qp=%s, wr_id=%llu, num_sge=%d\n",
+                qp_name,
+                (unsigned long long)wr.wr_id,
+                wr.num_sge);
+    }
+
+    // sge_buf 只需要在 ibv_post_recv 调用期间有效，用完就 free
+    if (sge_buf)
+    {
+        free(sge_buf);
+    }
+    fprintf(stderr, "PostRecv: done, sleeping...\n");
+    // note that after PostRecv, we may want to wait for CQ events
+    sleep(5); // a hard wait for testing
+    return ret ? -1 : 0;
 }

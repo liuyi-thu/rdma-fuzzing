@@ -653,6 +653,7 @@ static int server_connect_qp(struct server_ctx *sctx,
         .num_sge = 1,
     };
     struct ibv_recv_wr *bad_wr = NULL;
+    fprintf(stderr, "[RDMA] Posting initial Recv WR for tag=%s\n", entry->qp_tag);
     if (ibv_post_recv(qp, &wr, &bad_wr))
     {
         fprintf(stderr, "[RDMA] ibv_post_recv failed\n");
@@ -755,7 +756,13 @@ static void *cq_poll_loop(void *arg)
         for (int i = 0; i < ne; i++)
         {
             struct ibv_wc *w = &wc[i];
-
+            fprintf(stderr, "[POLL] Got completion: wc[%d]: status=%s(%d), opcode=%s(%d), qp_num=%u, wr_id=%llu, byte_len=%u\n",
+                    i,
+                    ibv_wc_status_str(w->status), w->status,
+                    wc_opcode_to_str(w->opcode), w->opcode,
+                    w->qp_num,
+                    (unsigned long long)w->wr_id,
+                    w->byte_len);
             if (w->status != IBV_WC_SUCCESS)
             {
                 const char *status_str = ibv_wc_status_str(w->status);
@@ -896,6 +903,7 @@ static void *cq_poll_loop(void *arg)
                 };
                 struct ibv_recv_wr *bad_recv_wr = NULL;
                 ret = ibv_post_recv(entry->sqp.qp, &recv_wr, &bad_recv_wr);
+                fprintf(stderr, "[POLL] ibv_post_recv (new) posted for tag=%s\n", entry->qp_tag);
                 if (ret)
                 {
                     fprintf(stderr,
