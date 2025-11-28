@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional, Tuple
 
+import networkx
+
 # ===== 在文件开头加一个全局开关和工具函数 =====
 DEBUG = False  # 改成 True 就能打开所有调试信息
 
@@ -341,6 +343,8 @@ class ContractTable:
             for j in range(16):
                 self.put("remote_mr", f"lbuf{i}_{j}", State.ALLOCATED)
 
+        self.resource_graph = networkx.DiGraph()
+
     # ===== 基本操作 =====
     def put(self, rtype: str, name: str, state: State, metadata: Optional[Dict[str, Any]] = None):
         key = ResourceKey(rtype, str(name))
@@ -409,6 +413,8 @@ class ContractTable:
     #         self.put(spec.rtype, str(name), spec.state)
     def apply_contract(self, verb: Any, contract: Contract):
         contract = verb.get_contract()
+        requires = []
+        produces = []
         # 1) requires
         for spec in contract.requires:
             try:
@@ -417,8 +423,9 @@ class ContractTable:
                 raise ContractError(f"require: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
                 if str(name) == "NULL":
-                    continue # skip NULL resources
+                    continue  # skip NULL resources
                 self.require(spec.rtype, str(name), spec.state, spec.exclude_states)
+                requires.append(name)
 
         # 2) transitions
         for spec in contract.transitions:
@@ -428,7 +435,7 @@ class ContractTable:
                 raise ContractError(f"transition: cannot resolve '{spec.name_attr}' on {type(verb).__name__}: {e}")
             for name in _as_iter(val):
                 if str(name) == "NULL":
-                    continue # skip NULL resources
+                    continue  # skip NULL resources
                 self.transition(spec.rtype, str(name), spec.to_state, spec.from_state)
 
         # 3) produces
@@ -449,12 +456,63 @@ class ContractTable:
                     )
             for name in _as_iter(val):
                 self.put(spec.rtype, str(name), spec.state, metadata=metadata)
+                produces.append(name)
                 # if metadata:
                 #     print(f"  [contract] produced {spec.rtype} {name} with metadata {metadata}")
+
+        # build resource graph
+        for name in produces:
+            if self.resource_graph.has_node(name):
+                print(f"  [contract] resource graph already has node {name}")
+            self.resource_graph.add_node(name, rtype=spec.rtype, state=spec.state)
+
+        for name in requires:
+            if self.resource_graph.has_node(name):
+                print(f"  [contract] resource graph already has node {name}")
+            self.resource_graph.add_node(name, rtype=spec.rtype)
+
+        for name in requires:
+            for pname in produces:
+                self.resource_graph.add_edge(name, pname)
 
     # ===== 查询 / 调试 =====
     def snapshot(self) -> Dict[Tuple[str, str], str]:
         return {(k.rtype, k.name): (v.state, v.metadata) for k, v in self._store.items()}
+
+    def export_graph(self) -> networkx.DiGraph:
+        return self.resource_graph
+
+    def export_graph_dot(self, filename: str):
+        try:
+            from networkx.drawing.nx_pydot import write_dot
+
+            write_dot(self.resource_graph, filename)
+        except ImportError:
+            raise ContractError("pydot is required to export graph as DOT")
+
+    def export_graph_png(self, filename: str):
+        try:
+            import matplotlib.pyplot as plt
+
+            plt.figure(figsize=(12, 8))
+            pos = networkx.spring_layout(self.resource_graph)
+            labels = {
+                n: f"{n}\n{data['rtype']}\n{data.get('state', '')}" for n, data in self.resource_graph.nodes(data=True)
+            }
+            networkx.draw(
+                self.resource_graph,
+                pos,
+                with_labels=True,
+                labels=labels,
+                node_size=2000,
+                node_color="lightblue",
+                font_size=8,
+            )
+            networkx.draw_networkx_edges(self.resource_graph, pos, arrows=True)
+            plt.savefig(filename)
+            plt.close()
+        except ImportError:
+            raise ContractError("matplotlib is required to export graph as PNG")
 
     # @staticmethod
     # def instantiate_contract(verb: Any, contract: Contract):
