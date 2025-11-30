@@ -281,44 +281,52 @@ def execute_and_collect() -> Dict[str, Any]:
     # Check if either streak reaches 20
     if user_no_change_streak >= 20:
         user_no_change_streak = 0
-        user_function = get_random_uncovered_function(space="user").strip()
-        source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
-        try:
-            # gen_scaffold()
-            call_chain = call_chain.split("->") if call_chain else []
-            call_chain = [fn.strip() for fn in call_chain]
-            path = generate_mvs_scaffold(
-                target_symbol=user_function,
-                callchain=call_chain,
-                entry_verb=source_function,
-                # family_hint="srq",
-                # TODO: 能否自动指定？
-                # hard_require_verbs=["CreateSRQ"],  # 如果你在 CLASSES_IN_LIB 里有 CreateSRQ
-                # hard_forbid_verbs=["ReqNotifyCQ", "AckCQEvents", "PollCQ"],  # 避免跑偏到通知流
-                model="openai/gpt-5",
-            )
-        except Exception as e:
-            print(f"[-] gen_scaffold() failed: {e}")
+        user_function = get_random_uncovered_function(space="user")
+        if user_function is None:
+            print("[-] No uncovered user functions available")
+        else:
+            user_function = user_function.strip()
+            source_function, call_chain = get_call_chain(user_function, space="user") or (None, None)
+            try:
+                # gen_scaffold()
+                call_chain = call_chain.split("->") if call_chain else []
+                call_chain = [fn.strip() for fn in call_chain]
+                path = generate_mvs_scaffold(
+                    target_symbol=user_function,
+                    callchain=call_chain,
+                    entry_verb=source_function,
+                    # family_hint="srq",
+                    # TODO: 能否自动指定？
+                    # hard_require_verbs=["CreateSRQ"],  # 如果你在 CLASSES_IN_LIB 里有 CreateSRQ
+                    # hard_forbid_verbs=["ReqNotifyCQ", "AckCQEvents", "PollCQ"],  # 避免跑偏到通知流
+                    model="openai/gpt-5",
+                )
+            except Exception as e:
+                print(f"[-] gen_scaffold() failed: {e}")
 
     elif kernel_no_change_streak >= 20:
         kernel_no_change_streak = 0
-        kernel_function = get_random_uncovered_function(space="kernel").strip()
-        source_function, call_chain = get_call_chain(kernel_function, space="kernel") or (None, None)
-        try:
-            call_chain = call_chain.split("->") if call_chain else []
-            call_chain = [fn.strip() for fn in call_chain]
-            path = generate_mvs_scaffold(
-                target_symbol=kernel_function,
-                callchain=call_chain,
-                entry_verb=source_function,
-                # family_hint="srq",
-                # TODO: 能否自动指定？
-                # hard_require_verbs=["CreateSRQ"],  # 如果你在 CLASSES_IN_LIB 里有 CreateSRQ
-                # hard_forbid_verbs=["ReqNotifyCQ", "AckCQEvents", "PollCQ"],  # 避免跑偏到通知流
-                model="openai/gpt-5",
-            )
-        except Exception as e:
-            print(f"[-] gen_scaffold() failed: {e}")
+        kernel_function = get_random_uncovered_function(space="kernel")
+        if kernel_function is None:
+            print("[-] No uncovered kernel functions available")
+        else:
+            kernel_function = kernel_function.strip()
+            source_function, call_chain = get_call_chain(kernel_function, space="kernel") or (None, None)
+            try:
+                call_chain = call_chain.split("->") if call_chain else []
+                call_chain = [fn.strip() for fn in call_chain]
+                path = generate_mvs_scaffold(
+                    target_symbol=kernel_function,
+                    callchain=call_chain,
+                    entry_verb=source_function,
+                    # family_hint="srq",
+                    # TODO: 能否自动指定？
+                    # hard_require_verbs=["CreateSRQ"],  # 如果你在 CLASSES_IN_LIB 里有 CreateSRQ
+                    # hard_forbid_verbs=["ReqNotifyCQ", "AckCQEvents", "PollCQ"],  # 避免跑偏到通知流
+                    model="openai/gpt-5",
+                )
+            except Exception as e:
+                print(f"[-] gen_scaffold() failed: {e}")
 
     return {
         "keep": keep,
