@@ -357,7 +357,7 @@ class AdviseMR(VerbCall):  # TODO: 暂时用不上，没改return -1
         sg_var: str = None,
     ):
         # sg_var 没有mutate的必要
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else None
         self.advice = (
             EnumValue(advice, enum_type="IB_UVERBS_ADVISE_MR_ADVICE_ENUM")
             if advice is not None
@@ -495,12 +495,8 @@ class AllocMW(VerbCall):
     )
 
     def __init__(self, pd: str = None, mw: str = None, mw_type: str = None):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.mw = (
-            ResourceValue(resource_type="mw", value=mw, mutable=False)
-            if mw
-            else ResourceValue(resource_type="mw", value="mw", mutable=False)
-        )
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else None
+        self.mw = ResourceValue(resource_type="mw", value=mw, mutable=False) if mw else None
         self.mw_type = (
             EnumValue(mw_type, enum_type="IBV_MW_TYPE_ENUM")
             if mw_type
@@ -562,8 +558,8 @@ class AllocNullMR(VerbCall):
     )
 
     def __init__(self, pd: str = None, mr: str = None):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else None
+        self.mr = ResourceValue(resource_type="mr", value=mr, mutable=False) if mr else None
 
         self.tracker = None
         self.required_resources = []
@@ -635,8 +631,8 @@ class AllocParentDomain(VerbCall):
         attr_obj: IbvParentDomainInitAttr = None,
     ):
         self.context = context  # IBV context, e.g., ib_ctx
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.parent_pd = ResourceValue(resource_type="parent_pd", value=parent_pd)  # 新PD变量名
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else None
+        self.parent_pd = ResourceValue(resource_type="parent_pd", value=parent_pd, mutable=False) if parent_pd else None
         self.attr_var = ConstantValue(attr_var or f"parent_pd_attr_{self.parent_pd.value}")  # 结构体变量名
         self.attr_obj = attr_obj  # 可为 None，trace replay 下只传变量名
 
@@ -702,7 +698,7 @@ class AllocPD(VerbCall):
     def __init__(self, pd: str = None):
         if not pd:
             raise ValueError("pd must be provided for AllocPD")
-        self.pd = ResourceValue(resource_type="pd", value=pd, mutable=False)
+        self.pd = ResourceValue(resource_type="pd", value=pd, mutable=False) if pd else None
 
         self.tracker = None
         self.required_resources = []
@@ -760,7 +756,7 @@ class AllocTD(VerbCall):
     def __init__(self, td: str = None, attr_var: str = None, attr_obj: IbvTdInitAttr = None):
         if not td:
             raise ValueError("td must be provided for AllocTD")
-        self.td = ResourceValue(resource_type="td", value=td)
+        self.td = ResourceValue(resource_type="td", value=td, mutable=False)
         self.attr_var = ConstantValue(attr_var or f"td_init_attr_{self.td.value}")  # 结构体变量名
         self.attr_obj = attr_obj  # IbvTdInitAttr对象，若有则生成内容
 
@@ -816,7 +812,7 @@ class AttachMcast(VerbCall):
 
     def __init__(self, qp: str = None, gid: str = None, lid: int = None):
         # 注意gid需要是变量，不然无法传参 # TODO: gid这种类型如何处理
-        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else None
         self.gid = ConstantValue(gid or "gid")  # GID变量名，默认为"gid"
         self.lid = IntValue(lid or 0)  # LID值，默认为0
 
@@ -1018,7 +1014,7 @@ class CloseXRCD(VerbCall):
     def __init__(self, xrcd: str = None):
         if not xrcd:
             raise ValueError("xrcd must be provided for CloseXRCD")
-        self.xrcd = ResourceValue(resource_type="xrcd", value=xrcd)
+        self.xrcd = ResourceValue(resource_type="xrcd", value=xrcd, mutable=False)
 
         self.tracker = None
         self.required_resources = []
@@ -1076,14 +1072,10 @@ class CreateAH(VerbCall):
         ah: str = None,
         attr_obj: IbvAHAttr = None,
     ):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else None
         # 默认生成 ah_attr_<pd>
         self.attr_var = ConstantValue(attr_var or f"ah_attr_{self.pd.value}")
-        self.ah = (
-            ResourceValue(resource_type="ah", value=ah)
-            if ah
-            else ResourceValue(resource_type="ah", value=f"ah_{self.pd.value}")
-        )
+        self.ah = ResourceValue(resource_type="ah", value=ah) if ah else None
         self.attr_obj = attr_obj
 
         self.tracker = None
@@ -1212,11 +1204,7 @@ class CreateCompChannel(VerbCall):
     CONTRACT = Contract(requires=[], produces=[ProduceSpec("channel", State.ALLOCATED, "channel")], transitions=[])
 
     def __init__(self, channel: str = None):
-        self.channel = (
-            ResourceValue(resource_type="channel", value=channel)
-            if channel
-            else ResourceValue(resource_type="channel", value="channel")
-        )
+        self.channel = ResourceValue(resource_type="channel", value=channel, mutable=False) if channel else None
 
         self.tracker = None
         # self.required_resources = []
@@ -1360,7 +1348,7 @@ class CreateCQEx(VerbCall):
         # self.ctx_name = ConstantValue(ctx_name or "ctx")
         if not cq_ex:
             raise ValueError("cq_ex must be provided for CreateCQEx")
-        self.cq_ex = ResourceValue(resource_type="cq_ex", value=cq_ex)
+        self.cq_ex = ResourceValue(resource_type="cq_ex", value=cq_ex, mutable=False)
         # 默认生成 cq_attr_<cq_var>
         self.cq_attr_var = ConstantValue(cq_attr_var or f"cq_attr_{self.cq_ex.value}")
         self.cq_attr_obj = cq_attr_obj
@@ -1442,7 +1430,8 @@ class CreateFlow(VerbCall):
     MUTABLE_FIELDS = ["qp", "flow", "flow_attr_var", "flow_attr_obj"]
     EXPORT_FIELDS = ["qp", "flow", "flow_attr_obj"]
     CONTRACT = Contract(
-        requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
+        # requires=[RequireSpec("qp", None, "qp", exclude_states=[State.DESTROYED])],
+        requires=[RequireSpec("qp", State.RTS, "qp", exclude_states=[State.DESTROYED])],
         produces=[ProduceSpec("flow", State.ALLOCATED, "flow")],
         transitions=[],
     )
@@ -1457,7 +1446,7 @@ class CreateFlow(VerbCall):
         if not flow:
             raise ValueError("flow must be provided for CreateFlow")
         self.qp = ResourceValue(resource_type="qp", value=qp) if qp else None
-        self.flow = ResourceValue(resource_type="flow", value=flow) if flow else None
+        self.flow = ResourceValue(resource_type="flow", value=flow, mutable=False) if flow else None
         # 默认生成 flow_attr_<qp>
         self.flow_attr_var = ConstantValue(
             flow_attr_var or f"flow_attr_{self.qp.value}"
@@ -1694,7 +1683,7 @@ class CreateQPEx(VerbCall):
         if not qp:
             raise ValueError("qp must be provided for CreateQPEx")
         self.qp = (
-            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+            ResourceValue(resource_type="qp", value=qp, mutable=False) if qp else None
         )  # QP variable name, default is "qp"
         # 默认生成 qp_init_attr_ex_<qp_var>
         self.qp_attr_var = ConstantValue(
@@ -1935,7 +1924,7 @@ class CreateSRQEx(VerbCall):  # TODO: 暂时不用，没改return -1
         # IBV context variable name, default is "ctx"
         self.ctx_name = ConstantValue(ctx_name or "ctx")
         self.srq = (
-            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
+            ResourceValue(resource_type="srq", value=srq, mutable=False) if srq else None
         )  # SRQ variable name, default is "srq"
         # 默认生成 srq_attr_ex_<srq_var>
         self.srq_attr_var = ConstantValue(
@@ -2032,9 +2021,7 @@ class CreateWQ(VerbCall):  # TODO: 暂时不用，没改return -1
     ):
         # IBV context variable name, default is "ctx"
         self.ctx_name = ConstantValue(ctx_name or "ctx")
-        self.wq = (
-            ResourceValue(resource_type="wq", value=wq) if wq else ResourceValue(resource_type="wq", value="wq")
-        )  # WQ variable name, default is "wq"
+        self.wq = ResourceValue(resource_type="wq", value=wq, mutable=False)  # WQ variable name, default is "wq"
         # 默认生成 wq_attr_<wq_var>
         self.wq_attr_var = ConstantValue(wq_attr_var or f"wq_attr_{self.wq.value}")  # WQ attribute variable name
         self.wq_attr_obj = wq_attr_obj  # 若为None仅生成结构体声明
@@ -2107,9 +2094,7 @@ class DeallocMW(VerbCall):
     )
 
     def __init__(self, mw: str = None):
-        self.mw = ResourceValue(resource_type="mw", value=mw) if mw else ResourceValue(resource_type="mw", value="mw")
-        self.tracker = None
-        self.required_resources = []
+        self.mw = ResourceValue(resource_type="mw", value=mw, mutable=False) if mw else None
 
     def apply(self, ctx: CodeGenContext):
         self.required_resources = []
@@ -2153,7 +2138,7 @@ class DeallocPD(VerbCall):
     def __init__(self, pd: str = None):
         if not pd:
             raise ValueError("pd must be provided for DeallocPD")
-        self.pd = ResourceValue(resource_type="pd", value=pd)
+        self.pd = ResourceValue(resource_type="pd", value=pd, mutable=False)
         self.tracker = None
         self.required_resources = []
 
@@ -2198,9 +2183,7 @@ class DeallocTD(VerbCall):
     )
 
     def __init__(self, td: str = None):
-        self.td = (
-            ResourceValue(resource_type="td", value=td) if td else ResourceValue(resource_type="td", value="td")
-        )  # 默认生成 td
+        self.td = ResourceValue(resource_type="td", value=td, mutable=False) if td else None  # 默认生成 td
         self.tracker = None
         self.required_resources = []
 
@@ -2247,7 +2230,7 @@ class DeregMR(VerbCall):
     def __init__(self, mr: str = None):
         if not mr:
             raise ValueError("mr must be provided for DeregMR")
-        self.mr = ResourceValue(resource_type="mr", value=mr)
+        self.mr = ResourceValue(resource_type="mr", value=mr, mutable=False)
         self.tracker = None
         self.required_resources = []
 
@@ -2292,9 +2275,7 @@ class DestroyAH(VerbCall):
     )
 
     def __init__(self, ah: str = None):
-        self.ah = (
-            ResourceValue(resource_type="ah", value=ah) if ah else ResourceValue(resource_type="ah", value="ah")
-        )  # 默认生成 ah
+        self.ah = ResourceValue(resource_type="ah", value=ah, mutable=False)  # 默认生成 ah
         self.tracker = None
         self.required_resources = []
 
@@ -2339,11 +2320,7 @@ class DestroyCompChannel(VerbCall):
     )
 
     def __init__(self, channel: str = None):
-        self.channel = (
-            ResourceValue(resource_type="channel", value=channel)
-            if channel
-            else ResourceValue(resource_type="channel", value="channel")
-        )  # 默认生成 channel
+        self.channel = ResourceValue(resource_type="channel", value=channel, mutable=False)  # 默认生成 channel
         self.tracker = None
         self.required_resources = []
 
@@ -2396,7 +2373,7 @@ class DestroyCQ(VerbCall):
     def __init__(self, cq: str = None):
         if not cq:
             raise ValueError("cq must be provided for DestroyCQ")
-        self.cq = ResourceValue(resource_type="cq", value=cq)
+        self.cq = ResourceValue(resource_type="cq", value=cq, mutable=False)
         self.tracker = None
         self.required_resources = []
 
@@ -2441,11 +2418,7 @@ class DestroyFlow(VerbCall):
     )
 
     def __init__(self, flow: str = None):
-        self.flow = (
-            ResourceValue(resource_type="flow", value=flow)
-            if flow
-            else ResourceValue(resource_type="flow", value="flow")
-        )  # 默认生成 flow
+        self.flow = ResourceValue(resource_type="flow", value=flow, mutable=False)  # 默认生成 flow
         self.tracker = None
         self.required_resources = []
 
@@ -2494,7 +2467,7 @@ class DestroyQP(VerbCall):
     def __init__(self, qp: str = None):
         if not qp:
             raise ValueError("qp must be provided for DestroyQP")
-        self.qp = ResourceValue(resource_type="qp", value=qp)
+        self.qp = ResourceValue(resource_type="qp", value=qp, mutable=False)
         self.tracker = None
         self.required_resources = []
 
@@ -2566,7 +2539,7 @@ class DestroySRQ(VerbCall):
     def __init__(self, srq: str = None):
         if not srq:
             raise ValueError("srq must be provided for DestroySRQ")
-        self.srq = ResourceValue(resource_type="srq", value=srq)
+        self.srq = ResourceValue(resource_type="srq", value=srq, mutable=False)
         self.tracker = None
         self.required_resources = []
 
@@ -2611,9 +2584,7 @@ class DestroyWQ(VerbCall):
     )
 
     def __init__(self, wq: str = None):
-        self.wq = (
-            ResourceValue(resource_type="wq", value=wq) if wq else ResourceValue(resource_type="wq", value="wq")
-        )  # 默认生成 wq
+        self.wq = ResourceValue(resource_type="wq", value=wq, mutable=False)  # 默认生成 wq
         self.tracker = None
         self.required_resources = []
 
@@ -2656,9 +2627,7 @@ class DetachMcast(VerbCall):  # TODO: gid 需要是变量名
     )
 
     def __init__(self, qp: str = None, gid: str = None, lid: int = None):
-        self.qp = (
-            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
-        )  # 默认生成 qp
+        self.qp = ResourceValue(resource_type="qp", value=qp, mutable=False)  # 默认生成 qp
         # Multicast group address, default is "unknown"
         self.gid = ConstantValue(gid or "unknown")
         # LID of the multicast group, default is 0
@@ -2820,9 +2789,7 @@ class FreeDM(VerbCall):
     )
 
     def __init__(self, dm: str = None):
-        self.dm = (
-            ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
-        )  # 默认生成 dm
+        self.dm = ResourceValue(resource_type="dm", value=dm, mutable=False)  # 默认生成 dm
         self.tracker = None
         self.required_resources = []
 
@@ -3191,9 +3158,7 @@ class GetSRQNum(VerbCall):
 
     def __init__(self, srq: str = None, srq_num_var: str = None):
         # self.srq = srq  # Shared Receive Queue address
-        self.srq = (
-            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
-        )  # 默认生成 srq
+        self.srq = ResourceValue(resource_type="srq", value=srq)  # 默认生成 srq
         if srq_num_var:
             self.srq_num_var = ConstantValue(srq_num_var)
         else:
@@ -3277,9 +3242,7 @@ class ImportDM(VerbCall):
         # Default to 0 if not provided
         # TODO: 似乎应该是变量名
         self.dm_handle = IntValue(dm_handle or 0)
-        self.dm = (
-            ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
-        )  # Variable name for the imported device memory
+        self.dm = ResourceValue(resource_type="dm", value=dm)  # Variable name for the imported device memory
         self.tracker = None
         self.required_resources = []
         self.allocated_resources = []  # Track allocated resources
@@ -3325,13 +3288,11 @@ class ImportMR(VerbCall):
     )
 
     def __init__(self, pd: str = None, mr_handle: int = None, mr: str = None):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
+        self.pd = ResourceValue(resource_type="pd", value=pd)
         # Default to 0 if not provided
         self.mr_handle = IntValue(mr_handle or 0)
         # TODO: 似乎应该是变量名
-        self.mr = (
-            ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
-        )  # Variable name for the imported memory region
+        self.mr = ResourceValue(resource_type="mr", value=mr)  # Variable name for the imported memory region
 
         self.tracker = None
         self.required_resources = []
@@ -3381,9 +3342,7 @@ class ImportPD(VerbCall):
     )
 
     def __init__(self, pd: str = None, pd_handle: int = None):
-        self.pd = (
-            ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        )  # Variable name for the imported protection domain
+        self.pd = ResourceValue(resource_type="pd", value=pd)  # Variable name for the imported protection domain
         # Default to 0 if not provided
         self.pd_handle = IntValue(pd_handle or 0)  # TODO: 似乎应该是变量名
 
@@ -3527,9 +3486,7 @@ class MemcpyFromDM(VerbCall):
         length: int = None,
     ):
         self.host = ConstantValue(host or "host_buf")  # Host memory address
-        self.dm = (
-            ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
-        )  # Device memory address
+        self.dm = ResourceValue(resource_type="dm", value=dm)  # Device memory address
         # Offset in the device memory
         self.dm_offset = IntValue(dm_offset or 0)
         self.length = IntValue(length or 0)  # Length of data to copy
@@ -3584,9 +3541,7 @@ class MemcpyToDM(VerbCall):
         host: str = None,
         length: int = None,
     ):
-        self.dm = (
-            ResourceValue(resource_type="dm", value=dm) if dm else ResourceValue(resource_type="dm", value="dm")
-        )  # Device memory address
+        self.dm = ResourceValue(resource_type="dm", value=dm)  # Device memory address
         # Offset in the device memory
         self.dm_offset = IntValue(dm_offset or 0)
         self.host = ConstantValue(host or "host_buf")  # Host memory address
@@ -3860,9 +3815,7 @@ class ModifyQPRateLimit(VerbCall):
         attr_var: str = None,
         attr_obj: "IbvQPRateLimitAttr" = None,
     ):
-        self.qp = (
-            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
-        )  # QP address
+        self.qp = ResourceValue(resource_type="qp", value=qp)  # QP address
         # Default variable name for the rate limit attributes
         # Variable name for the rate limit attributes
         self.attr_var = ConstantValue(attr_var or f"rate_limit_attr_{qp}")
@@ -3998,9 +3951,7 @@ class ModifyWQ(VerbCall):
     )
 
     def __init__(self, wq: str = None, attr_var: str = None, attr_obj: "IbvWQAttr" = None):
-        self.wq = (
-            ResourceValue(resource_type="wq", value=wq) if wq else ResourceValue(resource_type="wq", value="wq")
-        )  # WQ address
+        self.wq = ResourceValue(resource_type="wq", value=wq)  # WQ address
         # Default variable name for the WQ attributes
         # Variable name for the WQ attributes
         self.attr_var = ConstantValue(attr_var or f"wq_attr_{wq}")
@@ -4103,9 +4054,7 @@ class OpenQP(VerbCall):
     ):
         # Context variable name, e.g., "ctx"
         self.ctx_var = ConstantValue(ctx_var or "ctx")
-        self.qp = (
-            ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
-        )  # QP address
+        self.qp = ResourceValue(resource_type="qp", value=qp)  # QP address
         # Default variable name for the QP open attributes
         # Variable name for the QP open attributes
         self.attr_var = ConstantValue(attr_var or f"qp_open_attr_{qp}")
@@ -4184,11 +4133,7 @@ class OpenXRCD(VerbCall):
     ):
         # Context variable name, e.g., "ctx"
         self.ctx_var = ConstantValue(ctx_var or "ctx")
-        self.xrcd = (
-            ResourceValue(resource_type="xrcd", value=xrcd)
-            if xrcd
-            else ResourceValue(resource_type="xrcd", value="xrcd")
-        )  # XRC Domain address
+        self.xrcd = ResourceValue(resource_type="xrcd", value=xrcd)  # XRC Domain address
         # Default variable name for the XRC Domain attributes
         # Variable name for the XRC Domain attributes
         self.attr_var = ConstantValue(attr_var or f"xrcd_init_attr_{xrcd}")
@@ -4830,7 +4775,7 @@ class QueryECE(VerbCall):
     """Query the ECE options of a QP (Queue Pair) using its address."""
 
     def __init__(self, qp: str = None, output: str = None):
-        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.qp = ResourceValue(resource_type="qp", value=qp)
         # Default output variable name
         self.output = ConstantValue(output or "ece_options")
         self.tracker = None
@@ -5043,7 +4988,7 @@ class QueryQP(VerbCall):
     )
 
     def __init__(self, qp: str = None, attr_mask: str = None):
-        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.qp = ResourceValue(resource_type="qp", value=qp)
         self.attr_mask = FlagValue(
             attr_mask or "IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS",
             flag_type="IBV_QP_ATTR_MASK_ENUM",
@@ -5150,9 +5095,7 @@ class QuerySRQ(VerbCall):
     )
 
     def __init__(self, srq: str = None):
-        self.srq = (
-            ResourceValue(resource_type="srq", value=srq) if srq else ResourceValue(resource_type="srq", value="srq")
-        )
+        self.srq = ResourceValue(resource_type="srq", value=srq)
         # Default variable name for the SRQ attributes
         self.tracker = None
         self.required_resources = []
@@ -5258,8 +5201,8 @@ class RegDmaBufMR(VerbCall):
         fd: int = None,
         access: int = None,
     ):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        self.pd = ResourceValue(resource_type="pd", value=pd)
+        self.mr = ResourceValue(resource_type="mr", value=mr, mutable=False)
         self.offset = IntValue(offset or 0)  # Default offset
         self.length = IntValue(length or 4096)  # Default length
         self.iova = IntValue(iova or 0)  # Default IOVA
@@ -5438,8 +5381,8 @@ class RegMRIova(VerbCall):
         iova: int = None,
         access: str = None,
     ):
-        self.pd = ResourceValue(resource_type="pd", value=pd) if pd else ResourceValue(resource_type="pd", value="pd")
-        self.mr = ResourceValue(resource_type="mr", value=mr) if mr else ResourceValue(resource_type="mr", value="mr")
+        self.pd = ResourceValue(resource_type="pd", value=pd)
+        self.mr = ResourceValue(resource_type="mr", value=mr, mutable=False)
         self.buf = ConstantValue(buf or "buf")  # Default buffer variable name
         self.length = IntValue(length or 4096)  # Default length
         self.iova = IntValue(iova or 0)  # Default IOVA
@@ -5649,7 +5592,7 @@ class ResizeCQ(VerbCall):
     """Resize a completion queue (CQ) to a new size."""
 
     def __init__(self, cq: str = None, cqe: int = None):
-        self.cq = ResourceValue(resource_type="cq", value=cq) if cq else ResourceValue(resource_type="cq", value="cq")
+        self.cq = ResourceValue(resource_type="cq", value=cq)
         self.cqe = IntValue(cqe or 0)  # Default CQE count
 
         self.tracker = None
@@ -5705,7 +5648,7 @@ class SetECE(VerbCall):
     )
 
     def __init__(self, qp: str = None, ece_obj: "IbvECE" = None, ece_var: str = None):
-        self.qp = ResourceValue(resource_type="qp", value=qp) if qp else ResourceValue(resource_type="qp", value="qp")
+        self.qp = ResourceValue(resource_type="qp", value=qp)
         self.ece_obj = ece_obj
         # Default variable name for the ECE structure
         self.ece_var = ConstantValue(ece_var or "ece")
@@ -5765,11 +5708,7 @@ class AbortWR(VerbCall):
     )
 
     def __init__(self, qp_ex: str = None):
-        self.qp_ex = (
-            ResourceValue(resource_type="qp_ex", value=qp_ex)
-            if qp_ex
-            else ResourceValue(resource_type="qp_ex", value="qp_ex")
-        )
+        self.qp_ex = ResourceValue(resource_type="qp_ex", value=qp_ex)
         self.tracker = None
         self.required_resources = []
 
@@ -5812,11 +5751,7 @@ class WRComplete(VerbCall):
     )
 
     def __init__(self, qp_ex: str):
-        self.qp_ex = (
-            ResourceValue(resource_type="qp_ex", value=qp_ex)
-            if qp_ex
-            else ResourceValue(resource_type="qp_ex", value="qp_ex")
-        )
+        self.qp_ex = ResourceValue(resource_type="qp_ex", value=qp_ex)
         self.tracker = None
         self.required_resources = []
 
@@ -5862,11 +5797,7 @@ class WrStart(VerbCall):
     )
 
     def __init__(self, qp_ex: str = None):
-        self.qp_ex = (
-            ResourceValue(resource_type="qp_ex", value=qp_ex)
-            if qp_ex
-            else ResourceValue(resource_type="qp_ex", value="qp_ex")
-        )
+        self.qp_ex = ResourceValue(resource_type="qp_ex", value=qp_ex)
         self.tracker = None
         self.required_resources = []
 
